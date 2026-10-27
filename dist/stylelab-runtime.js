@@ -1,4 +1,4 @@
-/* Style Lab runtime v0.2.0 (d5efdd8) */
+/* Style Lab runtime v0.3.0 (fd17341) */
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -1141,21 +1141,21 @@ var atmosphere_default = [
 var p6 = (e) => param("lens", e);
 var lens_default = [
   p6({
-    id: "lens.fov",
-    label: "Field of view",
+    id: "lens.fovScale",
+    label: "Lens width",
     type: "float",
-    min: 20,
-    max: 110,
-    step: 1,
-    unit: "°",
-    default: 50,
+    min: 0.5,
+    max: 2,
+    step: 0.01,
+    unit: "×",
+    default: 1,
     learn: {
-      what: "The vertical field of view. If the look doesn't set it, each camera shot uses its own lens. The camera stays put, so a wider lens shows more of the scene.",
-      why: "Wide lenses exaggerate depth and speed (action, skating games); long lenses flatten and compress (strategy, cinematic close-ups).",
-      typical: "40–55° neutral, 75–90° for fast action."
+      what: "Widens (above 1) or narrows (below 1) each camera shot's own lens. The camera dollies to keep the subject the same size, so only the perspective changes.",
+      why: "Wide lenses exaggerate depth and speed (skating and racing games); long lenses flatten and compress (strategy, cinematic close-ups). Scaling the shot's lens keeps each genre's camera, so a top-down garden stays top-down.",
+      typical: "1.2–1.4 for fast action, 0.7–0.85 for a flatter, telephoto feel."
     },
-    brief: "Vertical field of view {value}°.",
-    tags: ["camera", "lens"]
+    brief: "Lens {value}× wider than the default camera (dolly to keep the subject size).",
+    tags: ["camera", "lens", "fov"]
   }),
   p6({
     id: "lens.bloom.enabled",
@@ -1639,6 +1639,8 @@ var objectIdNode = Fn2(() => {
   return floor(h.mul(254)).add(1).div(255);
 });
 var idsNode = (part) => vec4(PART_INDEX[part] / 255, objectIdNode(), 0, 1);
+var deformKey = (s) => s.wave ? `wave:${s.wave.amplitude}/${s.wave.frequency}/${s.wave.falloff ?? 90}` : s.wind ? `wind:${s.wind.strength}/${s.wind.height}` : "";
+var styleKey = (s) => [s.color, s.emissive, s.emissiveIntensity, s.roughness, s.metalness ?? 0, s.opacity ?? 1, deformKey(s), s.doubleSided, s.map?.uuid ?? "", s.vertexColors ? "vc" : ""].join("|");
 function paletteColor(hex, v) {
   let c = hex.toLowerCase();
   if (v["palette.remap"] > 0 && v["palette.colors"].length) c = mixHex(c, remapToPalette(c, v["palette.colors"], { keepValue: v["palette.keepValue"] }), v["palette.remap"]);
@@ -1677,22 +1679,45 @@ var StyleMaterials = class {
     const y = sin(positionLocal.x.mul(frequency).add(t)).mul(cos(positionLocal.z.mul(frequency * 0.8).add(t.mul(0.7)))).mul(amplitude).mul(fade);
     return positionLocal.add(vec32(0, y, 0));
   }
-  styledMaterial(style, part) {
-    const pv = this.parts[part];
-    const key = [part, pv.struct, style.color, style.emissive, style.emissiveIntensity, style.roughness, style.wave ? `${style.wave.amplitude}/${style.wave.frequency}` : "", style.doubleSided].join("|");
-    let material = this.styled.get(key);
-    if (material) return material;
-    const v = pv.values;
-    const surface = { model: v["surface.model"], bands: v["surface.bands"], uniforms: pv.surface };
-    material = surface.model === "pbr" ? new StyleStandardMaterial(surface, this.keyDirection, { roughness: style.roughness, metalness: 0 }) : new StyleSurfaceMaterial(surface);
-    material.name = `style:${part}:${surface.model}`;
-    material.flatShading = v["surface.flatNormals"];
+  /** Grass and foliage sway: offset grows with height above the mesh origin. */
+  windNode(wind) {
+    const { strength = 0.12, height = 0.5 } = wind;
+    const t = this.time;
+    const h = positionLocal.y.div(height).clamp(0, 1.5).pow(2);
+    const phase = positionLocal.x.mul(0.35).add(positionLocal.z.mul(0.2));
+    const sway = sin(t.mul(1.7).add(phase)).add(sin(t.mul(3.1).add(positionLocal.x.mul(0.9))).mul(0.3)).mul(strength);
+    return positionLocal.add(vec32(sway, 0, sway.mul(0.6)).mul(h));
+  }
+  deformNode(style) {
+    return style.wave ? this.waveNode(style.wave) : style.wind ? this.windNode(style.wind) : null;
+  }
+  /** Settings shared by the styled and plain twins of a mesh. */
+  common(material, style) {
     material.side = style.doubleSided ? THREE.DoubleSide : THREE.FrontSide;
     if (style.emissive) {
       material.emissive = new THREE.Color(style.emissive);
       material.emissiveIntensity = style.emissiveIntensity;
     }
-    material.positionNode = this.waveNode(style.wave);
+    material.positionNode = this.deformNode(style);
+    if ((style.opacity ?? 1) < 1) {
+      material.transparent = true;
+      material.opacity = style.opacity;
+      material.depthWrite = false;
+    }
+    if (style.map) material.map = style.map;
+    if (style.vertexColors) material.vertexColors = true;
+  }
+  styledMaterial(style, part) {
+    const pv = this.parts[part];
+    const key = `${part}|${pv.struct}|${styleKey(style)}`;
+    let material = this.styled.get(key);
+    if (material) return material;
+    const v = pv.values;
+    const surface = { model: v["surface.model"], bands: v["surface.bands"], uniforms: pv.surface };
+    material = surface.model === "pbr" ? new StyleStandardMaterial(surface, this.keyDirection, { roughness: style.roughness, metalness: style.metalness ?? 0 }) : new StyleSurfaceMaterial(surface);
+    material.name = `style:${part}:${surface.model}`;
+    material.flatShading = v["surface.flatNormals"];
+    this.common(material, style);
     material.mrtNode = mrt({ output, ids: idsNode(part) });
     material.userData = { sourceColor: style.color, part, key };
     material.color.set(paletteColor(style.color, v));
@@ -1701,17 +1726,12 @@ var StyleMaterials = class {
     return material;
   }
   plainMaterial(style) {
-    const key = [style.color, style.emissive, style.emissiveIntensity, style.wave ? `${style.wave.amplitude}/${style.wave.frequency}` : "", style.doubleSided].join("|");
+    const key = styleKey(style);
     let material = this.plain.get(key);
     if (material) return material;
-    material = new THREE.MeshStandardNodeMaterial({ color: new THREE.Color(style.color), roughness: 0.8, metalness: 0, fog: false });
+    material = new THREE.MeshStandardNodeMaterial({ color: new THREE.Color(style.color), roughness: style.roughness ?? 0.8, metalness: style.metalness ?? 0, fog: false });
     material.name = "plain";
-    material.side = style.doubleSided ? THREE.DoubleSide : THREE.FrontSide;
-    if (style.emissive) {
-      material.emissive = new THREE.Color(style.emissive);
-      material.emissiveIntensity = style.emissiveIntensity;
-    }
-    material.positionNode = this.waveNode(style.wave);
+    this.common(material, style);
     this.plain.set(key, material);
     return material;
   }
@@ -1736,7 +1756,12 @@ var StyleMaterials = class {
       const style = mesh.userData.style;
       mesh.material = this.styledMaterial(style, style.part);
       mesh.layers.set(LAYER_STYLED);
-      const plain = new THREE.Mesh(mesh.geometry, this.plainMaterial(style));
+      const plain = mesh.isSkinnedMesh ? new THREE.SkinnedMesh(mesh.geometry, this.plainMaterial(style)) : new THREE.Mesh(mesh.geometry, this.plainMaterial(style));
+      if (mesh.isSkinnedMesh) {
+        plain.bindMode = mesh.bindMode;
+        plain.bind(mesh.skeleton, mesh.bindMatrix);
+      }
+      plain.frustumCulled = mesh.frustumCulled;
       plain.name = "plain twin";
       plain.layers.set(LAYER_PLAIN);
       plain.castShadow = mesh.castShadow;
@@ -1749,7 +1774,8 @@ var StyleMaterials = class {
   }
   updateHull(entry) {
     const pv = this.parts[entry.part];
-    const want = pv.hullEnabled && pv.hullThickness.value > 0.01 && !entry.style.wave;
+    const s = entry.style;
+    const want = pv.hullEnabled && pv.hullThickness.value > 0.01 && !s.wave && !s.wind && !entry.mesh.isSkinnedMesh && (s.opacity ?? 1) >= 1;
     if (want && !entry.hull) {
       const g = entry.mesh.geometry;
       if (!g.getAttribute("outlineNormal")) computeOutlineNormals(g);
@@ -1801,6 +1827,19 @@ var StyleMaterials = class {
     for (const material of this.styled.values()) material.color.set(paletteColor(material.userData.sourceColor, this.parts[material.userData.part].values));
     if (rebuilt.length) this.disposeUnused();
     return rebuilt;
+  }
+  /** Moves one mesh to another part (pick tool). Returns false if it isn't registered. */
+  setPart(mesh, part) {
+    const entry = this.entries.find((e) => e.mesh === mesh);
+    if (!entry || !this.parts[part]) return false;
+    entry.part = entry.style.part = part;
+    entry.mesh.material = this.styledMaterial(entry.style, part);
+    if (entry.hull) {
+      entry.mesh.remove(entry.hull);
+      entry.hull = null;
+    }
+    this.updateHull(entry);
+    return true;
   }
   disposeUnused() {
     const used = new Set(this.entries.map((e) => e.mesh.material));
@@ -2267,6 +2306,12 @@ var StyleRuntime = class {
     this.root = root;
     this.scene.add(root);
     this.materials.register(root);
+    root.traverse((o) => {
+      if (!o.isLight) return;
+      o.layers.set(LAYER_STYLED);
+      o.layers.enable(LAYER_PLAIN);
+      o.castShadow = false;
+    });
     const hero = def.shots[def.defaultShot];
     this.rigs.setFrame({ center: def.shadow.center, radius: def.shadow.radius, heroPos: hero.pos, heroTarget: hero.target });
     this.camera.far = def.far;
@@ -2337,6 +2382,12 @@ var StyleRuntime = class {
       this.markCompile("rebuild");
     }
     return rebuilt;
+  }
+  /** Reassigns one mesh's part (pick tool); applies the part's look on the next frame. */
+  setPart(mesh, part) {
+    const ok = this.materials.setPart(mesh, part);
+    if (ok) this.markCompile("part");
+    return ok;
   }
   markCompile(reason) {
     this.pendingCompile = reason;
@@ -2472,13 +2523,79 @@ async function measureFrames(renderer, renderFrame, { frames = 30, method = "aut
   return { method: "wallclock", msPerFrame: (performance.now() - t0) / frames };
 }
 
+// src/runtime/parts/guess.js
+var PART_KEYWORDS = [
+  ["hero", ["player", "hero", "protagonist", "avatar"]],
+  ["water", ["water", "sea", "ocean", "lake", "river", "pond", "wave", "waves"]],
+  ["sky", ["sky", "skybox", "skydome", "cloud", "sun", "moon"]],
+  ["foliage", ["tree", "leaf", "leaves", "bush", "plant", "grass", "flower", "foliage", "hedge", "pine", "palm", "fern", "vine", "branch", "canopy", "shrub", "trunk"]],
+  ["characters", ["char", "character", "npc", "enemy", "body", "head", "human", "person", "people", "animal", "goose", "mannequin", "robot", "knight", "monster", "creature", "face", "hair", "arm", "leg", "hand", "torso", "eye", "skin"]],
+  ["architecture", ["wall", "roof", "house", "building", "door", "window", "tower", "bridge", "column", "pillar", "stair", "stairs", "arch", "castle", "temple", "shrine", "brick", "chimney", "balcony", "facade", "floor", "ceiling"]],
+  ["terrain", ["ground", "terrain", "road", "street", "land", "landscape", "cliff", "path", "sand", "dirt", "soil", "pavement", "island", "mountain", "hill", "rock", "rocks"]],
+  ["vfx", ["fire", "flame", "glow", "magic", "particle", "particles", "fx", "vfx", "emissive", "neon", "spark", "laser", "hologram"]]
+];
+function tokenize(name = "") {
+  return String(name).replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z]+/).filter(Boolean);
+}
+function keywordPart(name) {
+  const tokens = tokenize(name);
+  if (!tokens.length) return null;
+  for (const [part, words] of PART_KEYWORDS) {
+    for (const w of words) {
+      if (tokens.some((t) => t === w || t === `${w}s` || t === `${w}es`)) return { part, reason: `name "${w}"` };
+    }
+  }
+  return null;
+}
+var explicitPart = (userData = {}) => {
+  const p10 = userData.part ?? userData.stylePart ?? userData.style?.part;
+  return PARTS.includes(p10) ? p10 : null;
+};
+function guessParts(items) {
+  const out = items.map((it) => {
+    const tagged = explicitPart(it.userData);
+    if (tagged) return { part: tagged, reason: "tag" };
+    for (const name of [it.name, it.materialName, ...it.ancestors || []]) {
+      const k = keywordPart(name);
+      if (k) return k;
+    }
+    if ((it.emissive || 0) > 0.15) return { part: "vfx", reason: "emissive material" };
+    return null;
+  });
+  if (!out.some((g) => g && g.part === "terrain")) {
+    const boxes = items.map((it) => it.box).filter(Boolean);
+    if (boxes.length) {
+      const minY = Math.min(...boxes.map((b) => b.min[1])), maxY = Math.max(...boxes.map((b) => b.max[1]));
+      const height = Math.max(1e-6, maxY - minY);
+      let best = -1, bestArea = 0;
+      items.forEach((it, i) => {
+        if (out[i] || !it.box) return;
+        const [sx, sy, sz] = it.box.max.map((v, k) => v - it.box.min[k]);
+        const flat = sy < 0.2 * Math.max(sx, sz);
+        const low = it.box.min[1] <= minY + height * 0.15;
+        const area = sx * sz;
+        if (flat && low && area > bestArea) {
+          best = i;
+          bestArea = area;
+        }
+      });
+      if (best >= 0) {
+        const [r, g, b] = items[best].color || [0.5, 0.5, 0.5];
+        out[best] = b > r * 1.25 && b > g * 1.05 ? { part: "water", reason: "largest flat surface, blue" } : { part: "terrain", reason: "largest flat surface at the bottom" };
+      }
+    }
+  }
+  return out.map((g) => g || { part: "props", reason: "default" });
+}
+
 // src/runtime/index.js
-var RUNTIME_VERSION = "0.2.0";
+var RUNTIME_VERSION = "0.3.0";
 export {
   LOOK_SCHEMA,
   MODULES,
   PARTS,
   PART_INDEX,
+  PART_KEYWORDS,
   REGISTRY,
   RUNTIME_VERSION,
   StyleLightingModel,
@@ -2494,6 +2611,7 @@ export {
   defaults,
   formatBrief,
   gpuIdle,
+  guessParts,
   lookValue,
   measureFrames,
   migrateLook,

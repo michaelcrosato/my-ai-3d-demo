@@ -111,6 +111,20 @@ table.ratings { border-collapse: collapse; margin: 6px 0; width: 100%; }
 table.ratings td, table.ratings th { padding: 2px 4px; text-align: left; font-weight: 500; }
 table.ratings input { width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
 details.earlier { margin-top: 14px; }
+.scene-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.scene-card { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 1px; padding: 6px 8px; }
+.scene-card.on { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+table.readouts { width: 100%; border-collapse: collapse; }
+table.readouts td { padding: 1px 4px; }
+table.readouts td:nth-child(odd) { color: var(--muted); }
+.pick { border: 1px dashed var(--accent); border-radius: 6px; padding: 6px 8px; margin-top: 6px; }
+.modal { position: fixed; inset: 0; background: rgb(0 0 0 / 0.6); display: flex; align-items: center; justify-content: center; z-index: 20; padding: 16px; }
+.modal[hidden] { display: none; }
+.modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; max-width: 100%; max-height: 100%; overflow: auto; }
+.modal-box header { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+.modal-box header button { margin-left: auto; }
+.modal-box header a { color: var(--accent); }
+.modal-box img { display: block; max-width: 100%; height: auto; }
 details.earlier > summary { cursor: pointer; color: var(--muted); }
 
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100%); background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; z-index: 10; box-shadow: -8px 0 24px rgb(0 0 0 / 0.35); }
@@ -220,13 +234,14 @@ table.env code { word-break: break-all; }
 		</footer>
 	</div>
 	<aside id="verify" class="drawer" hidden></aside>
+	<div id="modal" class="modal" hidden></div>
 	<script type="module">
-/* Style Lab v0.2.0 (d5efdd8) — built from src/, do not edit */
+/* Style Lab v0.3.0 (fd17341) — built from src/, do not edit */
 // <define:__STYLELAB_BUILD__>
-var define_STYLELAB_BUILD_default = { version: "0.2.0", commit: "d5efdd8", date: "2026-10-27T21:10:15+00:00" };
+var define_STYLELAB_BUILD_default = { version: "0.3.0", commit: "fd17341", date: "2026-10-27T22:48:56+00:00" };
 
 // src/app/main.js
-import * as THREE17 from "three/webgpu";
+import * as THREE18 from "three/webgpu";
 
 // src/app/diagnostics/errors.js
 var MAX_LENGTH = 1500;
@@ -696,9 +711,9 @@ function computeOutlineNormals(geometry, { name = "outlineNormal", precision = 1
   geometry.setAttribute(name, new BufferAttribute(out, 3));
   return geometry;
 }
-function createHullMaterial({ THREE: THREE18, TSL: TSL3, color, thickness, normalName = "outlineNormal" }) {
+function createHullMaterial({ THREE: THREE19, TSL: TSL3, color, thickness, normalName = "outlineNormal" }) {
   const { Fn: Fn5, vec4: vec45, attribute, positionLocal: positionLocal2, modelViewMatrix, cameraProjectionMatrix, screenSize: screenSize3 } = TSL3;
-  const material = new THREE18.MeshBasicNodeMaterial({ side: BackSide });
+  const material = new THREE19.MeshBasicNodeMaterial({ side: BackSide });
   material.colorNode = color;
   material.vertexNode = Fn5(() => {
     const clip = cameraProjectionMatrix.mul(modelViewMatrix).mul(vec45(positionLocal2, 1));
@@ -1654,21 +1669,21 @@ var atmosphere_default = [
 var p6 = (e) => param("lens", e);
 var lens_default = [
   p6({
-    id: "lens.fov",
-    label: "Field of view",
+    id: "lens.fovScale",
+    label: "Lens width",
     type: "float",
-    min: 20,
-    max: 110,
-    step: 1,
-    unit: "°",
-    default: 50,
+    min: 0.5,
+    max: 2,
+    step: 0.01,
+    unit: "×",
+    default: 1,
     learn: {
-      what: "The vertical field of view. If the look doesn't set it, each camera shot uses its own lens. The camera stays put, so a wider lens shows more of the scene.",
-      why: "Wide lenses exaggerate depth and speed (action, skating games); long lenses flatten and compress (strategy, cinematic close-ups).",
-      typical: "40–55° neutral, 75–90° for fast action."
+      what: "Widens (above 1) or narrows (below 1) each camera shot's own lens. The camera dollies to keep the subject the same size, so only the perspective changes.",
+      why: "Wide lenses exaggerate depth and speed (skating and racing games); long lenses flatten and compress (strategy, cinematic close-ups). Scaling the shot's lens keeps each genre's camera, so a top-down garden stays top-down.",
+      typical: "1.2–1.4 for fast action, 0.7–0.85 for a flatter, telephoto feel."
     },
-    brief: "Vertical field of view {value}°.",
-    tags: ["camera", "lens"]
+    brief: "Lens {value}× wider than the default camera (dolly to keep the subject size).",
+    tags: ["camera", "lens", "fov"]
   }),
   p6({
     id: "lens.bloom.enabled",
@@ -2126,6 +2141,8 @@ var objectIdNode = Fn2(() => {
   return floor(h2.mul(254)).add(1).div(255);
 });
 var idsNode = (part) => vec4(PART_INDEX[part] / 255, objectIdNode(), 0, 1);
+var deformKey = (s) => s.wave ? `wave:${s.wave.amplitude}/${s.wave.frequency}/${s.wave.falloff ?? 90}` : s.wind ? `wind:${s.wind.strength}/${s.wind.height}` : "";
+var styleKey = (s) => [s.color, s.emissive, s.emissiveIntensity, s.roughness, s.metalness ?? 0, s.opacity ?? 1, deformKey(s), s.doubleSided, s.map?.uuid ?? "", s.vertexColors ? "vc" : ""].join("|");
 function paletteColor(hex, v) {
   let c = hex.toLowerCase();
   if (v["palette.remap"] > 0 && v["palette.colors"].length) c = mixHex(c, remapToPalette(c, v["palette.colors"], { keepValue: v["palette.keepValue"] }), v["palette.remap"]);
@@ -2164,22 +2181,45 @@ var StyleMaterials = class {
     const y = sin(positionLocal.x.mul(frequency).add(t)).mul(cos(positionLocal.z.mul(frequency * 0.8).add(t.mul(0.7)))).mul(amplitude).mul(fade);
     return positionLocal.add(vec32(0, y, 0));
   }
-  styledMaterial(style, part) {
-    const pv = this.parts[part];
-    const key = [part, pv.struct, style.color, style.emissive, style.emissiveIntensity, style.roughness, style.wave ? `${style.wave.amplitude}/${style.wave.frequency}` : "", style.doubleSided].join("|");
-    let material = this.styled.get(key);
-    if (material) return material;
-    const v = pv.values;
-    const surface = { model: v["surface.model"], bands: v["surface.bands"], uniforms: pv.surface };
-    material = surface.model === "pbr" ? new StyleStandardMaterial(surface, this.keyDirection, { roughness: style.roughness, metalness: 0 }) : new StyleSurfaceMaterial(surface);
-    material.name = `style:${part}:${surface.model}`;
-    material.flatShading = v["surface.flatNormals"];
+  /** Grass and foliage sway: offset grows with height above the mesh origin. */
+  windNode(wind) {
+    const { strength = 0.12, height = 0.5 } = wind;
+    const t = this.time;
+    const h2 = positionLocal.y.div(height).clamp(0, 1.5).pow(2);
+    const phase = positionLocal.x.mul(0.35).add(positionLocal.z.mul(0.2));
+    const sway = sin(t.mul(1.7).add(phase)).add(sin(t.mul(3.1).add(positionLocal.x.mul(0.9))).mul(0.3)).mul(strength);
+    return positionLocal.add(vec32(sway, 0, sway.mul(0.6)).mul(h2));
+  }
+  deformNode(style) {
+    return style.wave ? this.waveNode(style.wave) : style.wind ? this.windNode(style.wind) : null;
+  }
+  /** Settings shared by the styled and plain twins of a mesh. */
+  common(material, style) {
     material.side = style.doubleSided ? THREE3.DoubleSide : THREE3.FrontSide;
     if (style.emissive) {
       material.emissive = new THREE3.Color(style.emissive);
       material.emissiveIntensity = style.emissiveIntensity;
     }
-    material.positionNode = this.waveNode(style.wave);
+    material.positionNode = this.deformNode(style);
+    if ((style.opacity ?? 1) < 1) {
+      material.transparent = true;
+      material.opacity = style.opacity;
+      material.depthWrite = false;
+    }
+    if (style.map) material.map = style.map;
+    if (style.vertexColors) material.vertexColors = true;
+  }
+  styledMaterial(style, part) {
+    const pv = this.parts[part];
+    const key = `${part}|${pv.struct}|${styleKey(style)}`;
+    let material = this.styled.get(key);
+    if (material) return material;
+    const v = pv.values;
+    const surface = { model: v["surface.model"], bands: v["surface.bands"], uniforms: pv.surface };
+    material = surface.model === "pbr" ? new StyleStandardMaterial(surface, this.keyDirection, { roughness: style.roughness, metalness: style.metalness ?? 0 }) : new StyleSurfaceMaterial(surface);
+    material.name = `style:${part}:${surface.model}`;
+    material.flatShading = v["surface.flatNormals"];
+    this.common(material, style);
     material.mrtNode = mrt({ output, ids: idsNode(part) });
     material.userData = { sourceColor: style.color, part, key };
     material.color.set(paletteColor(style.color, v));
@@ -2188,17 +2228,12 @@ var StyleMaterials = class {
     return material;
   }
   plainMaterial(style) {
-    const key = [style.color, style.emissive, style.emissiveIntensity, style.wave ? `${style.wave.amplitude}/${style.wave.frequency}` : "", style.doubleSided].join("|");
+    const key = styleKey(style);
     let material = this.plain.get(key);
     if (material) return material;
-    material = new THREE3.MeshStandardNodeMaterial({ color: new THREE3.Color(style.color), roughness: 0.8, metalness: 0, fog: false });
+    material = new THREE3.MeshStandardNodeMaterial({ color: new THREE3.Color(style.color), roughness: style.roughness ?? 0.8, metalness: style.metalness ?? 0, fog: false });
     material.name = "plain";
-    material.side = style.doubleSided ? THREE3.DoubleSide : THREE3.FrontSide;
-    if (style.emissive) {
-      material.emissive = new THREE3.Color(style.emissive);
-      material.emissiveIntensity = style.emissiveIntensity;
-    }
-    material.positionNode = this.waveNode(style.wave);
+    this.common(material, style);
     this.plain.set(key, material);
     return material;
   }
@@ -2223,7 +2258,12 @@ var StyleMaterials = class {
       const style = mesh2.userData.style;
       mesh2.material = this.styledMaterial(style, style.part);
       mesh2.layers.set(LAYER_STYLED);
-      const plain2 = new THREE3.Mesh(mesh2.geometry, this.plainMaterial(style));
+      const plain2 = mesh2.isSkinnedMesh ? new THREE3.SkinnedMesh(mesh2.geometry, this.plainMaterial(style)) : new THREE3.Mesh(mesh2.geometry, this.plainMaterial(style));
+      if (mesh2.isSkinnedMesh) {
+        plain2.bindMode = mesh2.bindMode;
+        plain2.bind(mesh2.skeleton, mesh2.bindMatrix);
+      }
+      plain2.frustumCulled = mesh2.frustumCulled;
       plain2.name = "plain twin";
       plain2.layers.set(LAYER_PLAIN);
       plain2.castShadow = mesh2.castShadow;
@@ -2236,7 +2276,8 @@ var StyleMaterials = class {
   }
   updateHull(entry) {
     const pv = this.parts[entry.part];
-    const want = pv.hullEnabled && pv.hullThickness.value > 0.01 && !entry.style.wave;
+    const s = entry.style;
+    const want = pv.hullEnabled && pv.hullThickness.value > 0.01 && !s.wave && !s.wind && !entry.mesh.isSkinnedMesh && (s.opacity ?? 1) >= 1;
     if (want && !entry.hull) {
       const g = entry.mesh.geometry;
       if (!g.getAttribute("outlineNormal")) computeOutlineNormals(g);
@@ -2288,6 +2329,19 @@ var StyleMaterials = class {
     for (const material of this.styled.values()) material.color.set(paletteColor(material.userData.sourceColor, this.parts[material.userData.part].values));
     if (rebuilt.length) this.disposeUnused();
     return rebuilt;
+  }
+  /** Moves one mesh to another part (pick tool). Returns false if it isn't registered. */
+  setPart(mesh2, part) {
+    const entry = this.entries.find((e) => e.mesh === mesh2);
+    if (!entry || !this.parts[part]) return false;
+    entry.part = entry.style.part = part;
+    entry.mesh.material = this.styledMaterial(entry.style, part);
+    if (entry.hull) {
+      entry.mesh.remove(entry.hull);
+      entry.hull = null;
+    }
+    this.updateHull(entry);
+    return true;
   }
   disposeUnused() {
     const used = new Set(this.entries.map((e) => e.mesh.material));
@@ -2754,6 +2808,12 @@ var StyleRuntime = class {
     this.root = root;
     this.scene.add(root);
     this.materials.register(root);
+    root.traverse((o) => {
+      if (!o.isLight) return;
+      o.layers.set(LAYER_STYLED);
+      o.layers.enable(LAYER_PLAIN);
+      o.castShadow = false;
+    });
     const hero = def.shots[def.defaultShot];
     this.rigs.setFrame({ center: def.shadow.center, radius: def.shadow.radius, heroPos: hero.pos, heroTarget: hero.target });
     this.camera.far = def.far;
@@ -2824,6 +2884,12 @@ var StyleRuntime = class {
       this.markCompile("rebuild");
     }
     return rebuilt;
+  }
+  /** Reassigns one mesh's part (pick tool); applies the part's look on the next frame. */
+  setPart(mesh2, part) {
+    const ok = this.materials.setPart(mesh2, part);
+    if (ok) this.markCompile("part");
+    return ok;
   }
   markCompile(reason) {
     this.pendingCompile = reason;
@@ -2949,6 +3015,71 @@ async function measureFrames(renderer, renderFrame, { frames = 30, method = "aut
   return { method: "wallclock", msPerFrame: (performance.now() - t0) / frames };
 }
 
+// src/runtime/parts/guess.js
+var PART_KEYWORDS = [
+  ["hero", ["player", "hero", "protagonist", "avatar"]],
+  ["water", ["water", "sea", "ocean", "lake", "river", "pond", "wave", "waves"]],
+  ["sky", ["sky", "skybox", "skydome", "cloud", "sun", "moon"]],
+  ["foliage", ["tree", "leaf", "leaves", "bush", "plant", "grass", "flower", "foliage", "hedge", "pine", "palm", "fern", "vine", "branch", "canopy", "shrub", "trunk"]],
+  ["characters", ["char", "character", "npc", "enemy", "body", "head", "human", "person", "people", "animal", "goose", "mannequin", "robot", "knight", "monster", "creature", "face", "hair", "arm", "leg", "hand", "torso", "eye", "skin"]],
+  ["architecture", ["wall", "roof", "house", "building", "door", "window", "tower", "bridge", "column", "pillar", "stair", "stairs", "arch", "castle", "temple", "shrine", "brick", "chimney", "balcony", "facade", "floor", "ceiling"]],
+  ["terrain", ["ground", "terrain", "road", "street", "land", "landscape", "cliff", "path", "sand", "dirt", "soil", "pavement", "island", "mountain", "hill", "rock", "rocks"]],
+  ["vfx", ["fire", "flame", "glow", "magic", "particle", "particles", "fx", "vfx", "emissive", "neon", "spark", "laser", "hologram"]]
+];
+function tokenize(name = "") {
+  return String(name).replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z]+/).filter(Boolean);
+}
+function keywordPart(name) {
+  const tokens = tokenize(name);
+  if (!tokens.length) return null;
+  for (const [part, words] of PART_KEYWORDS) {
+    for (const w of words) {
+      if (tokens.some((t) => t === w || t === `${w}s` || t === `${w}es`)) return { part, reason: `name "${w}"` };
+    }
+  }
+  return null;
+}
+var explicitPart = (userData = {}) => {
+  const p10 = userData.part ?? userData.stylePart ?? userData.style?.part;
+  return PARTS.includes(p10) ? p10 : null;
+};
+function guessParts(items) {
+  const out = items.map((it) => {
+    const tagged = explicitPart(it.userData);
+    if (tagged) return { part: tagged, reason: "tag" };
+    for (const name of [it.name, it.materialName, ...it.ancestors || []]) {
+      const k = keywordPart(name);
+      if (k) return k;
+    }
+    if ((it.emissive || 0) > 0.15) return { part: "vfx", reason: "emissive material" };
+    return null;
+  });
+  if (!out.some((g) => g && g.part === "terrain")) {
+    const boxes = items.map((it) => it.box).filter(Boolean);
+    if (boxes.length) {
+      const minY = Math.min(...boxes.map((b) => b.min[1])), maxY = Math.max(...boxes.map((b) => b.max[1]));
+      const height = Math.max(1e-6, maxY - minY);
+      let best = -1, bestArea = 0;
+      items.forEach((it, i) => {
+        if (out[i] || !it.box) return;
+        const [sx, sy, sz] = it.box.max.map((v, k) => v - it.box.min[k]);
+        const flat = sy < 0.2 * Math.max(sx, sz);
+        const low = it.box.min[1] <= minY + height * 0.15;
+        const area = sx * sz;
+        if (flat && low && area > bestArea) {
+          best = i;
+          bestArea = area;
+        }
+      });
+      if (best >= 0) {
+        const [r, g, b] = items[best].color || [0.5, 0.5, 0.5];
+        out[best] = b > r * 1.25 && b > g * 1.05 ? { part: "water", reason: "largest flat surface, blue" } : { part: "terrain", reason: "largest flat surface at the bottom" };
+      }
+    }
+  }
+  return out.map((g) => g || { part: "props", reason: "default" });
+}
+
 // src/app/spikes/s1-cel.js
 function toon(bands, color = 13421772) {
   return new StyleSurfaceMaterial({ bands, wrap: false, uniforms: createSurfaceUniforms({ softness: 0.01, tintStrength: 0.35 }) }, { color });
@@ -2983,10 +3114,10 @@ var s1_cel_default = {
       sun3.shadow.bias = -1e-3;
       scene.add(sun3);
       scene.add(groundPlane(groundMaterial));
-      const wall = new THREE8.Mesh(new THREE8.BoxGeometry(0.2, 1.1, 4), new THREE8.MeshStandardNodeMaterial());
-      wall.position.set(1.2, 0.55, 0);
-      wall.castShadow = true;
-      scene.add(wall);
+      const wall2 = new THREE8.Mesh(new THREE8.BoxGeometry(0.2, 1.1, 4), new THREE8.MeshStandardNodeMaterial());
+      wall2.position.set(1.2, 0.55, 0);
+      wall2.castShadow = true;
+      scene.add(wall2);
       return scene;
     };
     const camera = topDownCamera();
@@ -3395,8 +3526,8 @@ var s7_timestamps_default = {
       R.fallback = true;
       R.note("No timestamp queries on this backend/GPU: the audit will use the wall-clock fallback and say so.");
     }
-    const wall = await measureFrames(renderer, frame, { frames: 30, method: "wallclock" });
-    R.check("wall-clock fallback returns a time", wall.msPerFrame > 0, wall.msPerFrame, "> 0 ms/frame");
+    const wall2 = await measureFrames(renderer, frame, { frames: 30, method: "wallclock" });
+    R.check("wall-clock fallback returns a time", wall2.msPerFrame > 0, wall2.msPerFrame, "> 0 ms/frame");
     scenePass.dispose();
     post.dispose();
     target.dispose();
@@ -3455,8 +3586,55 @@ async function runSpikes({ renderer, ids = null, onResult = () => {
 }
 
 // src/app/verify/checks.js
-var CURRENT_MILESTONE = "M1";
+var CURRENT_MILESTONE = "M2";
 var CHECKS = [
+  {
+    id: "M2-01",
+    milestone: "M2",
+    title: "Each scene loads and evokes its inspiration",
+    steps: ["Open each scene (Scene tab cards, the top-bar picker, or [ / ]). Try a couple of looks on each.", "Rate how well the scene evokes the games it is inspired by, and how much you like it (1–5)."],
+    expected: "Every scene loads without errors in a second or two, and reads as its genre from its default camera.",
+    ratings: ["garden", "plaza", "dungeon", "kart", "platforms", "hangar", "meadow", "campsite"]
+  },
+  {
+    id: "M2-02",
+    milestone: "M2",
+    title: "Animations play",
+    steps: ["Garden: the goose waddles. Plaza: the skater loops. Kart Circuit: karts race. Sky Platforms: coins spin, the robot hovers.", "Dungeon: torches flicker. Meadow: grass sways. Campsite: the fire flickers. Hangar: holograms turn."],
+    expected: "Everything moves smoothly, and the styled and plain images stay in sync when you hold compare.",
+    setup: { scene: "kart", look: "sea-breeze", tier: 1 }
+  },
+  {
+    id: "M2-03",
+    milestone: "M2",
+    title: "Import one of your own .glb files",
+    steps: ["Drop a .glb or .gltf onto the window (or Scene tab → Import .glb…).", "Turn on Pick parts and click objects: check the guessed part and fix any that are wrong. Then try a few looks."],
+    expected: "The model loads, is framed by the camera, and gets sensible parts (ground → terrain, trees → foliage, people → characters, glowing things → vfx). Note what it guessed wrong."
+  },
+  {
+    id: "M2-04",
+    milestone: "M2",
+    title: "Density changes props, not the layout",
+    steps: ["Scene tab → Prop density: drag from ×0.5 to ×4 on the Garden, the Meadow and the Kart Circuit."],
+    expected: "More or fewer trees, flowers, grass, cones and props; landmarks, characters and the camera stay put. The readouts update.",
+    setup: { scene: "meadow", look: "phone-safe-toon", tier: 1 }
+  },
+  {
+    id: "M2-05",
+    milestone: "M2",
+    title: "Benefit matrix",
+    steps: ["Pick a look, then Scene tab → Benefit matrix."],
+    expected: "A 2×2 image (plain and styled, Blockout and Detailed) appears after a few seconds, and you can download it. It should show stylization helping the blockout most.",
+    setup: { scene: "harbor", look: "sea-breeze", tier: 0 }
+  },
+  {
+    id: "M2-06",
+    milestone: "M2",
+    title: "Shots match each genre's camera",
+    steps: ["On each scene, cycle the shots (N, R3, or the Shot picker): top-down garden, chase camera on the kart, isometric dungeon, over the shoulder in the hangar."],
+    expected: "Each shot frames the action the way its genre would.",
+    setup: { scene: "garden", look: "phone-safe-toon", tier: 1 }
+  },
   {
     id: "M1-01",
     milestone: "M1",
@@ -3593,8 +3771,8 @@ function formatReport({ build, env, checks, spikeRuns = {}, log: log2 = [], perf
   const vp = env.viewport ? ` · ${env.viewport.width}×${env.viewport.height} @${env.pixelRatioUsed}` : "";
   lines.push(`Env: ${shortUA(env.userAgent)} · ${env.backend}${env.requestedBackend && env.requestedBackend !== "auto" ? ` (forced ${env.requestedBackend})` : ""} · ${adapterLabel(env.adapter)}${vp} · timestamp-query ${env.timestampQuery ? "✓" : "✗"} · ${env.protocol}`);
   const done = checks.filter((c) => c.status);
-  const count = (s) => done.filter((c) => c.status === s).length;
-  lines.push(`Checks: ${count("pass")} pass · ${count("fail")} fail · ${count("unsure")} unsure · ${checks.length - done.length} not done`);
+  const count2 = (s) => done.filter((c) => c.status === s).length;
+  lines.push(`Checks: ${count2("pass")} pass · ${count2("fail")} fail · ${count2("unsure")} unsure · ${checks.length - done.length} not done`);
   for (const c of checks) {
     const rated = (c.ratingsList || []).filter((r) => r.evoke || r.like || r.note);
     if (rated.length) {
@@ -3649,7 +3827,7 @@ function save(data) {
 }
 var esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 function createVerifyPanel({ root, build, getEnv, log: log2, getPerf, runSpikes: runSpikes2, setup = () => {
-}, lookNames = {} }) {
+}, names = {} }) {
   const store = load();
   const key = `${build.version}+${build.commit}`;
   const state = store[key] || (store[key] = { checks: {}, spikeRuns: {} });
@@ -3660,7 +3838,7 @@ function createVerifyPanel({ root, build, getEnv, log: log2, getPerf, runSpikes:
   const persist = () => save(store);
   const checks = () => CHECKS.map((c) => {
     const saved = state.checks[c.id] || {};
-    const ratingsList = c.ratings ? c.ratings.map((id) => ({ id, name: lookNames[id] || id, ...saved.ratings?.[id] })) : void 0;
+    const ratingsList = c.ratings ? c.ratings.map((id) => ({ id, name: names[id] || id, ...saved.ratings?.[id] })) : void 0;
     return { ...c, ...saved, ratingsList };
   });
   const reported = () => checks().filter((c) => c.milestone === CURRENT_MILESTONE || c.status);
@@ -3671,7 +3849,7 @@ function createVerifyPanel({ root, build, getEnv, log: log2, getPerf, runSpikes:
 					<h4><span class="cid">${c.id}</span> ${esc(c.title)}</h4>
 					<ol>${c.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
 					<p class="expected"><b>Expected:</b> ${esc(c.expected)}</p>
-					${c.ratingsList ? `<table class="ratings"><tr><th>Look</th><th>Evokes it</th><th>I like it</th><th>Note</th></tr>${c.ratingsList.map((r) => `<tr><td>${esc(r.name)}</td><td>${RATING(c, r, "evoke")}</td><td>${RATING(c, r, "like")}</td><td><input data-rate="${r.id}" data-field="note" value="${esc(r.note || "")}" placeholder="optional"></td></tr>`).join("")}</table>` : ""}
+					${c.ratingsList ? `<table class="ratings"><tr><th></th><th>Evokes it</th><th>I like it</th><th>Note</th></tr>${c.ratingsList.map((r) => `<tr><td>${esc(r.name)}</td><td>${RATING(c, r, "evoke")}</td><td>${RATING(c, r, "like")}</td><td><input data-rate="${r.id}" data-field="note" value="${esc(r.note || "")}" placeholder="optional"></td></tr>`).join("")}</table>` : ""}
 					<div class="row">
 						${["pass", "fail", "unsure"].map((s) => `<button class="status ${c.status === s ? "on " + s : ""}" data-status="${s}">${{ pass: "✅ Pass", fail: "❌ Fail", unsure: "⚠️ Unsure" }[s]}</button>`).join("")}
 						${c.setup ? "<button data-setup>Set it up for me</button>" : ""}
@@ -3820,7 +3998,7 @@ function createVerifyPanel({ root, build, getEnv, log: log2, getPerf, runSpikes:
 }
 
 // src/app/app.js
-import * as THREE16 from "three/webgpu";
+import * as THREE17 from "three/webgpu";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 // src/content/looks/index.js
@@ -3919,7 +4097,7 @@ var graffitiRush = look({
     "atmosphere.sky.zenith": "#1e9bff",
     "atmosphere.sky.horizon": "#a8ecff",
     "atmosphere.sky.ground": "#a8ecff",
-    "lens.fov": 70,
+    "lens.fovScale": 1.25,
     "lens.bloom.enabled": true,
     "lens.bloom.strength": 0.15,
     "grade.toneMapping": "neutral",
@@ -4105,14 +4283,27 @@ function place(geometry, { p: p10 = [0, 0, 0], r = [0, 0, 0], s = [1, 1, 1] } = 
   return geometry.applyMatrix4(m);
 }
 var PLACEHOLDER = new THREE15.MeshBasicMaterial();
-function mesh(geometry, { part, color = "#cccccc", roughness = 0.8, emissive = null, emissiveIntensity = 1, wave = null, doubleSided = false, castShadow = true, receiveShadow = true, name = "" } = {}) {
+function mesh(geometry, { part, color = "#cccccc", roughness = 0.8, metalness = 0, emissive = null, emissiveIntensity = 1, wave = null, wind = null, opacity = 1, doubleSided = false, castShadow = true, receiveShadow = true, name = "" } = {}) {
   const m = new THREE15.Mesh(geometry, PLACEHOLDER);
   m.name = name;
-  m.castShadow = castShadow;
+  m.castShadow = castShadow && opacity >= 1;
   m.receiveShadow = receiveShadow;
-  m.userData.style = { part, color, roughness, emissive, emissiveIntensity, wave, doubleSided };
+  m.userData.style = { part, color, roughness, metalness, emissive, emissiveIntensity, wave, wind, opacity, doubleSided };
   return m;
 }
+function practical({ color = "#ffb35c", intensity = 12, distance = 10, flicker = 0, seed = 0 } = {}) {
+  const light = new THREE15.PointLight(color, intensity, distance, 2);
+  light.name = "practical light";
+  light.userData.practical = { flicker };
+  if (flicker > 0) {
+    light.userData.animate = (t) => {
+      const n = Math.sin(t * 11.3 + seed) * 0.5 + Math.sin(t * 23.7 + seed * 2.1) * 0.3 + Math.sin(t * 5.1 + seed * 0.7) * 0.2;
+      light.intensity = intensity * (1 + n * flicker * 0.35);
+    };
+  }
+  return light;
+}
+var count = (base, density = 1) => Math.max(1, Math.round(base * density));
 function at(object, p10 = [0, 0, 0], r = [0, 0, 0], s = 1) {
   object.position.set(...p10);
   object.rotation.set(...r);
@@ -4474,13 +4665,14 @@ function character(tier, { part = "characters", shirt = "#3d7fd6", pants = "#3b4
       head2.rotation.y = Math.sin(t * 0.7 + seed) * 0.3;
       body.scale.y = 1 + Math.sin(t * 2 + seed) * 0.01;
     };
+    root.userData.rig = { head: head2, torso: body, arms: [], legs: [], part, tier };
     return root;
   }
   const torso = group("torso");
   torso.position.y = 1;
-  const chest = mesh(f(new THREE15.CapsuleGeometry(0.27, 0.32, 3, seg)), o(shirt));
-  chest.position.y = 0.12;
-  torso.add(chest);
+  const chest2 = mesh(f(new THREE15.CapsuleGeometry(0.27, 0.32, 3, seg)), o(shirt));
+  chest2.position.y = 0.12;
+  torso.add(chest2);
   const head = group("head");
   head.position.y = 0.62;
   const skull = mesh(f(tier === 1 ? new THREE15.IcosahedronGeometry(0.24, 1) : new THREE15.SphereGeometry(0.24, seg + 4, seg)), o(skin));
@@ -4565,6 +4757,7 @@ function character(tier, { part = "characters", shirt = "#3d7fd6", pants = "#3b4
     arms[1].rotation.x = -Math.sin(s * 1.1) * 0.08;
     legs[0].rotation.x = 0;
   };
+  root.userData.rig = { head, torso, arms, legs, part, tier };
   return root;
 }
 
@@ -4684,6 +4877,806 @@ function lantern(tier) {
   return root;
 }
 
+// src/scenes/kit/creatures.js
+function skater(tier, { part = "hero", shirt = "#ff2e88", pants = "#2b2f3a", cap = "#ffe600", seed = 0 } = {}) {
+  const root = character(tier, { part, shirt, pants, seed });
+  const { head, legs } = root.userData.rig;
+  const o = (color, extra) => ({ part, color, ...extra });
+  if (tier >= 1) {
+    const capG = new THREE15.SphereGeometry(0.26, byTier(tier, [8, 8, 20, 32]), 10, 0, Math.PI * 2, 0, Math.PI * 0.5);
+    const brim = place(new THREE15.BoxGeometry(0.26, 0.03, 0.22), { p: [0, 0.02, 0.26] });
+    head.add(mesh(tier === 1 ? faceted(merge([capG, brim])) : merge([capG, brim]), o(cap)));
+    for (const leg of legs) {
+      const skate = [place(new THREE15.BoxGeometry(0.16, 0.12, 0.36), { p: [0, -0.74, 0.05] })];
+      if (tier >= 2) for (let i = 0; i < 4; i++) skate.push(place(new THREE15.CylinderGeometry(0.045, 0.045, 0.05, 12), { p: [0, -0.84, -0.08 + i * 0.09], r: [0, 0, Math.PI / 2] }));
+      leg.add(mesh(merge(skate), o("#30343f")));
+    }
+  }
+  if (tier >= 2) {
+    const phones = [-1, 1].map((s) => place(new THREE15.CylinderGeometry(0.07, 0.07, 0.05, 16), { p: [s * 0.25, 0, 0], r: [0, 0, Math.PI / 2] }));
+    phones.push(place(new THREE15.TorusGeometry(0.25, 0.015, 6, 24, Math.PI), { p: [0, 0.02, 0] }));
+    head.add(mesh(merge(phones), o("#1e9bff")));
+  }
+  const idle = root.userData.animate;
+  root.userData.animate = (t) => {
+    idle(t);
+    const s = t + seed;
+    root.rotation.z = Math.sin(s * 1.4) * 0.08;
+    for (const [i, leg] of legs.entries()) leg.rotation.x = Math.sin(s * 1.4 + i * Math.PI) * 0.25;
+  };
+  return root;
+}
+function knight(tier, { part = "hero", armor = "#9aa3ad", cloth = "#7a1f2b", seed = 0 } = {}) {
+  const root = character(tier, { part, shirt: armor, pants: "#4a4f57", skin: "#d8b48a", seed });
+  const { head, arms, torso } = root.userData.rig;
+  const o = (color, extra) => ({ part, color, roughness: 0.4, metalness: 0.6, ...extra });
+  const seg = byTier(tier, [8, 8, 24, 40]);
+  const helm = new THREE15.SphereGeometry(0.27, seg, Math.max(6, seg - 6));
+  head.add(mesh(tier === 1 ? faceted(helm) : helm, o(armor)));
+  if (tier >= 1) {
+    const visor = place(new THREE15.BoxGeometry(0.34, 0.05, 0.08), { p: [0, 0.02, 0.24] });
+    head.add(mesh(visor, o("#2b2f36")));
+    const sword = [place(new THREE15.BoxGeometry(0.05, 0.85, 0.015), { p: [0, -1.1, 0.12] }), place(new THREE15.BoxGeometry(0.22, 0.04, 0.05), { p: [0, -0.68, 0.12] })];
+    arms[1].add(mesh(merge(sword), o("#c9ced6")));
+    const shield = new THREE15.CylinderGeometry(0.3, 0.3, 0.05, byTier(tier, [8, 8, 32, 48]));
+    shield.rotateZ(Math.PI / 2);
+    const s = mesh(tier === 1 ? faceted(shield) : shield, o(cloth, { metalness: 0.1 }));
+    s.position.set(-0.1, -0.5, 0.05);
+    arms[0].add(s);
+  }
+  if (tier >= 2) {
+    const pauldrons = [-1, 1].map((x) => place(new THREE15.SphereGeometry(0.13, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), { p: [x * 0.36, 0.38, 0] }));
+    torso.add(mesh(merge(pauldrons), o(armor)));
+    const tabard = mesh(new THREE15.BoxGeometry(0.36, 0.5, 0.04), o(cloth, { metalness: 0 }));
+    tabard.position.set(0, 0.05, 0.27);
+    torso.add(tabard);
+  }
+  if (tier >= 3) {
+    const plume = mesh(new THREE15.CapsuleGeometry(0.04, 0.3, 4, 10), o(cloth, { metalness: 0 }));
+    plume.position.set(0, 0.3, -0.05);
+    plume.rotation.x = -0.6;
+    head.add(plume);
+    const boss = mesh(new THREE15.SphereGeometry(0.06, 16, 10), o("#d4af37"));
+    boss.position.set(-0.14, -0.5, 0.05);
+    arms[0].add(boss);
+  }
+  return root;
+}
+function robot(tier, { part = "characters", body = "#d9dde3", accent = "#ff7a1a", seed = 0 } = {}) {
+  const root = group(`robot (${part})`);
+  const o = (color, extra) => ({ part, color, roughness: 0.35, metalness: 0.5, ...extra });
+  const f = (g) => tier === 1 ? faceted(g) : g;
+  const rounded = (w, h2, d) => tier >= 2 ? new THREE15.CapsuleGeometry(Math.min(w, d) / 2, h2 - Math.min(w, d), 4, 16) : new THREE15.BoxGeometry(w, h2, d);
+  const rig = group("rig");
+  root.add(rig);
+  const torso = mesh(f(rounded(0.6, 0.7, 0.45)), o(body));
+  torso.position.y = 1;
+  rig.add(torso);
+  const head = group("head");
+  head.position.y = 1.62;
+  rig.add(head);
+  head.add(mesh(f(new THREE15.BoxGeometry(0.5, 0.36, 0.4)), o(body)));
+  const visor = mesh(new THREE15.BoxGeometry(0.4, 0.12, 0.04), { part: "vfx", color: "#7df9ff", emissive: "#30e0ff", emissiveIntensity: 2.5, castShadow: false });
+  visor.position.set(0, 0.02, 0.21);
+  head.add(visor);
+  const base = mesh(f(new THREE15.ConeGeometry(0.32, 0.5, byTier(tier, [8, 8, 24, 40]))), o(accent));
+  base.rotation.x = Math.PI;
+  base.position.y = 0.45;
+  rig.add(base);
+  if (tier >= 1) {
+    const arms = [-1, 1].map((x) => place(new THREE15.BoxGeometry(0.12, 0.5, 0.12), { p: [x * 0.4, 0.95, 0] }));
+    rig.add(mesh(f(merge(arms)), o(accent)));
+    const antenna = mesh(new THREE15.CylinderGeometry(0.015, 0.015, 0.3, 6), o("#555a62"));
+    antenna.position.y = 0.32;
+    head.add(antenna);
+  }
+  let tip = null;
+  if (tier >= 2) {
+    tip = mesh(new THREE15.SphereGeometry(0.05, 16, 10), { part: "vfx", color: "#ff3b3b", emissive: "#ff2020", emissiveIntensity: 3, castShadow: false });
+    tip.position.y = 0.5;
+    head.add(tip);
+    const glow = mesh(new THREE15.TorusGeometry(0.22, 0.03, 8, 32), { part: "vfx", color: "#7df9ff", emissive: "#30e0ff", emissiveIntensity: 2, castShadow: false });
+    glow.rotation.x = Math.PI / 2;
+    glow.position.y = 0.2;
+    rig.add(glow);
+  }
+  if (tier >= 3) {
+    const panel = [];
+    for (let i = 0; i < 3; i++) panel.push(place(new THREE15.BoxGeometry(0.3, 0.04, 0.02), { p: [0, 0.9 + i * 0.12, 0.235] }));
+    rig.add(mesh(merge(panel), o("#3a3f4a")));
+    const ears = [-1, 1].map((x) => place(new THREE15.CylinderGeometry(0.08, 0.08, 0.06, 20), { p: [x * 0.27, 0, 0], r: [0, 0, Math.PI / 2] }));
+    head.add(mesh(merge(ears), o(accent)));
+  }
+  root.userData.animate = (t) => {
+    const s = t + seed;
+    rig.position.y = Math.sin(s * 1.8) * 0.06;
+    head.rotation.y = Math.sin(s * 0.5) * 0.6;
+    if (tip) tip.visible = Math.floor(s * 2) % 2 === 0;
+  };
+  root.userData.rig = { head, torso, arms: [], legs: [], part, tier };
+  return root;
+}
+function goose(tier, { part = "hero", seed = 0 } = {}) {
+  const root = group(`goose (${part})`);
+  const white = "#f4f1ea", orange = "#f39c12";
+  const o = (color, extra) => ({ part, color, ...extra });
+  const seg = byTier(tier, [8, 8, 24, 40]);
+  const f = (g) => tier === 1 ? faceted(g) : g;
+  const body = group("body");
+  body.position.y = 0.42;
+  root.add(body);
+  const torsoG = tier === 1 ? new THREE15.IcosahedronGeometry(0.3, 1) : new THREE15.SphereGeometry(0.3, seg, Math.max(6, seg - 6));
+  torsoG.scale(1, 0.8, 1.45);
+  body.add(mesh(f(torsoG), o(white)));
+  const neck = group("neck");
+  neck.position.set(0, 0.12, 0.32);
+  body.add(neck);
+  const neckG = new THREE15.CapsuleGeometry(0.07, 0.42, 4, Math.max(6, seg - 4));
+  neckG.translate(0, 0.25, 0);
+  neck.add(mesh(f(neckG), o(white)));
+  const head = group("head");
+  head.position.set(0, 0.55, 0.04);
+  neck.add(head);
+  head.add(mesh(f(new THREE15.SphereGeometry(0.11, seg, Math.max(6, seg - 6))), o(white)));
+  const beak = new THREE15.ConeGeometry(0.05, 0.16, Math.max(6, seg / 2));
+  beak.rotateX(Math.PI / 2);
+  beak.translate(0, -0.01, 0.15);
+  head.add(mesh(f(beak), o(orange)));
+  const legs = [-1, 1].map((x) => {
+    const leg = group("leg");
+    leg.position.set(x * 0.12, 0.3, 0);
+    const g = [place(new THREE15.CylinderGeometry(0.025, 0.025, 0.3, 6), { p: [0, -0.15, 0] })];
+    if (tier >= 1) g.push(place(new THREE15.BoxGeometry(0.12, 0.02, 0.14), { p: [0, -0.3, 0.04] }));
+    leg.add(mesh(merge(g), o(orange)));
+    root.add(leg);
+    return leg;
+  });
+  if (tier >= 2) {
+    const eyes = [-1, 1].map((x) => place(new THREE15.SphereGeometry(0.02, 10, 8), { p: [x * 0.085, 0.03, 0.06] }));
+    head.add(mesh(merge(eyes), o("#111111", { castShadow: false })));
+    const wings = [-1, 1].map((x) => {
+      const w = new THREE15.SphereGeometry(0.2, 20, 12);
+      w.scale(0.35, 0.6, 1.2);
+      return place(w, { p: [x * 0.25, 0.02, -0.05], r: [0.2, 0, x * 0.15] });
+    });
+    body.add(mesh(merge(wings), o("#e4e0d6")));
+  }
+  if (tier >= 3) {
+    const tail = new THREE15.ConeGeometry(0.12, 0.2, 24);
+    tail.rotateX(-Math.PI / 2 - 0.5);
+    tail.translate(0, 0.12, -0.48);
+    body.add(mesh(tail, o(white)));
+    const knob = mesh(new THREE15.SphereGeometry(0.025, 12, 8), o("#e67e22"));
+    knob.position.set(0, 0.03, 0.12);
+    head.add(knob);
+  }
+  root.userData.animate = (t) => {
+    const s = t + seed;
+    neck.rotation.x = Math.sin(s * 2.2) * 0.25 + 0.1;
+    head.rotation.x = -Math.sin(s * 2.2) * 0.2;
+    body.rotation.z = Math.sin(s * 4) * 0.06;
+    for (const [i, leg] of legs.entries()) leg.rotation.x = Math.sin(s * 4 + i * Math.PI) * 0.4;
+  };
+  root.userData.rig = { head, torso: body, arms: [], legs, part, tier };
+  return root;
+}
+
+// src/scenes/kit/structures.js
+import { RoundedBoxGeometry as RoundedBoxGeometry2 } from "three/addons/geometries/RoundedBoxGeometry.js";
+var A3 = "architecture";
+var P3 = "props";
+var ft = (g, tier) => tier === 1 ? faceted(g) : g;
+function fence(tier, length2, { color = "#f3efe6", part = P3 } = {}) {
+  const g = [];
+  const posts = Math.max(2, Math.round(length2 / 1.6) + 1);
+  for (let i = 0; i < posts; i++) g.push(place(new THREE15.BoxGeometry(0.1, 0.9, 0.1), { p: [i / (posts - 1) * length2, 0.45, 0] }));
+  if (tier === 0) g.push(place(new THREE15.BoxGeometry(length2, 0.5, 0.04), { p: [length2 / 2, 0.45, 0] }));
+  else for (const y of [0.3, 0.68]) g.push(place(new THREE15.BoxGeometry(length2, 0.07, 0.04), { p: [length2 / 2, y, 0.05] }));
+  if (tier >= 2) {
+    const n = Math.round(length2 / 0.2);
+    for (let i = 0; i < n; i++) {
+      const x = (i + 0.5) * length2 / n;
+      g.push(place(new THREE15.BoxGeometry(0.08, 0.78, 0.025), { p: [x, 0.42, 0.08] }));
+      if (tier === 3) g.push(place(new THREE15.ConeGeometry(0.057, 0.08, 4), { p: [x, 0.85, 0.08], r: [0, Math.PI / 4, 0] }));
+    }
+  }
+  return mesh(merge(g), { part, color });
+}
+function hedge(tier, [w, h2, d], { color = "#5a9a4a", seed = 0 } = {}) {
+  let g = tier >= 2 ? new RoundedBoxGeometry2(w, h2, d, tier === 2 ? 3 : 4, Math.min(w, h2, d) * 0.25) : new THREE15.BoxGeometry(w, h2, d, tier ? 2 : 1, tier ? 2 : 1, tier ? 2 : 1);
+  g.translate(0, h2 / 2, 0);
+  if (tier === 3) {
+    displace(g, { amount: Math.min(w, h2, d) * 0.06, scale: 5, seed, center: new THREE15.Vector3(0, h2 / 2, 0) });
+  }
+  return mesh(ft(g, tier), { part: "foliage", color });
+}
+function wall(tier, length2, height, { thick = 0.6, color = "#8a8580", part = A3 } = {}) {
+  if (tier < 3) {
+    const body = box(tier, [length2, height, thick], { part, color }, { bevel: 0.04 });
+    body.position.set(length2 / 2, height / 2, 0);
+    const root = group("wall", body);
+    if (tier >= 1) {
+      const cap = box(tier, [length2 + 0.1, 0.15, thick + 0.12], { part, color: "#9d9892" });
+      cap.position.set(length2 / 2, height + 0.07, 0);
+      root.add(cap);
+    }
+    return root;
+  }
+  const stones = [];
+  const rows = Math.max(2, Math.round(height / 0.35));
+  for (let r = 0; r < rows; r++) {
+    const sh = height / rows;
+    for (let x = r % 2 * -0.35; x < length2; x += 0.7) {
+      const w = Math.min(0.66, length2 - Math.max(0, x));
+      if (w <= 0.05) continue;
+      stones.push(place(new RoundedBoxGeometry2(w, sh * 0.92, thick, 1, 0.04), { p: [Math.max(0, x) + w / 2, (r + 0.5) * sh, ((r * 7 + Math.round(x * 3)) % 3 - 1) * 0.02] }));
+    }
+  }
+  return group("wall", mesh(merge(stones), { part, color }));
+}
+function pillar(tier, height, radius, { color = "#a29e96", part = A3 } = {}) {
+  const root = group("pillar");
+  const shaft = cylinder(tier, radius, height, { part, color });
+  shaft.position.y = height / 2;
+  root.add(shaft);
+  if (tier >= 1) {
+    const ends = [place(new THREE15.BoxGeometry(radius * 2.6, 0.25, radius * 2.6), { p: [0, 0.12, 0] }), place(new THREE15.BoxGeometry(radius * 2.6, 0.25, radius * 2.6), { p: [0, height - 0.12, 0] })];
+    if (tier >= 2) ends.push(place(new THREE15.CylinderGeometry(radius * 1.1, radius * 1.3, 0.2, 32), { p: [0, 0.32, 0] }), place(new THREE15.CylinderGeometry(radius * 1.3, radius * 1.1, 0.2, 32), { p: [0, height - 0.32, 0] }));
+    root.add(mesh(merge(ends), { part, color: "#b5b0a7" }));
+  }
+  if (tier >= 3) {
+    const flutes = [];
+    for (let i = 0; i < 16; i++) {
+      const a = i / 16 * Math.PI * 2;
+      flutes.push(place(new THREE15.BoxGeometry(0.04, height - 0.8, 0.04), { p: [Math.cos(a) * radius * 1.01, height / 2, Math.sin(a) * radius * 1.01], r: [0, -a, 0] }));
+    }
+    root.add(mesh(merge(flutes), { part, color: "#948f87" }));
+  }
+  return root;
+}
+function stairs(tier, { steps = 5, width = 3, rise = 0.25, run = 0.45, color = "#9a958d", part = A3 } = {}) {
+  const g = [];
+  for (let i = 0; i < steps; i++) {
+    const geom = tier >= 2 ? new RoundedBoxGeometry2(width, rise * (i + 1), run, 2, 0.03) : new THREE15.BoxGeometry(width, rise * (i + 1), run);
+    g.push(place(geom, { p: [0, rise * (i + 1) / 2, i * run] }));
+  }
+  return mesh(merge(g), { part, color });
+}
+function ramp(tier, { width = 4, height = 1.6, color = "#c9ccd3", part = P3 } = {}) {
+  const root = group("ramp");
+  if (tier === 0) {
+    const shape = new THREE15.Shape([new THREE15.Vector2(0, 0), new THREE15.Vector2(height * 1.4, 0), new THREE15.Vector2(0, height)]);
+    const g2 = new THREE15.ExtrudeGeometry(shape, { depth: width, bevelEnabled: false });
+    g2.rotateY(Math.PI / 2);
+    g2.translate(-width / 2, 0, 0);
+    root.add(mesh(g2, { part, color }));
+    return root;
+  }
+  const seg = byTier(tier, [0, 5, 16, 32]);
+  const pts = [new THREE15.Vector2(0, 0)];
+  for (let i = 0; i <= seg; i++) {
+    const a = i / seg * Math.PI / 2;
+    pts.push(new THREE15.Vector2(height - Math.sin(a) * height, height - Math.cos(a) * height));
+  }
+  pts.push(new THREE15.Vector2(0, height));
+  const g = new THREE15.ExtrudeGeometry(new THREE15.Shape(pts), { depth: width, bevelEnabled: false, curveSegments: seg });
+  g.rotateY(Math.PI / 2);
+  g.translate(-width / 2, 0, 0);
+  root.add(mesh(ft(g, tier), { part, color }));
+  if (tier >= 2) {
+    const coping = cylinder(tier, 0.05, width, { part, color: "#7c818c" });
+    coping.rotation.z = Math.PI / 2;
+    coping.position.set(0, height, 0);
+    root.add(coping);
+  }
+  return root;
+}
+function rail(tier, length2, { height = 0.6, color = "#ffe600", part = P3 } = {}) {
+  const seg = byTier(tier, [6, 8, 16, 24]);
+  const g = [place(new THREE15.CylinderGeometry(0.05, 0.05, length2, seg), { p: [length2 / 2, height, 0], r: [0, 0, Math.PI / 2] })];
+  const n = Math.max(2, Math.round(length2 / 2) + 1);
+  for (let i = 0; i < n; i++) g.push(place(new THREE15.CylinderGeometry(0.035, 0.035, height, seg), { p: [i / (n - 1) * length2, height / 2, 0] }));
+  return mesh(merge(g), { part, color, roughness: 0.35, metalness: 0.4 });
+}
+function lampPost(tier, { height = 4, glow = "#ffe9b0", light = true } = {}) {
+  const root = group("lamp post");
+  const pole = cylinder(tier, 0.07, height, { part: P3, color: "#3a3f4a" });
+  pole.position.y = height / 2;
+  root.add(pole);
+  const head = mesh(tier >= 2 ? new THREE15.SphereGeometry(0.22, 24, 16) : new THREE15.BoxGeometry(0.35, 0.35, 0.35), { part: "vfx", color: glow, emissive: glow, emissiveIntensity: 2.5, castShadow: false });
+  head.position.y = height + 0.1;
+  root.add(head);
+  if (light) {
+    const l = practical({ color: glow, intensity: 10, distance: 9 });
+    l.position.y = height - 0.2;
+    root.add(l);
+  }
+  return root;
+}
+function torch(tier, { seed = 0, light = true } = {}) {
+  const root = group("torch");
+  root.add(mesh(new THREE15.CylinderGeometry(0.05, 0.035, 0.45, byTier(tier, [6, 6, 12, 16])), { part: P3, color: "#4a3220" }));
+  const flame = mesh(tier >= 2 ? new THREE15.ConeGeometry(0.1, 0.32, 16) : new THREE15.OctahedronGeometry(0.12), { part: "vfx", color: "#ffb347", emissive: "#ff8a1e", emissiveIntensity: 4, castShadow: false });
+  flame.position.y = 0.38;
+  root.add(flame);
+  if (light) {
+    const l = practical({ color: "#ff9a3c", intensity: 9, distance: 9, flicker: 1, seed });
+    l.position.y = 0.6;
+    root.add(l);
+  }
+  flame.userData.animate = (t) => {
+    flame.scale.y = 1 + Math.sin(t * 13 + seed) * 0.12 + Math.sin(t * 29 + seed) * 0.06;
+  };
+  return root;
+}
+function gate(tier, { width = 4, height = 4.2, color = "#c8402e" } = {}) {
+  const root = group("gate");
+  for (const x of [-width / 2, width / 2]) {
+    const post = cylinder(tier, 0.2, height, { part: A3, color });
+    post.position.set(x, height / 2, 0);
+    root.add(post);
+  }
+  const beams = [place(new THREE15.BoxGeometry(width + 0.6, 0.22, 0.3), { p: [0, height * 0.78, 0] })];
+  let top;
+  if (tier >= 2) {
+    const shape = new THREE15.Shape();
+    const w = width / 2 + 1.1;
+    shape.moveTo(-w, 0.25);
+    shape.quadraticCurveTo(0, -0.12, w, 0.25);
+    shape.lineTo(w, 0.5);
+    shape.quadraticCurveTo(0, 0.15, -w, 0.5);
+    shape.lineTo(-w, 0.25);
+    top = new THREE15.ExtrudeGeometry(shape, { depth: 0.5, bevelEnabled: false, curveSegments: tier === 3 ? 24 : 10 });
+    top.translate(0, height - 0.1, -0.25);
+  } else top = place(new THREE15.BoxGeometry(width + 1.4, 0.3, 0.45), { p: [0, height + 0.1, 0] });
+  root.add(mesh(merge(beams), { part: A3, color }), mesh(top, { part: A3, color: tier >= 2 ? "#2b2b2b" : color }));
+  return root;
+}
+function stoneLantern(tier, { light = false, seed = 0 } = {}) {
+  const root = group("stone lantern");
+  const stone = "#8f8b84";
+  const g = [
+    place(new THREE15.BoxGeometry(0.6, 0.15, 0.6), { p: [0, 0.07, 0] }),
+    place(new THREE15.CylinderGeometry(0.12, 0.15, 0.7, byTier(tier, [6, 6, 16, 24])), { p: [0, 0.5, 0] }),
+    place(new THREE15.BoxGeometry(0.55, 0.1, 0.55), { p: [0, 0.9, 0] }),
+    place(new THREE15.ConeGeometry(0.48, 0.32, 4), { p: [0, 1.48, 0], r: [0, Math.PI / 4, 0] })
+  ];
+  root.add(mesh(tier === 1 ? faceted(merge(g)) : merge(g), { part: A3, color: stone }));
+  const glow = mesh(new THREE15.BoxGeometry(0.34, 0.3, 0.34), { part: "vfx", color: "#ffe3a0", emissive: "#ffb84d", emissiveIntensity: 2, castShadow: false });
+  glow.position.y = 1.12;
+  root.add(glow);
+  if (light) {
+    const l = practical({ intensity: 4, distance: 6, flicker: 0.4, seed });
+    l.position.y = 1.15;
+    root.add(l);
+  }
+  return root;
+}
+function building(tier, rng, { w = 6, d = 5, h: h2 = 9, color = "#d36b4a", window: window2 = "#28324a", part = A3 } = {}) {
+  const root = group("building");
+  const body = box(tier, [w, h2, d], { part, color }, { bevel: 0.02 });
+  body.position.y = h2 / 2;
+  root.add(body);
+  if (tier === 0) return root;
+  const floors = Math.max(2, Math.floor(h2 / 2.6));
+  const cols = Math.max(1, Math.floor(w / 1.6));
+  const wins = [], trims = [];
+  for (let f = 0; f < floors; f++) {
+    const y = 1.6 + f * (h2 - 1.6) / floors;
+    for (let c = 0; c < cols; c++) {
+      const x = (c + 0.5) * w / cols - w / 2;
+      wins.push(place(new THREE15.BoxGeometry(0.8, 1.1, 0.06), { p: [x, y, d / 2 + 0.01] }));
+      if (tier >= 2) trims.push(place(new THREE15.BoxGeometry(1, 0.1, 0.16), { p: [x, y - 0.6, d / 2 + 0.05] }));
+    }
+    if (tier >= 3 && f > 0) trims.push(place(new THREE15.BoxGeometry(w + 0.1, 0.12, d + 0.1), { p: [0, y - 0.95, 0] }));
+  }
+  root.add(mesh(merge(wins), { part, color: window2, roughness: 0.25 }));
+  const roof2 = [place(new THREE15.BoxGeometry(w + 0.2, 0.3, d + 0.2), { p: [0, h2 + 0.15, 0] })];
+  if (tier >= 2) {
+    for (let i = 0; i < 2; i++) roof2.push(place(new THREE15.BoxGeometry(1.2, 0.8, 1), { p: [rng.range(-w / 3, w / 3), h2 + 0.7, rng.range(-d / 3, d / 3)] }));
+    trims.push(place(new THREE15.BoxGeometry(1.4, 2.2, 0.12), { p: [0, 1.1, d / 2 + 0.04] }));
+  }
+  root.add(mesh(merge(roof2), { part, color: "#5b5f6a" }));
+  if (trims.length) root.add(mesh(merge(trims), { part, color: "#e8e4dc" }));
+  return root;
+}
+function stands(tier, rng, length2, { rows = 4, colors = ["#e74c3c", "#3498db", "#f1c40f", "#2ecc71", "#9b59b6", "#ecf0f1"] } = {}) {
+  const root = group("stands");
+  const steps = [];
+  for (let r = 0; r < rows; r++) steps.push(place(new THREE15.BoxGeometry(length2, 0.5 * (r + 1), 0.9), { p: [length2 / 2, 0.25 * (r + 1), -r * 0.9] }));
+  root.add(mesh(merge(steps), { part: A3, color: "#a7abb3" }));
+  const per = byTier(tier, [0, 6, 12, 20]);
+  if (per) {
+    const bodies = {}, heads = [];
+    for (let r = 0; r < rows; r++) for (let i = 0; i < Math.round(per * length2 / 10); i++) {
+      const c = rng.pick(colors);
+      const x = (i + 0.5) * length2 / Math.round(per * length2 / 10) + rng.range(-0.15, 0.15);
+      const y = 0.5 * (r + 1) + 0.3, z = -r * 0.9;
+      (bodies[c] ||= []).push(place(tier === 1 ? new THREE15.BoxGeometry(0.35, 0.55, 0.3) : new THREE15.CapsuleGeometry(0.17, 0.25, 2, 8), { p: [x, y, z] }));
+      if (tier >= 2) heads.push(place(new THREE15.SphereGeometry(0.13, 10, 8), { p: [x, y + 0.42, z] }));
+    }
+    for (const [c, g] of Object.entries(bodies)) root.add(mesh(merge(g), { part: "characters", color: c, castShadow: false }));
+    if (heads.length) root.add(mesh(merge(heads), { part: "characters", color: "#f1c27d", castShadow: false }));
+  }
+  if (tier >= 2) {
+    const roofG = [place(new THREE15.BoxGeometry(length2 + 0.4, 0.15, rows * 0.9 + 0.6), { p: [length2 / 2, rows * 0.5 + 2.6, -(rows - 1) * 0.45] })];
+    for (const x of [0, length2]) roofG.push(place(new THREE15.CylinderGeometry(0.08, 0.08, rows * 0.5 + 2.6, 10), { p: [x, (rows * 0.5 + 2.6) / 2, -(rows - 1) * 0.9] }));
+    root.add(mesh(merge(roofG), { part: A3, color: "#d9dde3" }));
+  }
+  return root;
+}
+function tent(tier, { color = "#e67e22", length: length2 = 2.4, width = 2, height = 1.5 } = {}) {
+  const root = group("tent");
+  const shape = new THREE15.Shape([new THREE15.Vector2(-width / 2, 0), new THREE15.Vector2(width / 2, 0), new THREE15.Vector2(0, height)]);
+  const g = new THREE15.ExtrudeGeometry(shape, { depth: length2, bevelEnabled: tier >= 2, bevelSize: 0.03, bevelThickness: 0.03, bevelSegments: 1 });
+  g.translate(0, 0, -length2 / 2);
+  g.rotateY(Math.PI / 2);
+  root.add(mesh(faceted(g), { part: P3, color }));
+  if (tier >= 1) {
+    const door = new THREE15.Shape([new THREE15.Vector2(-0.4, 0), new THREE15.Vector2(0.4, 0), new THREE15.Vector2(0, height * 0.75)]);
+    const dg = new THREE15.ShapeGeometry(door);
+    dg.rotateY(Math.PI / 2);
+    dg.translate(length2 / 2 + 0.02, 0.01, 0);
+    root.add(mesh(dg, { part: P3, color: "#3b2a1e", doubleSided: true, castShadow: false }));
+  }
+  if (tier >= 2) {
+    const ropes = [];
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      const a = new THREE15.Vector3(sx * (length2 / 2), height * 0.9, 0), b = new THREE15.Vector3(sx * (length2 / 2 + 0.8), 0, sz * (width / 2 + 0.6));
+      ropes.push(new THREE15.TubeGeometry(new THREE15.LineCurve3(a, b), 1, 0.012, 4));
+    }
+    root.add(mesh(merge(ropes), { part: P3, color: "#d8c7a3", castShadow: false }));
+  }
+  return root;
+}
+
+// src/scenes/kit/gameprops.js
+var P4 = "props";
+var ft2 = (g, tier) => tier === 1 ? faceted(g) : g;
+function kart(tier, { color = "#e74c3c", driver = "#3498db", part = P4, driverPart = "characters", seed = 0 } = {}) {
+  const root = group("kart");
+  const body = box(tier, [1.3, 0.35, 2.1], { part, color }, { bevel: 0.15 });
+  body.position.y = 0.4;
+  root.add(body);
+  const wheels = [];
+  const wseg = byTier(tier, [8, 8, 20, 32]);
+  for (const [x, z] of [[-0.72, 0.7], [0.72, 0.7], [-0.72, -0.7], [0.72, -0.7]]) {
+    const w = mesh(ft2(new THREE15.CylinderGeometry(0.3, 0.3, 0.28, wseg), tier), { part, color: "#222222" });
+    w.rotation.z = Math.PI / 2;
+    w.position.set(x, 0.3, z);
+    root.add(w);
+    wheels.push(w);
+  }
+  if (tier >= 1) {
+    const seat = box(tier, [0.6, 0.5, 0.25], { part, color: "#2c2c2c" });
+    seat.position.set(0, 0.75, -0.45);
+    root.add(seat);
+    const pilot = character(Math.min(tier, 2), { part: driverPart, shirt: driver, pants: "#333333", seed });
+    pilot.scale.setScalar(0.75);
+    pilot.position.set(0, -0.05, -0.2);
+    root.add(pilot);
+  }
+  if (tier >= 2) {
+    const wheel = mesh(new THREE15.TorusGeometry(0.16, 0.025, 8, 24), { part, color: "#222222" });
+    wheel.position.set(0, 0.95, 0.25);
+    wheel.rotation.x = -0.9;
+    root.add(wheel);
+    const bumper = box(tier, [1.5, 0.15, 0.25], { part, color: "#ecf0f1" });
+    bumper.position.set(0, 0.3, 1.15);
+    root.add(bumper);
+  }
+  if (tier >= 3) {
+    const spoiler = [place(new THREE15.BoxGeometry(1.3, 0.06, 0.35), { p: [0, 1.15, -1] }), place(new THREE15.BoxGeometry(0.06, 0.5, 0.1), { p: [-0.5, 0.9, -1] }), place(new THREE15.BoxGeometry(0.06, 0.5, 0.1), { p: [0.5, 0.9, -1] })];
+    root.add(mesh(merge(spoiler), { part, color }));
+    const pipes = [-0.3, 0.3].map((x) => place(new THREE15.CylinderGeometry(0.06, 0.06, 0.35, 12), { p: [x, 0.45, -1.15], r: [Math.PI / 2, 0, 0] }));
+    root.add(mesh(merge(pipes), { part, color: "#9aa3ad", metalness: 0.6, roughness: 0.3 }));
+  }
+  root.userData.wheels = wheels;
+  return root;
+}
+function coin(tier, { seed = 0 } = {}) {
+  const g = tier >= 2 ? new THREE15.CylinderGeometry(0.35, 0.35, 0.08, byTier(tier, [8, 8, 32, 48])) : new THREE15.CylinderGeometry(0.35, 0.35, 0.1, 8);
+  g.rotateX(Math.PI / 2);
+  const m = mesh(ft2(g, tier), { part: "vfx", color: "#ffd23f", emissive: "#ffb300", emissiveIntensity: 0.8, roughness: 0.3, metalness: 0.5 });
+  m.userData.animate = (t) => {
+    m.rotation.y = t * 2.5 + seed;
+  };
+  return m;
+}
+function pipe(tier, { height = 1.6, radius = 0.6, color = "#2ecc71" } = {}) {
+  const root = group("pipe");
+  const body = cylinder(tier, radius, height, { part: P4, color });
+  body.position.y = height / 2;
+  root.add(body);
+  const rim = cylinder(tier, radius * 1.2, 0.45, { part: P4, color });
+  rim.position.y = height + 0.2;
+  root.add(rim);
+  return root;
+}
+function block(tier, { kind = "item", size = 1 } = {}) {
+  const root = group(`${kind} block`);
+  const color = kind === "item" ? "#f5b82e" : "#b5562a";
+  root.add(box(tier, [size, size, size], { part: P4, color }, { bevel: 0.08 }));
+  if (tier >= 1) {
+    const dots = [];
+    if (kind === "item") for (const [x, y] of [[-0.3, 0.3], [0.3, 0.3], [-0.3, -0.3], [0.3, -0.3], [0, 0]]) for (const s of [1, -1]) dots.push(place(new THREE15.CylinderGeometry(0.06, 0.06, 0.04, 10), { p: [x * size, y * size, s * size / 2], r: [Math.PI / 2, 0, 0] }));
+    else for (const y of [-0.25, 0, 0.25]) for (const s of [1, -1]) dots.push(place(new THREE15.BoxGeometry(size * 1.01, 0.03, 0.02), { p: [0, y * size, s * size / 2] }));
+    root.add(mesh(merge(dots), { part: P4, color: kind === "item" ? "#8a4b0f" : "#e7d6c9" }));
+  }
+  return root;
+}
+function chest(tier, { color = "#8b5a2b" } = {}) {
+  const root = group("chest");
+  const base = box(tier, [1.1, 0.55, 0.7], { part: P4, color });
+  base.position.y = 0.28;
+  root.add(base);
+  const lidG = tier === 0 ? new THREE15.BoxGeometry(1.1, 0.25, 0.7) : new THREE15.CylinderGeometry(0.35, 0.35, 1.1, byTier(tier, [6, 6, 20, 32]), 1, false, 0, Math.PI);
+  if (tier > 0) lidG.rotateZ(Math.PI / 2);
+  const lid = mesh(ft2(lidG, tier), { part: P4, color });
+  lid.position.y = tier === 0 ? 0.68 : 0.55;
+  root.add(lid);
+  if (tier >= 2) {
+    const bands = [-0.38, 0.38].map((x) => place(new THREE15.BoxGeometry(0.08, 0.6, 0.74), { p: [x, 0.3, 0] }));
+    root.add(mesh(merge(bands), { part: P4, color: "#d4af37", metalness: 0.7, roughness: 0.3 }));
+  }
+  if (tier >= 3) {
+    const lock = mesh(new THREE15.BoxGeometry(0.16, 0.2, 0.06), { part: P4, color: "#d4af37", metalness: 0.7, roughness: 0.3 });
+    lock.position.set(0, 0.5, 0.37);
+    root.add(lock);
+  }
+  return root;
+}
+function trafficCone(tier) {
+  const g = [place(new THREE15.ConeGeometry(0.22, 0.65, byTier(tier, [6, 8, 20, 32])), { p: [0, 0.38, 0] }), place(new THREE15.BoxGeometry(0.5, 0.06, 0.5), { p: [0, 0.03, 0] })];
+  const root = group("cone", mesh(ft2(merge(g), tier), { part: P4, color: "#ff7a1a" }));
+  if (tier >= 2) {
+    const stripe = mesh(new THREE15.CylinderGeometry(0.13, 0.16, 0.1, 20), { part: P4, color: "#f4f4f4" });
+    stripe.position.y = 0.4;
+    root.add(stripe);
+  }
+  return root;
+}
+function tireStack(tier, { n = 3 } = {}) {
+  const g = [];
+  for (let i = 0; i < n; i++) g.push(place(new THREE15.TorusGeometry(0.38, 0.16, byTier(tier, [6, 6, 12, 16]), byTier(tier, [8, 10, 28, 40])), { p: [0, 0.16 + i * 0.32, 0], r: [Math.PI / 2, 0, 0] }));
+  return mesh(ft2(merge(g), tier), { part: P4, color: "#2a2a2a" });
+}
+function bench(tier, { color = "#9c6b3f" } = {}) {
+  const g = [];
+  const slats = byTier(tier, [1, 2, 4, 5]);
+  for (let i = 0; i < slats; i++) g.push(place(new THREE15.BoxGeometry(1.8, 0.06, 0.45 / slats - 0.02), { p: [0, 0.48, (i + 0.5) * 0.45 / slats - 0.225] }));
+  if (tier >= 1) for (let i = 0; i < slats; i++) g.push(place(new THREE15.BoxGeometry(1.8, 0.4 / slats - 0.02, 0.05), { p: [0, 0.62 + (i + 0.5) * 0.4 / slats, -0.24] }));
+  const legs = [-0.8, 0.8].map((x) => place(new THREE15.BoxGeometry(0.08, 0.48, 0.45), { p: [x, 0.24, 0] }));
+  return group("bench", mesh(merge(g), { part: P4, color }), mesh(merge(legs), { part: P4, color: "#3a3f4a" }));
+}
+function well(tier) {
+  const root = group("well");
+  const ring2 = cylinder(tier, 0.75, 0.8, { part: "architecture", color: "#9b958c" });
+  ring2.position.y = 0.4;
+  root.add(ring2);
+  const water = mesh(new THREE15.CircleGeometry(0.6, byTier(tier, [8, 10, 32, 48])).rotateX(-Math.PI / 2), { part: "water", color: "#2f6f9f", castShadow: false });
+  water.position.y = 0.55;
+  root.add(water);
+  if (tier >= 1) {
+    const roof2 = [place(new THREE15.BoxGeometry(0.1, 1.5, 0.1), { p: [-0.7, 1.15, 0] }), place(new THREE15.BoxGeometry(0.1, 1.5, 0.1), { p: [0.7, 1.15, 0] }), place(new THREE15.CylinderGeometry(0.06, 0.06, 1.5, 8), { p: [0, 1.5, 0], r: [0, 0, Math.PI / 2] })];
+    root.add(mesh(merge(roof2), { part: "architecture", color: "#7a5530" }));
+    const top = mesh(new THREE15.ConeGeometry(1.1, 0.6, 4), { part: "architecture", color: "#b03a2e" });
+    top.position.y = 2.15;
+    top.rotation.y = Math.PI / 4;
+    root.add(top);
+  }
+  return root;
+}
+function campfire(tier, { seed = 0 } = {}) {
+  const root = group("campfire");
+  const logs = [];
+  for (let i = 0; i < byTier(tier, [2, 3, 4, 5]); i++) {
+    const a = i / byTier(tier, [2, 3, 4, 5]) * Math.PI;
+    logs.push(place(new THREE15.CylinderGeometry(0.08, 0.09, 0.9, byTier(tier, [6, 6, 12, 16])), { p: [0, 0.12, 0], r: [Math.PI / 2, a, 0.35] }));
+  }
+  root.add(mesh(ft2(merge(logs), tier), { part: P4, color: "#5a3b22" }));
+  if (tier >= 1) {
+    const stones = [];
+    const n = byTier(tier, [0, 8, 12, 16]);
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2;
+      stones.push(place(new THREE15.IcosahedronGeometry(0.13, tier >= 2 ? 1 : 0), { p: [Math.cos(a) * 0.6, 0.06, Math.sin(a) * 0.6], s: [1, 0.6, 1] }));
+    }
+    root.add(mesh(ft2(merge(stones), tier), { part: P4, color: "#7d7a74" }));
+  }
+  const flames = [];
+  const fl = mesh(tier >= 2 ? new THREE15.ConeGeometry(0.28, 0.8, 20) : new THREE15.ConeGeometry(0.28, 0.7, 6), { part: "vfx", color: "#ffb347", emissive: "#ff7a1e", emissiveIntensity: 4, castShadow: false });
+  fl.position.y = 0.45;
+  root.add(fl);
+  flames.push(fl);
+  if (tier >= 2) {
+    const inner = mesh(new THREE15.ConeGeometry(0.15, 0.55, 16), { part: "vfx", color: "#fff1a8", emissive: "#ffd36b", emissiveIntensity: 5, castShadow: false });
+    inner.position.y = 0.35;
+    root.add(inner);
+    flames.push(inner);
+  }
+  const light = practical({ color: "#ff9a3c", intensity: 14, distance: 14, flicker: 1, seed });
+  light.position.y = 0.8;
+  root.add(light);
+  root.userData.animate = (t) => {
+    for (const [i, f] of flames.entries()) {
+      f.scale.y = 1 + Math.sin(t * 9 + i * 1.7 + seed) * 0.15;
+      f.rotation.y = t * (0.8 + i);
+    }
+  };
+  return root;
+}
+function ship(tier, { color = "#c7ccd3", accent = "#ff7a1a" } = {}) {
+  const root = group("ship");
+  const o = (c, e) => ({ part: P4, color: c, roughness: 0.35, metalness: 0.55, ...e });
+  let hull;
+  if (tier === 0) hull = new THREE15.BoxGeometry(3, 1.4, 7);
+  else {
+    const s = new THREE15.Shape([new THREE15.Vector2(-1.6, -3.4), new THREE15.Vector2(1.6, -3.4), new THREE15.Vector2(1.2, 2.2), new THREE15.Vector2(0, 3.6), new THREE15.Vector2(-1.2, 2.2)]);
+    hull = new THREE15.ExtrudeGeometry(s, { depth: 1.4, bevelEnabled: tier >= 2, bevelSize: 0.15, bevelThickness: 0.2, bevelSegments: tier === 3 ? 3 : 1 });
+    hull.rotateX(Math.PI / 2);
+    hull.translate(0, 0.7, 0);
+  }
+  const h2 = mesh(faceted(hull), o(color));
+  h2.position.y = 1.6;
+  root.add(h2);
+  if (tier >= 1) {
+    const wings = [place(new THREE15.BoxGeometry(7, 0.18, 1.8), { p: [0, 1.6, -1.2] })];
+    root.add(mesh(merge(wings), o("#9aa3ad")));
+    const cockpit = mesh(new THREE15.SphereGeometry(0.7, byTier(tier, [8, 8, 24, 32]), 12, 0, Math.PI * 2, 0, Math.PI / 2), o("#2b3a55", { roughness: 0.15 }));
+    cockpit.scale.set(1, 0.6, 1.6);
+    cockpit.position.set(0, 2.3, 1.6);
+    root.add(cockpit);
+  }
+  const engines = [-2.2, 2.2].map((x) => {
+    const e = cylinder(tier, 0.45, 1.6, o(accent));
+    e.rotation.x = Math.PI / 2;
+    e.position.set(x, 1.5, -2.2);
+    root.add(e);
+    return e;
+  });
+  if (tier >= 2) for (const e of engines) {
+    const glow = mesh(new THREE15.CircleGeometry(0.38, 24), { part: "vfx", color: "#7df9ff", emissive: "#30e0ff", emissiveIntensity: 3, castShadow: false });
+    glow.position.set(e.position.x, 1.5, -3.02);
+    glow.rotation.y = Math.PI;
+    root.add(glow);
+  }
+  const gear = [[-1, 2], [1, 2], [0, -2.5]].map(([x, z]) => place(new THREE15.CylinderGeometry(0.12, 0.12, 1, 8), { p: [x, 0.5, z] }));
+  root.add(mesh(merge(gear), o("#555a62")));
+  return root;
+}
+function hologram(tier, { color = "#30e0ff", seed = 0 } = {}) {
+  const root = group("hologram");
+  root.add(cylinder(tier, 0.5, 0.2, { part: P4, color: "#3a3f4a", metalness: 0.5, roughness: 0.4 }));
+  const shape = mesh(new THREE15.IcosahedronGeometry(0.55, byTier(tier, [0, 0, 1, 2])), { part: "vfx", color, emissive: color, emissiveIntensity: 2, opacity: 0.55, castShadow: false });
+  shape.position.y = 1.2;
+  root.add(shape);
+  shape.userData.animate = (t) => {
+    shape.rotation.y = t * 0.8 + seed;
+    shape.position.y = 1.2 + Math.sin(t * 1.6 + seed) * 0.08;
+  };
+  return root;
+}
+function trashCan(tier, { color = "#4a6b3a" } = {}) {
+  const root = group("trash can");
+  const body = cylinder(tier, 0.35, 0.9, { part: P4, color });
+  body.position.y = 0.45;
+  root.add(body);
+  const lid = cylinder(tier, 0.38, 0.08, { part: P4, color: "#3a3f4a" });
+  lid.position.y = 0.94;
+  root.add(lid);
+  return root;
+}
+
+// src/scenes/kit/landscape.js
+function pine(tier, rng, { height = 5, color = "#2f5d3a", trunk = "#5b3b22" } = {}) {
+  const root = group("pine");
+  const trunkG = new THREE15.CylinderGeometry(0.1, 0.18, height * 0.35, byTier(tier, [5, 6, 10, 16]));
+  trunkG.translate(0, height * 0.175, 0);
+  root.add(mesh(tier === 1 ? faceted(trunkG) : trunkG, { part: "foliage", color: trunk }));
+  const layers2 = byTier(tier, [1, 3, 4, 6]);
+  const cones = [];
+  for (let i = 0; i < layers2; i++) {
+    const t = i / Math.max(1, layers2 - 1);
+    const r = height * (layers2 === 1 ? 0.3 : 0.34 - t * 0.2);
+    const h2 = height * (layers2 === 1 ? 0.8 : 0.42 - t * 0.12);
+    const g = new THREE15.ConeGeometry(r, h2, byTier(tier, [7, 7, 16, 24]), tier === 3 ? 3 : 1);
+    if (tier === 3) displace(g, { amount: r * 0.1, scale: 3 / r, seed: Math.floor(rng() * 999), axis: null });
+    cones.push(place(g, { p: [0, height * (layers2 === 1 ? 0.6 : 0.35 + t * 0.48), 0], r: [0, rng() * Math.PI, 0] }));
+  }
+  const canopy = merge(cones);
+  root.add(mesh(tier === 1 ? faceted(canopy) : canopy, { part: "foliage", color }));
+  return root;
+}
+function flowers(tier, rng, { w = 3, d = 1.2, n = 24, colors = ["#f7a6c1", "#ffe08a", "#c7a6f7", "#ffffff"], stem = "#4f8a3a" } = {}) {
+  const root = group("flowers");
+  const heads = {}, stems = [];
+  for (let i = 0; i < n; i++) {
+    const x = rng.range(-w / 2, w / 2), z = rng.range(-d / 2, d / 2), h2 = rng.range(0.25, 0.45);
+    const c = rng.pick(colors);
+    const head = tier === 0 ? new THREE15.BoxGeometry(0.14, 0.14, 0.14) : new THREE15.IcosahedronGeometry(0.08, tier >= 2 ? 1 : 0);
+    (heads[c] ||= []).push(place(head, { p: [x, h2, z] }));
+    if (tier >= 1) stems.push(place(new THREE15.CylinderGeometry(0.012, 0.012, h2, 4), { p: [x, h2 / 2, z] }));
+  }
+  for (const [c, g] of Object.entries(heads)) root.add(mesh(merge(g), { part: "foliage", color: c, castShadow: false }));
+  if (stems.length) root.add(mesh(merge(stems), { part: "foliage", color: stem, castShadow: false }));
+  return root;
+}
+function grass(tier, rng, { w = 20, d = 20, perSquareMeter = 6, color = "#7fb24a", height = 0.5, avoid = null } = {}) {
+  const n = Math.round(w * d * perSquareMeter * byTier(tier, [0.05, 0.25, 1, 3]));
+  const pos = [];
+  const segs = tier >= 3 ? 2 : 1;
+  for (let i = 0; i < n; i++) {
+    const x = rng.range(-w / 2, w / 2), z = rng.range(-d / 2, d / 2);
+    if (avoid && avoid(x, z)) continue;
+    const h2 = height * rng.range(0.6, 1.3), bw = 0.06 * rng.range(0.7, 1.3);
+    const a = rng() * Math.PI, lean = rng.range(-0.15, 0.15);
+    const cx = Math.cos(a) * bw, cz = Math.sin(a) * bw;
+    if (segs === 1) pos.push(x - cx, 0, z - cz, x + cx, 0, z + cz, x + lean, h2, z + lean);
+    else {
+      const mx = x + lean * 0.4, mz = z + lean * 0.4, my = h2 * 0.55;
+      pos.push(x - cx, 0, z - cz, x + cx, 0, z + cz, mx + cx * 0.6, my, mz + cz * 0.6);
+      pos.push(x - cx, 0, z - cz, mx + cx * 0.6, my, mz + cz * 0.6, mx - cx * 0.6, my, mz - cz * 0.6);
+      pos.push(mx - cx * 0.6, my, mz - cz * 0.6, mx + cx * 0.6, my, mz + cz * 0.6, x + lean, h2, z + lean);
+    }
+  }
+  const g = new THREE15.BufferGeometry();
+  g.setAttribute("position", new THREE15.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  return mesh(g, { part: "foliage", color, doubleSided: true, castShadow: false, wind: { strength: 0.12, height } });
+}
+function ridge(tier, rng, { width = 120, height = 18, depth = 4, color = "#6a5a7a", peaks = 7 } = {}) {
+  const pts = [new THREE15.Vector2(-width / 2, -2)];
+  const steps = peaks * byTier(tier, [1, 2, 4, 8]);
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const base = Math.sin(t * Math.PI) * 0.4 + 0.5;
+    const peak = Math.abs(Math.sin(t * peaks * Math.PI + rng() * 0.6));
+    pts.push(new THREE15.Vector2(-width / 2 + t * width, height * (base * 0.6 + peak * 0.5) * rng.range(0.85, 1.05)));
+  }
+  pts.push(new THREE15.Vector2(width / 2, -2));
+  const g = new THREE15.ExtrudeGeometry(new THREE15.Shape(pts), { depth, bevelEnabled: false });
+  g.translate(0, 0, -depth / 2);
+  return mesh(faceted(g), { part: "terrain", color, castShadow: false });
+}
+function pond(tier, rng, { radius = 2.5, color = "#3f8fbf", stones = true } = {}) {
+  const root = group("pond");
+  const water = new THREE15.CircleGeometry(radius, byTier(tier, [10, 12, 40, 64]));
+  water.rotateX(-Math.PI / 2);
+  water.translate(0, 0.03, 0);
+  root.add(mesh(water, { part: "water", color, roughness: 0.2, castShadow: false, wave: tier >= 2 ? { amplitude: 0.02, frequency: 2, falloff: radius * 2 } : null }));
+  if (stones && tier >= 1) {
+    const g = [];
+    const n = byTier(tier, [0, 8, 14, 22]);
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2 + rng() * 0.2, s = rng.range(0.2, 0.38);
+      g.push(place(new THREE15.IcosahedronGeometry(s, tier >= 2 ? 1 : 0), { p: [Math.cos(a) * radius, 0.05, Math.sin(a) * radius], s: [1, 0.55, 1] }));
+    }
+    root.add(mesh(tier === 1 ? faceted(merge(g)) : merge(g), { part: "props", color: "#9a968e" }));
+  }
+  return root;
+}
+function lava(tier, { length: length2 = 8, width = 1.6 } = {}) {
+  const g = new THREE15.PlaneGeometry(length2, width, byTier(tier, [1, 4, 24, 48]), byTier(tier, [1, 2, 6, 12]));
+  g.rotateX(-Math.PI / 2);
+  g.translate(length2 / 2, 0, 0);
+  return mesh(g, { part: "vfx", color: "#ff5a1f", emissive: "#ff4a10", emissiveIntensity: 2.2, castShadow: false, receiveShadow: false, wave: tier >= 2 ? { amplitude: 0.04, frequency: 1.6, falloff: 1e3 } : null });
+}
+function terrainPatch(tier, { w = 60, d = 60, amp = 1.5, scale = 0.06, seed = 1, color = "#8fbf5a", flat = null } = {}) {
+  const heightAt = (x, z) => {
+    const h2 = fbm(x * scale, 0, z * scale, seed, 4) * amp;
+    return flat ? h2 * flat(x, z) : h2;
+  };
+  const seg = byTier(tier, [12, 20, 64, 160]);
+  let g = new THREE15.PlaneGeometry(w, d, seg, seg);
+  g.rotateX(-Math.PI / 2);
+  const pos = g.getAttribute("position");
+  for (let i = 0; i < pos.count; i++) pos.setY(i, heightAt(pos.getX(i), pos.getZ(i)));
+  g.computeVertexNormals();
+  if (tier === 1) g = faceted(g);
+  return { mesh: mesh(g, { part: "terrain", color, castShadow: false }), heightAt };
+}
+
 // src/scenes/lookdev.js
 var lookdev_default = {
   id: "lookdev",
@@ -4776,7 +5769,7 @@ var harbor_default = {
     "atmosphere.sky.ground": "#cfe6ff",
     "atmosphere.fog.color": "#cfe6ff"
   },
-  build({ tier = 0, seed = 11 } = {}) {
+  build({ tier = 0, seed = 11, density = 1 } = {}) {
     const rng = createRng(seed);
     const root = group("harbor");
     root.add(sea(tier));
@@ -4791,7 +5784,8 @@ var harbor_default = {
     ];
     for (const [x, z, ry, colors] of houses) root.add(at(house(tier, colors), on(x, z, 0.25), [0, ry, 0]));
     const treeRng = rng.fork();
-    for (const [x, z, h2] of [[-2, 4, 3.4], [-9, 3, 3], [11, -6, 3.6], [-1, -10, 3.2], [6, -9, 2.8], [-11, 8, 2.6], [12.5, 5.5, 2.9]]) {
+    const treeSpots = [[-2, 4, 3.4], [-9, 3, 3], [11, -6, 3.6], [-1, -10, 3.2], [6, -9, 2.8], [-11, 8, 2.6], [12.5, 5.5, 2.9], [-6, -10, 3.1], [9, -11, 2.7], [-13, -3, 2.9], [3.5, -13, 3.3], [-4, 12, 2.6], [13, -1, 3], [-9, -7, 3.4]];
+    for (const [x, z, h2] of treeSpots.slice(0, Math.min(treeSpots.length, count(7, density)))) {
       root.add(at(tree(tier, treeRng.fork(), { height: h2, leaf: treeRng.pick(["#5f9e3a", "#6aa84f", "#4f8f3a"]) }), on(x, z, 0.2)));
     }
     const rockRng = rng.fork();
@@ -4815,7 +5809,7 @@ var harbor_default = {
       root.add(at(hill(tier, { radius, height, edge: -2, color, seed: Math.round(x), rough: 0.12 }), [x, 0, z]));
     }
     const cloudRng = rng.fork();
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < count(7, density); i++) {
       const c = cloud(tier, cloudRng.fork(), { size: cloudRng.range(16, 30) });
       const x0 = cloudRng.range(-320, 320), y = cloudRng.range(55, 85), z = cloudRng.range(-330, -90);
       at(c, [x0, y, z]);
@@ -4828,11 +5822,728 @@ var harbor_default = {
   }
 };
 
+// src/scenes/garden.js
+var garden_default = {
+  id: "garden",
+  name: "Village Garden",
+  inspiredBy: ["Untitled Goose Game", "Animal Crossing"],
+  genre: "cozy sandbox",
+  notes: "Readability by flat pastel color: can you tell every prop apart without lines? Watch the soft contact shadows under small props and whether the goose stays the focus.",
+  shots: {
+    hero: { label: "High angle (near-orthographic)", pos: [16, 24, 21], target: [0, 0, 0], fov: 30 },
+    gameplay: { label: "Gameplay (top-down)", pos: [0, 34, 16], target: [0, 0, 0.5], fov: 26 },
+    wide: { label: "Wide", pos: [28, 30, 34], target: [0, 0, -1], fov: 34 },
+    close: { label: "Close-up (goose)", pos: [5.2, 2.2, 6.2], target: [2.6, 0.5, 2.2], fov: 35 }
+  },
+  defaultShot: "hero",
+  focus: [2.6, 0.5, 2.2],
+  shadow: { center: [0, 0, 0], radius: 17 },
+  far: 400,
+  params: {
+    "lighting.key.elevation": 58,
+    "lighting.key.azimuth": 30,
+    "lighting.key.color": "#fff6e8",
+    "lighting.key.intensity": 2.5,
+    "lighting.ambient.sky": "#d6e6ff",
+    "lighting.ambient.ground": "#a0b080",
+    "lighting.ambient.intensity": 1,
+    "atmosphere.sky.zenith": "#9cc8f0",
+    "atmosphere.sky.horizon": "#e6f0f4",
+    "atmosphere.sky.ground": "#e6f0f4",
+    "atmosphere.fog.color": "#e6f0f4"
+  },
+  build({ tier = 0, seed = 21, density = 1 } = {}) {
+    const rng = createRng(seed);
+    const root = group("garden");
+    const lawn = new THREE15.PlaneGeometry(44, 44).rotateX(-Math.PI / 2);
+    root.add(mesh(lawn, { part: "terrain", color: "#a7cc76", castShadow: false }));
+    const paths = [place(new THREE15.BoxGeometry(2.2, 0.06, 26), { p: [0, 0.03, 2] }), place(new THREE15.BoxGeometry(22, 0.06, 2), { p: [0, 0.03, 1] })];
+    root.add(mesh(merge(paths), { part: "terrain", color: "#eadcbf", castShadow: false }));
+    const soil = mesh(new THREE15.BoxGeometry(6, 0.18, 4), { part: "terrain", color: "#a7805f" });
+    soil.position.set(-6, 0.09, 6);
+    root.add(soil);
+    root.add(at(house(tier, { wall: "#f6e7d0", roof: "#d98c7a", trim: "#ffffff", door: "#7fa7c9" }), [0, 0, -9], [0, 0, 0], 1.2));
+    root.add(at(well(tier), [6.5, 0, -5]));
+    root.add(at(pond(tier, rng.fork(), { radius: 2.4, color: "#7fc4e0" }), [7, 0, 5]));
+    for (const [p10, r] of [[[-9.2, 0, 3.8], 0], [[-9.2, 0, 8.2], 0], [[-9.2, 0, 3.8], -Math.PI / 2], [[-2.8, 0, 3.8], -Math.PI / 2]]) {
+      root.add(at(fence(tier, r ? 4.4 : 6.4), p10, [0, r, 0]));
+    }
+    for (const x of [-14, -9, 9, 14]) root.add(at(hedge(tier, [4.6, 1.1, 1.2], { seed: x }), [x, 0, -13]));
+    const veg = [];
+    for (let r = 0; r < 3; r++) for (let i = 0; i < count(6, density); i++) veg.push(place(tier === 0 ? new THREE15.BoxGeometry(0.4, 0.3, 0.4) : new THREE15.IcosahedronGeometry(0.26, tier >= 2 ? 1 : 0), { p: [-8.5 + i * 5 / count(6, density), 0.36, 4.8 + r * 1.2] }));
+    root.add(mesh(merge(veg), { part: "foliage", color: "#6aa84f" }));
+    const bedRng = rng.fork();
+    for (const [x, z] of [[-4.5, -5.5], [4.5, -5.5], [-7, -1.8], [3.5, 9.5]]) root.add(at(flowers(tier, bedRng.fork(), { w: 3, d: 1.2, n: count(22, density) }), [x, 0, z]));
+    const treeRng = rng.fork();
+    const trees = [[-12, -7], [12, -8], [13, 9], [-13, 11], [-15, 1], [15, 1], [10, 14], [-6, 14]];
+    for (const [x, z] of trees.slice(0, count(4, density))) root.add(at(tree(tier, treeRng.fork(), { height: 3.6, leaf: treeRng.pick(["#86b85a", "#9ac46a", "#76a84e"]) }), [x, 0, z]));
+    root.add(at(bench(tier), [3.6, 0, -2.2], [0, -0.3, 0]));
+    const propRng = rng.fork();
+    for (let i = 0; i < count(3, density); i++) root.add(at(i % 2 ? barrel(tier, { color: "#b9835a" }) : crate(tier, { color: "#d8b07a", size: 0.7 }), [4 + propRng.range(-1.5, 2), 0, -7 + propRng.range(-1, 1.5)], [0, propRng() * 3, 0]));
+    root.add(at(character(tier, { part: "characters", shirt: "#7fa7c9", pants: "#6b5a4a", hat: "#e8d08a", seed: 3 }), [-4, 0, 7.4], [0, 2.4, 0]));
+    const g = goose(tier, { part: "hero", seed: 1 });
+    const idle = g.userData.animate;
+    g.userData.animate = (t) => {
+      idle(t);
+      const a = t * 0.25;
+      g.position.set(1.2 + Math.cos(a) * 2.6, 0, 2.2 + Math.sin(a) * 1.6);
+      g.rotation.y = -a + Math.PI;
+    };
+    root.add(g);
+    return { root };
+  }
+};
+
+// src/scenes/plaza.js
+function graffiti(tier, rng, { w = 4, h: h2 = 2.4, colors }) {
+  const root = group("graffiti");
+  const byColor = {};
+  const n = [3, 6, 10, 16][tier];
+  for (let i = 0; i < n; i++) {
+    const c = rng.pick(colors);
+    const kind = rng.pick(["blob", "blob", "star", "stripe"]);
+    const s = rng.range(0.25, 0.7) * h2 * 0.5;
+    let g;
+    if (kind === "blob") g = new THREE15.CircleGeometry(s, tier >= 2 ? 24 : 8);
+    else if (kind === "star") {
+      const pts = [];
+      for (let k = 0; k < 10; k++) {
+        const a = k / 10 * Math.PI * 2;
+        const r = k % 2 ? s * 0.45 : s;
+        pts.push(new THREE15.Vector2(Math.cos(a) * r, Math.sin(a) * r));
+      }
+      g = new THREE15.ShapeGeometry(new THREE15.Shape(pts));
+    } else g = new THREE15.PlaneGeometry(s * 3, s * 0.35);
+    (byColor[c] ||= []).push(place(g, { p: [rng.range(-w / 2 + s, w / 2 - s), rng.range(s * 0.6, h2 - s * 0.6), 0.01 + i * 2e-3], r: [0, 0, rng.range(-0.5, 0.5)] }));
+  }
+  for (const [c, g] of Object.entries(byColor)) root.add(mesh(merge(g), { part: "props", color: c, castShadow: false }));
+  return root;
+}
+var PAINT = ["#ff2e88", "#00c8ff", "#ffe600", "#7cff3a", "#ff7a1a", "#a06cd5"];
+var plaza_default = {
+  id: "plaza",
+  name: "Graffiti Plaza",
+  inspiredBy: ["Jet Set Radio / Jet Grind Radio", "Bomb Rush Cyberfunk"],
+  genre: "skate / action",
+  notes: "Thick lines on hard surfaces and saturated paint: does ink make the city graphic, or just noisy? Rails and ramps are thin and long, so watch them break up at distance.",
+  shots: {
+    hero: { label: "Low chase (wide lens)", pos: [9, 2.6, 15], target: [-1, 2.2, 0], fov: 72 },
+    gameplay: { label: "Gameplay (chase)", pos: [0.5, 2.2, 13], target: [0, 1.6, 2], fov: 80 },
+    wide: { label: "Wide", pos: [26, 19, 30], target: [0, 2, -2], fov: 45 },
+    close: { label: "Close-up (skater)", pos: [4.6, 1.6, 7.6], target: [3, 1.2, 4.4], fov: 38 }
+  },
+  defaultShot: "hero",
+  focus: [3, 1.2, 4.4],
+  shadow: { center: [0, 0, 0], radius: 22 },
+  far: 500,
+  params: {
+    "lighting.key.elevation": 62,
+    "lighting.key.azimuth": 40,
+    "lighting.key.color": "#ffffff",
+    "lighting.key.intensity": 3.2,
+    "lighting.ambient.sky": "#bfe3ff",
+    "lighting.ambient.ground": "#9aa0aa",
+    "lighting.ambient.intensity": 0.8,
+    "atmosphere.sky.zenith": "#1e9bff",
+    "atmosphere.sky.horizon": "#bfefff",
+    "atmosphere.sky.ground": "#bfefff",
+    "atmosphere.fog.color": "#bfefff"
+  },
+  build({ tier = 0, seed = 33, density = 1 } = {}) {
+    const rng = createRng(seed);
+    const root = group("plaza");
+    root.add(mesh(new THREE15.PlaneGeometry(70, 70).rotateX(-Math.PI / 2), { part: "terrain", color: "#b9bcc4", castShadow: false }));
+    const paint = [["circle", 4.2, [3, 0.01, 3], "#ff2e88"], ["box", [12, 3.2], [-4, 0.012, 9], "#00c8ff"], ["circle", 2.6, [12, 0.011, -2], "#ffe600"]];
+    for (const [kind, size, p10, color] of paint.slice(0, tier === 0 ? 1 : 3)) {
+      const g = kind === "circle" ? new THREE15.RingGeometry(size * 0.8, size, tier >= 2 ? 64 : 16) : new THREE15.PlaneGeometry(size[0], size[1]);
+      g.rotateX(-Math.PI / 2);
+      root.add(at(mesh(g, { part: "terrain", color, castShadow: false }), p10));
+    }
+    const platform2 = mesh(new THREE15.BoxGeometry(10, 1.2, 6), { part: "architecture", color: "#8e939e" });
+    platform2.position.set(-8, 0.6, -5);
+    root.add(platform2);
+    root.add(at(stairs(tier, { steps: 4, width: 4, rise: 0.3, run: 0.5 }), [-8, 0, -0.2], [0, Math.PI, 0]));
+    const bRng = rng.fork();
+    const blocks = [
+      [-14, -16, 10, 8, 14, "#ff6b6b"],
+      [-2, -18, 9, 7, 18, "#4ecdc4"],
+      [10, -16, 10, 8, 12, "#ffe66d"],
+      [20, -4, 8, 10, 16, "#a06cd5"],
+      [-22, -2, 8, 10, 11, "#ff9f1c"],
+      [20, 12, 8, 8, 9, "#2ec4b6"]
+    ];
+    for (const [x, z, w, d, h2, color] of blocks) {
+      const b = at(building(tier, bRng.fork(), { w, d, h: h2, color }), [x, 0, z], [0, Math.abs(x) > 18 ? -Math.sign(x) * Math.PI / 2 : 0, 0]);
+      root.add(b);
+    }
+    const gRng = rng.fork();
+    for (const [x, z, r] of [[-14, -11.9, 0], [-2, -14.4, 0], [10, -11.9, 0], [14.9, -4, -Math.PI / 2], [-16.9, -2, Math.PI / 2]].slice(0, count(3, density) + 2)) {
+      root.add(at(graffiti(tier, gRng.fork(), { w: 6, h: 3, colors: PAINT }), [x, 0.4, z], [0, r, 0]));
+    }
+    root.add(at(ramp(tier, { width: 5, height: 1.8 }), [6, 0, -4]));
+    root.add(at(rail(tier, 8, { color: "#ffe600" }), [-3, 0, 5]));
+    root.add(at(rail(tier, 6, { color: "#ff2e88", height: 0.9 }), [-12, 1.2, -2.2]));
+    for (const [x, z] of [[-12, 8], [12, 8], [-4, -10], [14, -9]].slice(0, count(3, density))) root.add(at(lampPost(tier, { light: false }), [x, 0, z]));
+    for (const [x, z, r] of [[2, 9, 0], [-9, 9, 0.3], [9, 2, -1.2]].slice(0, count(2, density))) root.add(at(bench(tier, { color: "#00c8ff" }), [x, 0, z], [0, r, 0]));
+    for (const [x, z] of [[4, 10.5], [-15, 5], [16, 6]].slice(0, count(2, density))) root.add(at(trashCan(tier, { color: "#ff7a1a" }), [x, 0, z]));
+    const board = group("billboard");
+    board.add(mesh(merge([place(new THREE15.BoxGeometry(0.25, 6, 0.25), { p: [-2.5, 3, 0] }), place(new THREE15.BoxGeometry(0.25, 6, 0.25), { p: [2.5, 3, 0] })]), { part: "architecture", color: "#3a3f4a" }));
+    const panel = mesh(new THREE15.BoxGeometry(7, 3, 0.2), { part: "props", color: "#ffe600" });
+    panel.position.y = 6.5;
+    board.add(panel);
+    board.add(at(graffiti(tier, gRng.fork(), { w: 6.6, h: 2.6, colors: ["#ff2e88", "#00c8ff", "#0b0b0f"] }), [0, 5.2, 0.11]));
+    root.add(at(board, [-16, 0, 12], [0, 0.7, 0]));
+    const sk = skater(tier, { part: "hero", seed: 2 });
+    const idle = sk.userData.animate;
+    sk.userData.animate = (t) => {
+      idle(t);
+      const a = t * 0.45;
+      sk.position.set(2 + Math.sin(a) * 4, 0, 3 + Math.sin(a * 2) * 2);
+      sk.rotation.y = Math.atan2(Math.cos(a) * 4, Math.cos(a * 2) * 4);
+    };
+    root.add(sk);
+    root.add(at(skater(tier, { part: "characters", shirt: "#00c8ff", cap: "#ff2e88", seed: 5 }), [-9, 1.2, -4], [0, 0.6, 0]));
+    root.add(at(character(tier, { part: "characters", shirt: "#7cff3a", pants: "#2b2f3a", seed: 7 }), [-6.5, 1.2, -5.5], [0, -0.8, 0]));
+    return { root };
+  }
+};
+
+// src/scenes/dungeon.js
+var dungeon_default = {
+  id: "dungeon",
+  name: "Torchlit Dungeon",
+  inspiredBy: ["The Legend of Zelda dungeons", "Hades", "Diablo"],
+  genre: "action RPG",
+  notes: "Value contrast in the dark: torches and lava are the only warm light. Watch whether shadows stay readable (not black), whether bloom stays on the lava, and how the flicker reads on toon bands.",
+  shots: {
+    hero: { label: "Isometric", pos: [17, 19, 17], target: [0, 0, 0], fov: 30 },
+    gameplay: { label: "Gameplay (isometric, close)", pos: [11, 13, 12], target: [-1, 0, 1], fov: 30 },
+    wide: { label: "Wide", pos: [24, 28, 26], target: [0, 0, -1], fov: 34 },
+    close: { label: "Close-up (knight)", pos: [0.8, 2.2, 6.2], target: [-1.5, 1.2, 2.5], fov: 38 }
+  },
+  defaultShot: "hero",
+  focus: [-1.5, 1.2, 2.5],
+  shadow: { center: [0, 0, 0], radius: 15 },
+  far: 300,
+  params: {
+    "lighting.key.elevation": 62,
+    "lighting.key.azimuth": 20,
+    "lighting.key.color": "#a3b3ff",
+    "lighting.key.intensity": 1.6,
+    "lighting.ambient.sky": "#4a5277",
+    "lighting.ambient.ground": "#2a2226",
+    "lighting.ambient.intensity": 0.9,
+    "atmosphere.sky.zenith": "#07080f",
+    "atmosphere.sky.horizon": "#151826",
+    "atmosphere.sky.ground": "#151826",
+    "atmosphere.fog.color": "#151826"
+  },
+  build({ tier = 0, seed = 44, density = 1 } = {}) {
+    const rng = createRng(seed);
+    const root = group("dungeon");
+    const S = 11;
+    if (tier === 0) {
+      root.add(at(mesh(new THREE15.BoxGeometry(S * 2, 0.4, S * 2), { part: "terrain", color: "#5a5560" }), [0, -0.2, 0]));
+    } else {
+      const tiles = [];
+      const n = byTier(tier, [1, 8, 14, 22]);
+      const t = S * 2 / n;
+      for (let i = 0; i < n; i++) for (let k = 0; k < n; k++) {
+        const x = -S + (i + 0.5) * t, z = -S + (k + 0.5) * t;
+        if (Math.abs(z + 3) < 0.9 && Math.abs(x) > 1.6) continue;
+        const h2 = tier === 3 ? 0.3 + (i * 31 + k * 17) % 5 * 0.012 : 0.3;
+        tiles.push(place(new THREE15.BoxGeometry(t * 0.95, h2, t * 0.95), { p: [x, -0.3 + h2 / 2, z] }));
+      }
+      root.add(mesh(merge(tiles), { part: "terrain", color: "#6a6570" }));
+      root.add(at(mesh(new THREE15.BoxGeometry(S * 2, 0.1, S * 2), { part: "terrain", color: "#2e2a33", castShadow: false }), [0, -0.36, 0]));
+    }
+    const channel = lava(tier, { length: S * 2, width: 1.8 });
+    channel.position.set(-S, -0.25, -3);
+    root.add(channel);
+    const bridge = mesh(new THREE15.BoxGeometry(3.2, 0.3, 2.2), { part: "architecture", color: "#6b6570" });
+    bridge.position.set(0, -0.15, -3);
+    root.add(bridge);
+    root.add(at(wall(tier, S * 2, 4, { color: "#4a4650" }), [-S, 0, -S]));
+    root.add(at(wall(tier, S * 2, 4, { color: "#4a4650" }), [-S, 0, S], [0, Math.PI / 2, 0]));
+    for (const x of [-7, -2, 3, 8]) root.add(at(pillar(tier, 4.4, 0.45, { color: "#6b6570" }), [x, 0, -S + 0.9]));
+    for (const z of [-6, 0, 6]) root.add(at(pillar(tier, 4.4, 0.45, { color: "#6b6570" }), [-S + 0.9, 0, z]));
+    const torches = [[-4.5, -S + 0.55, 0], [5.5, -S + 0.55, 0], [-S + 0.55, -3, Math.PI / 2], [-S + 0.55, 3, Math.PI / 2], [0.5, -S + 0.55, 0], [-S + 0.55, 8, Math.PI / 2]];
+    for (const [i, [x, z, r]] of torches.slice(0, Math.min(torches.length, count(4, density))).entries()) root.add(at(torch(tier, { seed: i * 1.7 }), [x, 2.4, z], [0, r, 0]));
+    const dais = mesh(new THREE15.BoxGeometry(6, 1, 4), { part: "architecture", color: "#625c68" });
+    dais.position.set(4, 0.5, -7.5);
+    root.add(dais);
+    root.add(at(stairs(tier, { steps: 4, width: 3, rise: 0.25, run: 0.4, color: "#6b6570" }), [4, 0, -4.1], [0, Math.PI, 0]));
+    root.add(at(chest(tier), [4, 1, -8]));
+    const propRng = rng.fork();
+    for (let i = 0; i < count(5, density); i++) {
+      const p10 = [propRng.range(-9, -4), 0, propRng.range(2, 9)];
+      root.add(at(i % 2 ? barrel(tier, { color: "#6d4a2d" }) : crate(tier, { color: "#7a5a3a", size: 0.8 }), p10, [0, propRng() * 3, 0]));
+    }
+    root.add(at(knight(tier, { part: "hero", seed: 1 }), [-1.5, 0, 2.5], [0, 0.4, 0]));
+    root.add(at(character(tier, { part: "characters", shirt: "#c9c4b5", pants: "#8f8a7d", skin: "#d8d2c0", seed: 4 }), [3, 0, 4.5], [0, -2.2, 0]));
+    return { root };
+  }
+};
+
+// src/scenes/kart.js
+var STRAIGHT = 40;
+var RADIUS = 13;
+var WIDTH = 8;
+var LOOP = 2 * STRAIGHT + 2 * Math.PI * RADIUS;
+function track(s) {
+  let d = (s % LOOP + LOOP) % LOOP;
+  const half = STRAIGHT / 2;
+  if (d < STRAIGHT) return { x: -half + d, z: RADIUS, heading: Math.PI / 2 };
+  d -= STRAIGHT;
+  if (d < Math.PI * RADIUS) {
+    const a2 = d / RADIUS;
+    return { x: half + Math.sin(a2) * RADIUS, z: Math.cos(a2) * RADIUS, heading: Math.PI / 2 + a2 };
+  }
+  d -= Math.PI * RADIUS;
+  if (d < STRAIGHT) return { x: half - d, z: -RADIUS, heading: -Math.PI / 2 };
+  d -= STRAIGHT;
+  const a = d / RADIUS;
+  return { x: -half - Math.sin(a) * RADIUS, z: -Math.cos(a) * RADIUS, heading: -Math.PI / 2 + a };
+}
+function ribbon(tier, a, b, { y = 0.01, steps }) {
+  const n = steps ?? byTier(tier, [24, 40, 120, 240]);
+  const pos = [], idx = [];
+  for (let i = 0; i <= n; i++) {
+    const p10 = track(i / n * LOOP);
+    const nx = Math.cos(p10.heading), nz = -Math.sin(p10.heading);
+    pos.push(p10.x + nx * a, y, p10.z + nz * a, p10.x + nx * b, y, p10.z + nz * b);
+    if (i < n) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
+  }
+  const g = new THREE15.BufferGeometry();
+  g.setAttribute("position", new THREE15.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  if (g.getAttribute("normal").getY(0) < 0) {
+    g.setIndex(idx.map((_, k) => idx[k - k % 3 + [0, 2, 1][k % 3]]));
+    g.computeVertexNormals();
+  }
+  return g;
+}
+var kart_default = {
+  id: "kart",
+  name: "Kart Circuit",
+  inspiredBy: ["Mario Kart", "OutRun"],
+  genre: "racing",
+  notes: "Speed and repetition: karts in motion, repeated cones, tires and curbs, crowds in the stands. Watch temporal stability of lines and bands as karts move, and whether track markings stay crisp at a distance.",
+  shots: {
+    hero: { label: "Chase (start straight)", pos: [-26, 3.4, 13], target: [-10, 1.2, 13], fov: 60 },
+    gameplay: { label: "Gameplay (chase, high)", pos: [-30, 6, 13], target: [-12, 1, 12], fov: 65 },
+    wide: { label: "Wide", pos: [0, 48, 58], target: [0, 0, 0], fov: 45 },
+    close: { label: "Close-up (grid)", pos: [-14, 1.6, 17], target: [-17, 0.8, 13], fov: 40 }
+  },
+  defaultShot: "hero",
+  focus: [-16, 0.8, 13],
+  shadow: { center: [0, 0, 0], radius: 36 },
+  far: 600,
+  params: {
+    "lighting.key.elevation": 52,
+    "lighting.key.azimuth": 60,
+    "lighting.key.color": "#fff8ea",
+    "lighting.key.intensity": 3,
+    "lighting.ambient.sky": "#bfe3ff",
+    "lighting.ambient.ground": "#7a9a5a",
+    "lighting.ambient.intensity": 0.75,
+    "atmosphere.sky.zenith": "#3d8ef0",
+    "atmosphere.sky.horizon": "#d8efff",
+    "atmosphere.sky.ground": "#d8efff",
+    "atmosphere.fog.color": "#d8efff"
+  },
+  build({ tier = 0, seed = 55, density = 1 } = {}) {
+    const rng = createRng(seed);
+    const root = group("kart circuit");
+    root.add(mesh(new THREE15.PlaneGeometry(160, 120).rotateX(-Math.PI / 2), { part: "terrain", color: "#6fbf4a", castShadow: false }));
+    root.add(mesh(ribbon(tier, -WIDTH / 2, WIDTH / 2, { y: 0.02 }), { part: "terrain", color: "#4a4d55", castShadow: false }));
+    if (tier >= 1) {
+      const n = byTier(tier, [0, 40, 80, 160]);
+      const red = [], white = [];
+      for (let i = 0; i < n; i++) {
+        for (const side of [-1, 1]) {
+          const p10 = track((i + 0.5) / n * LOOP);
+          const nx = Math.cos(p10.heading), nz = -Math.sin(p10.heading);
+          const seg = place(new THREE15.BoxGeometry(0.7, 0.12, LOOP / n * 0.98), { p: [p10.x + nx * side * (WIDTH / 2 + 0.35), 0.06, p10.z + nz * side * (WIDTH / 2 + 0.35)], r: [0, p10.heading, 0] });
+          (i % 2 ? red : white).push(seg);
+        }
+      }
+      root.add(mesh(merge(red), { part: "props", color: "#e74c3c", castShadow: false }), mesh(merge(white), { part: "props", color: "#f4f4f4", castShadow: false }));
+    }
+    if (tier >= 2) {
+      const dashes = [];
+      const n = 60;
+      for (let i = 0; i < n; i += 2) {
+        const p10 = track((i + 0.5) / n * LOOP);
+        dashes.push(place(new THREE15.BoxGeometry(0.25, 0.01, LOOP / n * 0.6), { p: [p10.x, 0.035, p10.z], r: [0, p10.heading, 0] }));
+      }
+      root.add(mesh(merge(dashes), { part: "props", color: "#f4f4f4", castShadow: false }));
+      const checks = { "#111111": [], "#f4f4f4": [] };
+      for (let i = 0; i < 8; i++) for (let k = 0; k < 2; k++) checks[(i + k) % 2 ? "#111111" : "#f4f4f4"].push(place(new THREE15.BoxGeometry(0.5, 0.012, WIDTH / 8), { p: [-14 + k * 0.5, 0.04, RADIUS - WIDTH / 2 + (i + 0.5) * WIDTH / 8] }));
+      for (const [c, g] of Object.entries(checks)) root.add(mesh(merge(g), { part: "props", color: c, castShadow: false }));
+    }
+    const gate2 = group("start gate");
+    gate2.add(mesh(merge([place(new THREE15.BoxGeometry(0.5, 6, 0.5), { p: [0, 3, RADIUS - WIDTH / 2 - 1] }), place(new THREE15.BoxGeometry(0.5, 6, 0.5), { p: [0, 3, RADIUS + WIDTH / 2 + 1] })]), { part: "architecture", color: "#d9dde3" }));
+    gate2.add(mesh(place(new THREE15.BoxGeometry(0.6, 1.4, WIDTH + 3), { p: [0, 6.2, RADIUS] }), { part: "props", color: "#e74c3c" }));
+    gate2.position.x = -13.8;
+    root.add(gate2);
+    const sRng = rng.fork();
+    root.add(at(stands(tier, sRng.fork(), 26, { rows: 4 }), [-13, 0, RADIUS + WIDTH / 2 + 5], [0, Math.PI, 0]));
+    root.add(at(stands(tier, sRng.fork(), 20, { rows: 3 }), [10, 0, -RADIUS - WIDTH / 2 - 5]));
+    const propRng = rng.fork();
+    for (let i = 0; i < count(8, density); i++) {
+      const a = i / count(8, density) * Math.PI;
+      for (const side of [1, -1]) {
+        const x = side * (STRAIGHT / 2 + Math.sin(a) * (RADIUS + WIDTH / 2 + 1.5)), z = Math.cos(a) * (RADIUS + WIDTH / 2 + 1.5);
+        root.add(at(i % 2 ? tireStack(tier) : trafficCone(tier), [x, 0, z], [0, propRng() * 3, 0]));
+      }
+    }
+    const treeRng = rng.fork();
+    for (let i = 0; i < count(10, density); i++) {
+      const x = treeRng.range(-60, 60), z = treeRng.pick([-1, 1]) * treeRng.range(30, 50);
+      root.add(at(tree(tier, treeRng.fork(), { height: treeRng.range(4, 7) }), [x, 0, z]));
+    }
+    const colors = [["#e74c3c", "#3498db"], ["#2ecc71", "#f1c40f"], ["#9b59b6", "#ecf0f1"], ["#f39c12", "#2c3e50"]];
+    colors.forEach(([body, driver], i) => {
+      const k = kart(tier, { color: body, driver, part: i === 0 ? "hero" : "props", driverPart: i === 0 ? "hero" : "characters", seed: i });
+      const lane = i % 2 ? -1.6 : 1.6;
+      const start = -i * 4.5 + 6, speed = 14 - i * 0.8;
+      k.userData.animate = (t) => {
+        const p10 = track(start + t * speed);
+        k.position.set(p10.x + Math.cos(p10.heading) * lane, 0, p10.z - Math.sin(p10.heading) * lane);
+        k.rotation.y = p10.heading;
+        for (const w of k.userData.wheels) w.rotation.x = t * speed / 0.3;
+      };
+      root.add(k);
+    });
+    return { root };
+  }
+};
+
+// src/scenes/platforms.js
+function platform(tier, { r = 3, h: h2 = 0.6, top = "#6cc04a", earth = "#b5733f", square = false } = {}) {
+  const root = group("platform");
+  const seg = square ? 4 : byTier(tier, [10, 10, 40, 64]);
+  const topG = new THREE15.CylinderGeometry(r, r, h2, seg, 1);
+  if (square) topG.rotateY(Math.PI / 4);
+  const t = mesh(tier === 1 ? faceted(topG) : topG, { part: "terrain", color: top });
+  t.position.y = -h2 / 2;
+  root.add(t);
+  const under = new THREE15.ConeGeometry(r * 0.95, r * 1.3, seg, byTier(tier, [1, 2, 4, 8]));
+  under.rotateX(Math.PI);
+  if (square) under.rotateY(Math.PI / 4);
+  const u = mesh(tier === 1 ? faceted(under) : under, { part: "terrain", color: earth });
+  u.position.y = -h2 - r * 0.65;
+  root.add(u);
+  return root;
+}
+var platforms_default = {
+  id: "platforms",
+  name: "Sky Platforms",
+  inspiredBy: ["Super Mario 64", "Astro Bot"],
+  genre: "3D platformer",
+  notes: "Readable jumpable surfaces in primary colors: every top must read as standable from the camera. Watch the coins (small, spinning, emissive) and whether shadows show where you would land.",
+  shots: {
+    hero: { label: "3/4 side", pos: [6, 9, 21], target: [1, 3, 0], fov: 45 },
+    gameplay: { label: "Gameplay (side)", pos: [0, 6.5, 17], target: [1, 3.5, 0], fov: 50 },
+    wide: { label: "Wide", pos: [22, 18, 34], target: [2, 3, -2], fov: 45 },
+    close: { label: "Close-up (hero)", pos: [-4.2, 2.6, 5.4], target: [-6, 1.8, 2], fov: 38 }
+  },
+  defaultShot: "hero",
+  focus: [-6, 1.8, 2],
+  shadow: { center: [1, 0, -1], radius: 18 },
+  far: 600,
+  params: {
+    "lighting.key.elevation": 55,
+    "lighting.key.azimuth": 35,
+    "lighting.key.color": "#fffaf0",
+    "lighting.key.intensity": 3,
+    "lighting.ambient.sky": "#cfe6ff",
+    "lighting.ambient.ground": "#e8f4ff",
+    "lighting.ambient.intensity": 0.8,
+    "atmosphere.sky.zenith": "#3f9bff",
+    "atmosphere.sky.horizon": "#dff3ff",
+    "atmosphere.sky.ground": "#bfe6ff",
+    "atmosphere.fog.color": "#dff3ff"
+  },
+  build({ tier = 0, seed = 66, density = 1 } = {}) {
+    const rng = createRng(seed);
+    const root = group("sky platforms");
+    const pads = [
+      { p: [-6, 0, 1.5], r: 3.2 },
+      { p: [0, 1.6, -1], r: 2.4, top: "#f5b82e" },
+      { p: [5, 3, 1], r: 2, square: true, top: "#4aa3ff" },
+      { p: [9.5, 4.6, -2.5], r: 2.6, top: "#e74c3c" },
+      { p: [3, 6.2, -7], r: 3, top: "#6cc04a" },
+      { p: [-5, 4, -6], r: 2, square: true, top: "#9b59b6" }
+    ];
+    for (const d of pads) root.add(at(platform(tier, d), d.p));
+    const coins = [];
+    for (const [a, b] of [[0, 1], [1, 2], [2, 3], [3, 4]]) {
+      const n = count(4, density);
+      for (let i = 1; i <= n; i++) {
+        const t = i / (n + 1);
+        const p10 = pads[a].p.map((v, k) => v + (pads[b].p[k] - v) * t);
+        coins.push(at(coin(tier, { seed: coins.length }), [p10[0], p10[1] + 1.2 + Math.sin(t * Math.PI) * 1.5, p10[2]]));
+      }
+    }
+    root.add(...coins);
+    root.add(at(block(tier, { kind: "item" }), [-6, 3.2, 0.5]), at(block(tier, { kind: "brick" }), [-7, 3.2, 0.5]), at(block(tier, { kind: "brick" }), [-5, 3.2, 0.5]));
+    root.add(at(pipe(tier, { height: 1.2, radius: 0.6 }), [3, 6.2, -8]));
+    root.add(at(pipe(tier, { height: 0.8, radius: 0.5 }), [10.5, 4.6, -3]));
+    const flag = group("flag");
+    flag.add(mesh(new THREE15.CylinderGeometry(0.06, 0.06, 4, byTier(tier, [6, 6, 12, 16])).translate(0, 2, 0), { part: "props", color: "#f4f4f4" }));
+    flag.add(mesh(new THREE15.BoxGeometry(1.2, 0.8, 0.04).translate(0.6, 3.5, 0), { part: "props", color: "#e74c3c" }));
+    root.add(at(flag, [4.5, 6.2, -6]));
+    const cRng = rng.fork();
+    for (let i = 0; i < count(6, density); i++) {
+      const c = cloud(tier, cRng.fork(), { size: cRng.range(5, 10) });
+      const x0 = cRng.range(-40, 40), y = cRng.range(-8, 2), z = cRng.range(-40, -12);
+      at(c, [x0, y, z]);
+      c.userData.animate = (t) => {
+        c.position.x = ((x0 + t * 0.6 + 50) % 100 + 100) % 100 - 50;
+      };
+      root.add(c);
+    }
+    root.add(at(character(tier, { part: "hero", shirt: "#e74c3c", pants: "#2e5fb7", hat: "#e74c3c", seed: 1 }), [-6, 0, 2], [0, 0.5, 0]));
+    const bot = robot(tier, { part: "characters", body: "#ffe066", accent: "#2e5fb7", seed: 2 });
+    at(bot, [9.5, 4.6, -2.5]);
+    root.add(bot);
+    return { root };
+  }
+};
+
+// src/scenes/hangar.js
+var METAL = { roughness: 0.35, metalness: 0.6 };
+var hangar_default = {
+  id: "hangar",
+  name: "Sci-fi Hangar",
+  inspiredBy: ["Metroid Prime", "Halo"],
+  genre: "sci-fi shooter",
+  notes: "Hard surfaces, metal and emissive strips: watch how each look handles metalness (stylized PBR keeps it, toon flattens it), whether bloom stays on the strips, and how translucent holograms read.",
+  shots: {
+    hero: { label: "Over the shoulder", pos: [-1.6, 2.3, 12.6], target: [0.6, 2, 2], fov: 52 },
+    gameplay: { label: "Gameplay (third-person)", pos: [-3, 3.4, 14.5], target: [0, 1.8, 2], fov: 60 },
+    wide: { label: "Wide", pos: [15, 10, 19], target: [0, 2, -1], fov: 50 },
+    close: { label: "Close-up (ship)", pos: [5, 2.4, 6], target: [1, 2, 0.5], fov: 40 }
+  },
+  defaultShot: "hero",
+  focus: [-3, 1.5, 9],
+  shadow: { center: [0, 0, 0], radius: 15 },
+  far: 300,
+  params: {
+    "lighting.key.elevation": 72,
+    "lighting.key.azimuth": 10,
+    "lighting.key.color": "#dfe8ff",
+    "lighting.key.intensity": 2,
+    "lighting.ambient.sky": "#6b7a99",
+    "lighting.ambient.ground": "#2a2d33",
+    "lighting.ambient.intensity": 0.55,
+    "atmosphere.sky.zenith": "#0f1420",
+    "atmosphere.sky.horizon": "#2a3346",
+    "atmosphere.sky.ground": "#2a3346",
+    "atmosphere.fog.color": "#2a3346"
+  },
+  build({ tier = 0, seed = 77, density = 1 } = {}) {
+    const rng = createRng(seed);
+    const root = group("hangar");
+    const W = 12, D = 13;
+    const floor4 = [];
+    const n = byTier(tier, [1, 6, 12, 20]);
+    for (let i = 0; i < n; i++) for (let k = 0; k < n; k++) floor4.push(place(new THREE15.BoxGeometry(W * 2 / n * (n > 1 ? 0.97 : 1), 0.2, D * 2 / n * (n > 1 ? 0.97 : 1)), { p: [-W + (i + 0.5) * W * 2 / n, -0.1, -D + (k + 0.5) * D * 2 / n] }));
+    root.add(mesh(merge(floor4), { part: "terrain", color: "#5d636d", ...METAL }));
+    if (n > 1) root.add(at(mesh(new THREE15.BoxGeometry(W * 2, 0.1, D * 2), { part: "terrain", color: "#23262b", castShadow: false }), [0, -0.22, 0]));
+    const walls = [place(new THREE15.BoxGeometry(W * 2, 9, 0.5), { p: [0, 4.5, -D] }), place(new THREE15.BoxGeometry(0.5, 9, D * 2), { p: [-W, 4.5, 0] }), place(new THREE15.BoxGeometry(0.5, 9, D * 2), { p: [W, 4.5, 0] })];
+    root.add(mesh(merge(walls), { part: "architecture", color: "#7a818c", ...METAL }));
+    if (tier >= 1) {
+      const ribs = [];
+      const rn = byTier(tier, [0, 6, 10, 16]);
+      for (let i = 0; i <= rn; i++) {
+        ribs.push(place(new THREE15.BoxGeometry(0.4, 9, 0.6), { p: [-W + i * W * 2 / rn, 4.5, -D + 0.4] }));
+        ribs.push(place(new THREE15.BoxGeometry(0.6, 9, 0.4), { p: [-W + 0.4, 4.5, -D + i * D * 2 / rn] }));
+      }
+      root.add(mesh(merge(ribs), { part: "architecture", color: "#5b616b", ...METAL }));
+      const walk = [place(new THREE15.BoxGeometry(W * 2 - 1, 0.2, 2), { p: [0, 4, -D + 1.5] }), place(new THREE15.BoxGeometry(W * 2 - 1, 0.08, 0.08), { p: [0, 5, -D + 2.4] })];
+      if (tier >= 2) for (let i = 0; i < 16; i++) walk.push(place(new THREE15.BoxGeometry(0.06, 1, 0.06), { p: [-W + 1 + i * (W * 2 - 2) / 15, 4.5, -D + 2.4] }));
+      root.add(mesh(merge(walk), { part: "architecture", color: "#3a3f4a", ...METAL }));
+    }
+    const strips = [place(new THREE15.BoxGeometry(W * 2 - 1, 0.06, 0.2), { p: [0, 0.03, -D + 1] }), place(new THREE15.BoxGeometry(0.2, 0.06, D * 2 - 2), { p: [-W + 1, 0.03, 0] }), place(new THREE15.BoxGeometry(0.2, 0.06, D * 2 - 2), { p: [W - 1, 0.03, 0] })];
+    if (tier >= 2) for (const y of [2.5, 6.5]) strips.push(place(new THREE15.BoxGeometry(W * 2 - 1, 0.12, 0.1), { p: [0, y, -D + 0.3] }));
+    root.add(mesh(merge(strips), { part: "vfx", color: "#7df9ff", emissive: "#30e0ff", emissiveIntensity: 2.5, castShadow: false }));
+    for (const [i, x] of [-6, 0, 6].entries()) {
+      const l = practical({ color: "#cfe6ff", intensity: 18, distance: 14 });
+      l.position.set(x, 7.5, -2 + i % 2 * 3);
+      root.add(l);
+    }
+    root.add(at(ship(tier), [1, 0, -0.5], [0, -0.4, 0]));
+    const hRng = rng.fork();
+    for (const [i, [x, z]] of [[-7, -6], [7, 6], [-7, 4]].slice(0, count(2, density)).entries()) root.add(at(hologram(tier, { color: i % 2 ? "#ff7a1a" : "#30e0ff", seed: hRng() * 6 }), [x, 0, z]));
+    const pRng = rng.fork();
+    for (let i = 0; i < count(6, density); i++) {
+      const p10 = [pRng.range(5, 10), 0, pRng.range(-10, -5)];
+      root.add(at(i % 3 === 0 ? barrel(tier, { color: "#c8a03a" }) : crate(tier, { color: "#6b7480", size: 1 }), p10, [0, pRng() * 3, 0]));
+    }
+    root.add(at(robot(tier, { part: "characters", seed: 1 }), [5, 0, 4], [0, -0.8, 0]));
+    root.add(at(robot(tier, { part: "characters", body: "#3a3f4a", accent: "#30e0ff", seed: 3 }), [-5, 0, -3], [0, 0.7, 0]));
+    root.add(at(knight(tier, { part: "hero", armor: "#5b7a46", cloth: "#2b2f36", seed: 2 }), [-3, 0, 9], [0, Math.PI * 0.92, 0]));
+    return { root };
+  }
+};
+
+// src/scenes/meadow.js
+var meadow_default = {
+  id: "meadow",
+  name: "Meadow Shrine",
+  inspiredBy: ["The Legend of Zelda: Breath of the Wild", "Ōkami", "Ghost of Tsushima"],
+  genre: "open-world adventure",
+  notes: "Foliage density vs. line noise: thousands of grass blades are the worst case for ink and toon bands. Watch whether the grass reads as a soft mass, and whether painterly looks hold up here.",
+  shots: {
+    hero: { label: "Third-person (to the shrine)", pos: [2.4, 3.2, 19], target: [0, 2.2, 3], fov: 50 },
+    gameplay: { label: "Gameplay (third-person)", pos: [0.6, 2.6, 16.5], target: [0, 1.8, 6], fov: 58 },
+    wide: { label: "Wide", pos: [34, 16, 34], target: [0, 2, 0], fov: 45 },
+    close: { label: "Close-up (hero)", pos: [1.6, 1.9, 9.4], target: [0, 1.6, 12], fov: 38 }
+  },
+  defaultShot: "hero",
+  focus: [0, 1.6, 12],
+  shadow: { center: [0, 0, 3], radius: 24 },
+  far: 900,
+  params: {
+    "lighting.key.elevation": 38,
+    "lighting.key.azimuth": 70,
+    "lighting.key.color": "#fff2dc",
+    "lighting.key.intensity": 3,
+    "lighting.ambient.sky": "#b8d4ff",
+    "lighting.ambient.ground": "#6a7a4a",
+    "lighting.ambient.intensity": 0.7,
+    "atmosphere.sky.zenith": "#5b9be6",
+    "atmosphere.sky.horizon": "#e3f0ff",
+    "atmosphere.sky.ground": "#e3f0ff",
+    "atmosphere.fog.color": "#e3f0ff"
+  },
+  build({ tier = 0, seed = 88, density = 1 } = {}) {
+    const rng = createRng(seed);
+    const root = group("meadow");
+    const flat = (x, z) => Math.min(1, Math.max(0, (Math.abs(x) - 2.5) / 6)) * Math.min(1, Math.hypot(x, z + 4) / 10);
+    const { mesh: ground, heightAt } = terrainPatch(tier, { w: 120, d: 120, amp: 4, scale: 0.035, seed: 9, color: "#8fbf5a", flat });
+    root.add(ground);
+    const on2 = (x, z, sink = 0) => [x, heightAt(x, z) - sink, z];
+    const path = terrainPatch(tier, { w: 3, d: 26, amp: 0, color: "#c9b48a" }).mesh;
+    path.position.set(0, 0.03, 6);
+    root.add(path);
+    root.add(at(gate(tier, { width: 4.2, height: 4.6 }), on2(0, 0)));
+    root.add(at(house(tier, { wall: "#efe3cf", roof: "#7a2e2a", trim: "#5b3b22", door: "#5b3b22" }), on2(0, -8), [0, 0, 0], 1.1));
+    for (const [i, [x, z]] of [[-2.6, 3], [2.6, 3], [-2.6, 8], [2.6, 8]].entries()) root.add(at(stoneLantern(tier, { light: false, seed: i }), on2(x, z)));
+    root.add(at(pond(tier, rng.fork(), { radius: 3, color: "#5aa0c8" }), on2(9, 6, 0.1)));
+    const avoid = (x, z) => Math.abs(x) < 2 || Math.hypot(x - 9, z - 6) < 3.4 || Math.hypot(x, z + 6) < 5;
+    const field = grass(tier, rng.fork(), { w: 36, d: 30, perSquareMeter: 7 * density, color: "#86b84e", height: 0.55, avoid });
+    field.position.set(0, 0, 4);
+    const pos = field.geometry.getAttribute("position");
+    for (let i = 0; i < pos.count; i++) pos.setY(i, pos.getY(i) + heightAt(pos.getX(i), pos.getZ(i) + 4));
+    field.geometry.computeVertexNormals();
+    root.add(field);
+    const fRng = rng.fork();
+    for (let i = 0; i < count(5, density); i++) {
+      const x = fRng.pick([-1, 1]) * fRng.range(4, 14), z = fRng.range(-4, 16);
+      root.add(at(flowers(tier, fRng.fork(), { w: 2.5, d: 2, n: 14, colors: ["#f7f3e8", "#f4a7b9", "#ffd86b"] }), on2(x, z)));
+    }
+    const tRng = rng.fork();
+    for (let i = 0; i < count(12, density); i++) {
+      const a = tRng() * Math.PI * 2, r = tRng.range(14, 32);
+      const x = Math.cos(a) * r, z = Math.sin(a) * r - 2;
+      const t = tRng() < 0.65 ? pine(tier, tRng.fork(), { height: tRng.range(5, 9) }) : tree(tier, tRng.fork(), { height: tRng.range(3.5, 5), leaf: "#f2b6c6", trunk: "#5b3b22" });
+      root.add(at(t, on2(x, z, 0.2)));
+    }
+    const rRng = rng.fork();
+    for (let i = 0; i < count(6, density); i++) {
+      const x = rRng.pick([-1, 1]) * rRng.range(4, 18), z = rRng.range(-10, 18);
+      root.add(at(rock(tier, rRng.range(0.6, 1.6), rRng.fork(), { part: "terrain" }), on2(x, z, 0.3), [0, rRng() * 6, 0]));
+    }
+    const mRng = rng.fork();
+    root.add(at(ridge(tier, mRng.fork(), { width: 420, height: 60, color: "#6f86a8", peaks: 6 }), [0, 0, -260]));
+    root.add(at(ridge(tier, mRng.fork(), { width: 300, height: 34, color: "#5e7d63", peaks: 8 }), [30, 0, -150]));
+    root.add(at(character(tier, { part: "hero", shirt: "#2f4a7a", pants: "#3b2f2a", hat: "#c9a45a", seed: 1 }), on2(0, 12), [0, Math.PI, 0]));
+    return { root };
+  }
+};
+
+// src/scenes/campsite.js
+var campsite_default = {
+  id: "campsite",
+  name: "Dusk Campsite",
+  inspiredBy: ["Firewatch", "A Short Hike"],
+  genre: "narrative exploration",
+  notes: "Layered silhouettes: four ridges at increasing distance should separate by value and color, which is what fog bands are for. Watch the campfire against the sunset, and whether warm and cool light both read.",
+  shots: {
+    hero: { label: "Third-person (past the fire)", pos: [-6.5, 2.5, 8.5], target: [1, 1.6, -4], fov: 52 },
+    gameplay: { label: "Gameplay (third-person)", pos: [-4, 3.2, 10.5], target: [0, 1.2, 0], fov: 58 },
+    wide: { label: "Wide (the ridges)", pos: [0, 9, 22], target: [0, 6, -60], fov: 45 },
+    close: { label: "Close-up (campfire)", pos: [-1.6, 1.4, 3.2], target: [0, 0.6, 0], fov: 40 }
+  },
+  defaultShot: "hero",
+  focus: [0, 0.6, 0],
+  shadow: { center: [0, 0, -2], radius: 18 },
+  far: 1200,
+  params: {
+    "lighting.key.elevation": 7,
+    "lighting.key.azimuth": 165,
+    "lighting.key.color": "#ff9a55",
+    "lighting.key.intensity": 2.4,
+    "lighting.ambient.sky": "#6a5a9a",
+    "lighting.ambient.ground": "#3a2a30",
+    "lighting.ambient.intensity": 0.55,
+    "atmosphere.sky.zenith": "#2b2a5e",
+    "atmosphere.sky.horizon": "#ff9a6a",
+    "atmosphere.sky.ground": "#ff9a6a",
+    "atmosphere.fog.color": "#c77a8a"
+  },
+  build({ tier = 0, seed = 99, density = 1 } = {}) {
+    const rng = createRng(seed);
+    const root = group("campsite");
+    const flat = (x, z) => Math.min(1, Math.hypot(x, z) / 9);
+    const { mesh: ground, heightAt } = terrainPatch(tier, { w: 140, d: 140, amp: 2.5, scale: 0.05, seed: 4, color: "#6b5a3e", flat });
+    root.add(ground);
+    const on2 = (x, z, sink = 0) => [x, heightAt(x, z) - sink, z];
+    root.add(at(pond(tier, rng.fork(), { radius: 9, color: "#4b5f8a" }), on2(14, -10, 0.25)));
+    root.add(at(tent(tier, { color: "#e67e22" }), on2(3.5, -3), [0, -0.6, 0]));
+    root.add(at(campfire(tier, { seed: 1 }), on2(0, 0)));
+    for (const [x, z, r] of [[-1.6, 0.4, 1.4], [1.2, 1.5, 0.3]]) {
+      const log2 = mesh(new THREE15.CylinderGeometry(0.22, 0.24, 1.8, byTier(tier, [8, 8, 16, 24])), { part: "props", color: "#6d4a2d" });
+      log2.rotation.set(0, r, Math.PI / 2);
+      log2.position.set(...on2(x, z)).y += 0.2;
+      root.add(log2);
+    }
+    const lantern2 = practical({ color: "#ffd27a", intensity: 3, distance: 6, flicker: 0.2, seed: 3 });
+    lantern2.position.set(3, heightAt(3, -1.2) + 0.6, -1.2);
+    root.add(lantern2);
+    const pRng = rng.fork();
+    for (let i = 0; i < count(14, density); i++) {
+      const a = pRng.range(-Math.PI * 0.9, Math.PI * 0.2), r = pRng.range(8, 26);
+      root.add(at(pine(tier, pRng.fork(), { height: pRng.range(6, 11), color: "#24402f" }), on2(Math.cos(a) * r, Math.sin(a) * r - 4, 0.2)));
+    }
+    const rRng = rng.fork();
+    for (let i = 0; i < count(4, density); i++) root.add(at(rock(tier, rRng.range(0.5, 1.2), rRng.fork(), { part: "terrain" }), on2(rRng.range(-7, 7), rRng.range(-7, 3), 0.2), [0, rRng() * 6, 0]));
+    const mRng = rng.fork();
+    const layers2 = [[60, 14, "#3b2e4a"], [120, 26, "#5a3f5e"], [210, 44, "#86566e"], [330, 70, "#b67a80"]];
+    for (const [dist, h2, color] of layers2) root.add(at(ridge(tier, mRng.fork(), { width: dist * 3.2, height: h2, color, peaks: 7 }), [mRng.range(-20, 20), -2, -dist]));
+    root.add(at(character(tier, { part: "hero", shirt: "#c0392b", pants: "#3b4a6b", hat: "#2e4057", seed: 2 }), on2(-2.2, 1.6), [0, 2.2, 0]));
+    return { root };
+  }
+};
+
 // src/scenes/index.js
-var SCENES = [harbor_default, lookdev_default];
+var countMeshes = (root) => {
+  let n = 0;
+  root.traverse((o) => {
+    if (o.isMesh) n++;
+  });
+  return n;
+};
+var SCENES = [harbor_default, lookdev_default, garden_default, plaza_default, dungeon_default, kart_default, platforms_default, hangar_default, meadow_default, campsite_default];
+var DENSITY = { min: 0.5, max: 4, default: 1 };
 var sceneById = new Map(SCENES.map((s) => [s.id, s]));
-function buildScene2(scene, { tier = 0, seed } = {}) {
-  const { root } = scene.build({ tier, seed });
+function buildScene2(scene, { tier = 0, seed, density = 1 } = {}) {
+  const { root } = scene.build({ tier, seed, density });
   const animators = [];
   root.traverse((o) => {
     if (o.userData.animate) animators.push(o.userData.animate);
@@ -4840,6 +6551,7 @@ function buildScene2(scene, { tier = 0, seed } = {}) {
   return {
     root,
     triangles: countTriangles(root),
+    objects: countMeshes(root),
     animate: (t) => {
       for (const a of animators) a(t);
     }
@@ -4851,6 +6563,7 @@ var KEY = "stylelab.state.v1";
 var initial = () => ({
   sceneId: "harbor",
   tier: 0,
+  density: 1,
   shot: null,
   // null = the scene's default shot
   turntable: false,
@@ -4909,11 +6622,136 @@ function createStore({ persist = true } = {}) {
   };
 }
 
+// src/app/import/glb.js
+import * as THREE16 from "three/webgpu";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+var RADIUS2 = 10;
+async function createLoader(buffer) {
+  const loader = new GLTFLoader();
+  const json = new TextDecoder().decode(new Uint8Array(buffer, 0, Math.min(buffer.byteLength, 4e5)));
+  if (json.includes("KHR_draco_mesh_compression")) {
+    const { DRACOLoader } = await import("three/addons/loaders/DRACOLoader.js");
+    const draco = new DRACOLoader();
+    draco.setDecoderPath("https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/libs/draco/gltf/");
+    loader.setDRACOLoader(draco);
+  }
+  if (json.includes("EXT_meshopt_compression")) {
+    const { MeshoptDecoder } = await import("three/addons/libs/meshopt_decoder.module.js");
+    loader.setMeshoptDecoder(MeshoptDecoder);
+  }
+  return loader;
+}
+var firstMaterial = (m) => (Array.isArray(m.material) ? m.material[0] : m.material) || {};
+var emissiveStrength = (mat) => mat.emissive ? Math.max(mat.emissive.r, mat.emissive.g, mat.emissive.b) * (mat.emissiveIntensity ?? 1) : 0;
+async function importModel(buffer, name = "model.glb") {
+  const loader = await createLoader(buffer);
+  const gltf = await loader.parseAsync(buffer, "");
+  const model = gltf.scene;
+  const warnings = [];
+  model.updateMatrixWorld(true);
+  const bounds = new THREE16.Box3().setFromObject(model);
+  if (bounds.isEmpty()) throw new Error("The file has no meshes.");
+  const sphere2 = bounds.getBoundingSphere(new THREE16.Sphere());
+  const scale = RADIUS2 / Math.max(1e-6, sphere2.radius);
+  const root = new THREE16.Group();
+  root.name = `import: ${name}`;
+  const holder = new THREE16.Group();
+  holder.scale.setScalar(scale);
+  holder.position.set(-sphere2.center.x * scale, -bounds.min.y * scale, -sphere2.center.z * scale);
+  holder.add(model);
+  root.add(holder);
+  root.updateMatrixWorld(true);
+  const meshes = [];
+  model.traverse((o) => {
+    if (o.isMesh) meshes.push(o);
+  });
+  if (meshes.some((m) => m.morphTargetInfluences?.length)) warnings.push("Morph targets are not animated on the styled and plain twins yet.");
+  if (meshes.some((m) => Array.isArray(m.material))) warnings.push("Meshes with several materials use their first material.");
+  const descriptors = meshes.map((m) => {
+    const mat = firstMaterial(m);
+    const box3 = new THREE16.Box3().setFromObject(m);
+    const ancestors = [];
+    for (let p10 = m.parent; p10 && p10 !== model.parent; p10 = p10.parent) if (p10.name) ancestors.push(p10.name);
+    return {
+      name: m.name,
+      materialName: mat.name,
+      ancestors,
+      userData: m.userData,
+      emissive: emissiveStrength(mat),
+      color: mat.color ? [mat.color.r, mat.color.g, mat.color.b] : null,
+      box: { min: box3.min.toArray(), max: box3.max.toArray() }
+    };
+  });
+  const guesses = guessParts(descriptors);
+  meshes.forEach((m, i) => {
+    const mat = firstMaterial(m);
+    if (!m.geometry.getAttribute("normal")) m.geometry.computeVertexNormals();
+    const em = emissiveStrength(mat);
+    m.userData.style = {
+      part: guesses[i].part,
+      color: mat.color ? `#${mat.color.getHexString()}` : "#cccccc",
+      roughness: mat.roughness ?? 0.8,
+      metalness: mat.metalness ?? 0,
+      emissive: em > 0.01 ? `#${mat.emissive.getHexString()}` : null,
+      emissiveIntensity: mat.emissiveIntensity ?? 1,
+      opacity: mat.transparent ? mat.opacity ?? 1 : 1,
+      doubleSided: mat.side === THREE16.DoubleSide,
+      map: mat.map || null,
+      vertexColors: !!(mat.vertexColors && m.geometry.getAttribute("color"))
+    };
+    m.userData.guess = guesses[i];
+    m.castShadow = m.receiveShadow = true;
+  });
+  if (!guesses.some((g) => g.part === "terrain" || g.part === "water")) {
+    const ground = new THREE16.Mesh(new THREE16.CircleGeometry(RADIUS2 * 6, 64).rotateX(-Math.PI / 2), new THREE16.MeshBasicMaterial());
+    ground.name = "added ground";
+    ground.position.y = -0.01;
+    ground.receiveShadow = true;
+    ground.userData.style = { part: "terrain", color: "#9a9784", roughness: 0.8 };
+    ground.userData.guess = { part: "terrain", reason: "added by Style Lab" };
+    root.add(ground);
+  }
+  if (gltf.animations.length) {
+    const mixer = new THREE16.AnimationMixer(model);
+    const clip = gltf.animations[0];
+    mixer.clipAction(clip).play();
+    root.userData.animate = (t) => mixer.setTime(clip.duration > 0 ? t % clip.duration : 0);
+  }
+  const box2 = new THREE16.Box3().setFromObject(holder);
+  const c = box2.getCenter(new THREE16.Vector3());
+  const R = box2.getBoundingSphere(new THREE16.Sphere()).radius;
+  const shot = (label, dist, elev, az, fov) => {
+    const e = elev * Math.PI / 180, a = az * Math.PI / 180;
+    return { label, pos: [c.x + Math.sin(a) * Math.cos(e) * dist, c.y + Math.sin(e) * dist, c.z + Math.cos(a) * Math.cos(e) * dist], target: c.toArray(), fov };
+  };
+  const def = {
+    id: "import",
+    imported: true,
+    name: `Imported: ${name}`,
+    inspiredBy: ["Your model"],
+    genre: "imported",
+    notes: `${meshes.length} meshes. Parts were guessed from tags, names and shapes; use Pick parts in the Scene tab to check and fix them. Complexity and density apply to built-in scenes only.`,
+    shots: {
+      hero: shot("Hero 3/4", R * 2.4, 24, 35, 40),
+      wide: shot("Wide", R * 3.6, 32, 45, 40),
+      close: shot("Close", R * 1.5, 14, 20, 40),
+      top: shot("Top-down", R * 3, 80, 0, 35)
+    },
+    defaultShot: "hero",
+    focus: c.toArray(),
+    shadow: { center: [c.x, 0, c.z], radius: R * 1.3 },
+    far: Math.max(500, R * 60),
+    params: {},
+    build: () => ({ root })
+  };
+  return { def, meshes: meshes.length, guesses, warnings, animations: gltf.animations.length };
+}
+
 // src/app/app.js
 var sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 function createApp({ renderer, canvas, persist = true }) {
   const store = createStore({ persist });
-  const camera = new THREE16.PerspectiveCamera(45, 1, 0.1, 1e3);
+  const camera = new THREE17.PerspectiveCamera(45, 1, 0.1, 1e3);
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
   controls.autoRotateSpeed = 1.2;
@@ -4923,12 +6761,15 @@ function createApp({ renderer, canvas, persist = true }) {
     for (const fn of listeners) fn(type, detail);
   };
   const custom = /* @__PURE__ */ new Map();
+  let imported = null;
+  const raycaster = new THREE17.Raycaster();
+  raycaster.layers.set(LAYER_STYLED);
   let built = null;
   let resolved = null;
-  let fov = null;
+  let fov = 45;
   let clock = 0, frozen = null;
   const state = () => store.get();
-  const scene = () => sceneById.get(state().sceneId) || SCENES[0];
+  const scene = () => state().sceneId === "import" && imported || sceneById.get(state().sceneId) || SCENES[0];
   const look2 = () => lookById.get(state().lookId) || custom.get(state().lookId) || LOOKS[0];
   const overrides = () => state().overrides[state().lookId] || {};
   const shotId = () => state().shot && scene().shots[state().shot] ? state().shot : scene().defaultShot;
@@ -4940,9 +6781,11 @@ function createApp({ renderer, canvas, persist = true }) {
     return rebuilt;
   }
   function applyFov() {
-    const src = resolved.sources["lens.fov"];
-    const next = src === "look" || src === "override" ? resolved.global["lens.fov"] : scene().shots[shotId()].fov;
+    const next = Math.min(110, scene().shots[shotId()].fov * resolved.global["lens.fovScale"]);
     if (next === fov) return;
+    const k = Math.tan(fov * Math.PI / 360) / Math.tan(next * Math.PI / 360);
+    const offset = camera.position.clone().sub(controls.target).multiplyScalar(k);
+    camera.position.copy(controls.target).add(offset);
     fov = next;
     camera.fov = fov;
     camera.updateProjectionMatrix();
@@ -4951,17 +6794,17 @@ function createApp({ renderer, canvas, persist = true }) {
     const shot = scene().shots[id];
     camera.position.set(...shot.pos);
     controls.target.set(...shot.target);
-    fov = null;
+    fov = shot.fov;
     applyFov();
     controls.update();
   }
   function loadScene({ moveCamera }) {
     const t0 = performance.now();
-    built = buildScene2(scene(), { tier: state().tier });
+    built = buildScene2(scene(), { tier: state().tier, density: state().density });
     runtime.setScene(built.root, scene());
     resolve();
     if (moveCamera) goToShot();
-    emit("scene", { scene: scene(), tier: state().tier, triangles: built.triangles, buildMs: performance.now() - t0 });
+    emit("scene", { scene: scene(), tier: state().tier, density: state().density, triangles: built.triangles, objects: built.objects, buildMs: performance.now() - t0 });
   }
   const actions = {
     /** Applies a library look by id, or a look object (validated). */
@@ -4982,7 +6825,7 @@ function createApp({ renderer, canvas, persist = true }) {
       actions.setLook(LOOKS[(i + d + LOOKS.length) % LOOKS.length].id);
     },
     setScene(id, { tier, shot } = {}) {
-      if (!sceneById.has(id)) throw new Error(`Unknown scene ${id}`);
+      if (!sceneById.has(id) && !(id === "import" && imported)) throw new Error(`Unknown scene ${id}`);
       store.set({ sceneId: id, shot: shot ?? null, ...tier !== void 0 ? { tier } : {} });
       loadScene({ moveCamera: true });
     },
@@ -4993,8 +6836,15 @@ function createApp({ renderer, canvas, persist = true }) {
     /** Rebuilds the geometry at another tier; layout, colors and camera stay put. */
     setTier(tier) {
       const t = Math.max(0, Math.min(TIERS.length - 1, tier));
-      if (t === state().tier && built) return;
+      if (t === state().tier && built || scene().imported) return;
       store.set({ tier: t });
+      loadScene({ moveCamera: false });
+    },
+    /** Prop density ×0.5–×4: more or fewer trees, props and crowds; landmarks stay. */
+    setDensity(d) {
+      const v = Math.max(DENSITY.min, Math.min(DENSITY.max, Math.round(d * 4) / 4));
+      if (v === state().density || scene().imported) return;
+      store.set({ density: v });
       loadScene({ moveCamera: false });
     },
     setShot(id) {
@@ -5044,6 +6894,39 @@ function createApp({ renderer, canvas, persist = true }) {
       runtime.setCompare({ splitPos: pos });
       emit("compare", state().compare);
     },
+    /** Loads a .glb/.gltf (ArrayBuffer) as the "Imported" scene. Resolves with what was found. */
+    async importModel(buffer, name) {
+      const result = await importModel(buffer, name);
+      imported = result.def;
+      store.set({ sceneId: "import", shot: null });
+      loadScene({ moveCamera: true });
+      emit("imported", result);
+      return result;
+    },
+    /** Pick tool: the styled mesh under normalized device coordinates (x, y ∈ [-1, 1]). */
+    pick(x, y) {
+      if (!built) return null;
+      raycaster.setFromCamera(new THREE17.Vector2(x, y), camera);
+      for (const hit of raycaster.intersectObject(built.root, true)) {
+        let o = hit.object;
+        while (o && !o.userData.style) o = o.parent;
+        if (!o) continue;
+        const info = { mesh: o, name: o.name || o.parent?.name || "mesh", part: o.userData.style.part, reason: o.userData.guess?.reason ?? "built-in scene tag", point: hit.point.toArray() };
+        emit("pick", info);
+        return info;
+      }
+      emit("pick", null);
+      return null;
+    },
+    /** Pick tool: move a mesh to another part; the current look styles it right away. */
+    setPart(mesh2, part) {
+      const ok = runtime.setPart(mesh2, part);
+      if (ok) {
+        mesh2.userData.guess = { part, reason: "set by you" };
+        emit("pick", { mesh: mesh2, name: mesh2.name || mesh2.parent?.name || "mesh", part, reason: "set by you" });
+      }
+      return ok;
+    },
     /** Freezes the animation clock at `t` seconds (null resumes), for repeatable captures. */
     freeze(t) {
       frozen = t;
@@ -5072,6 +6955,7 @@ function createApp({ renderer, canvas, persist = true }) {
       return () => listeners.delete(fn);
     },
     start() {
+      if (state().sceneId === "import" && !imported) store.set({ sceneId: SCENES[0].id, shot: null });
       const s = state();
       controls.autoRotate = s.turntable;
       runtime.setCompare({ split: s.compare.mode === "split", splitPos: s.compare.splitPos });
@@ -5134,19 +7018,24 @@ function createTopBar(app) {
   turntable.addEventListener("click", () => app.actions.setTurntable(!app.store.get().turntable));
   const sync = () => {
     const s = app.store.get();
-    sceneSelect.value = s.sceneId;
+    const imported = app.scene().imported ? app.scene() : null;
+    let opt = sceneSelect.querySelector('option[value="import"]');
+    if (imported && !opt) sceneSelect.append(opt = h("option", { value: "import" }, imported.name));
+    if (opt && imported) opt.textContent = imported.name;
+    sceneSelect.value = app.scene().id;
     tier.value = String(s.tier);
     tierLabel.textContent = TIERS[s.tier].name;
     const shots = app.scene().shots;
-    if (shotSelect.dataset.scene !== s.sceneId) {
+    tier.disabled = !!imported;
+    if (shotSelect.dataset.scene !== app.scene().name) {
       shotSelect.replaceChildren(...Object.entries(shots).map(([id, shot]) => h("option", { value: id }, shot.label)));
-      shotSelect.dataset.scene = s.sceneId;
+      shotSelect.dataset.scene = app.scene().name;
     }
     shotSelect.value = app.shotId();
     turntable.classList.toggle("on", s.turntable);
   };
   app.on((type) => {
-    if (["scene", "shot", "turntable"].includes(type)) sync();
+    if (["scene", "shot", "turntable", "imported"].includes(type)) sync();
   });
   sync();
 }
@@ -5256,6 +7145,118 @@ Why: ${e.learn.why}${e.structural ? "\n\nSwitching this rebuilds shaders (a shor
   return { pane, sync };
 }
 
+// src/app/ui/scenetab.js
+function createSceneTab(pane, app, { readouts, benefitMatrix, showImage, toast: toast2 }) {
+  let picking = false;
+  let picked = null;
+  const render = () => {
+    const s = app.store.get();
+    const scene = app.scene();
+    const r = readouts();
+    const imported = !!scene.imported;
+    pane.innerHTML = `
+			<article class="card">
+				<h3>${esc2(scene.name)}</h3>
+				<p class="hint">Inspired by ${esc2(scene.inspiredBy.join(", "))} · ${esc2(scene.genre)}</p>
+				<p>${esc2(scene.notes)}</p>
+				<h4>Shots</h4>
+				<div class="row">${Object.entries(scene.shots).map(([id, shot]) => `<button data-shot="${id}" class="${app.shotId() === id ? "on" : ""}">${esc2(shot.label)}</button>`).join("")}</div>
+				<h4>Prop density</h4>
+				<label class="strength">${imported ? '<span class="hint">Built-in scenes only</span>' : `<input type="range" min="${DENSITY.min}" max="${DENSITY.max}" step="0.25" value="${s.density}" data-density> <span>×${s.density}</span>`}</label>
+				<h4>Readouts</h4>
+				<table class="readouts">
+					<tr><td>Triangles</td><td>${(r.triangles / 1e3).toFixed(1)}k</td><td>Draw calls</td><td>${r.calls}</td></tr>
+					<tr><td>Objects</td><td>${r.objects}</td><td>Materials</td><td>${r.materials}</td></tr>
+					<tr><td>Geometries</td><td>${r.geometries}</td><td>Built in</td><td>${r.buildMs} ms</td></tr>
+				</table>
+				<p class="hint">Draw calls count both render sets (styled and the plain baseline) plus shadow maps.</p>
+				<div class="row">
+					<button data-matrix ${imported ? "disabled" : ""} title="Plain vs. styled at Blockout and Detailed, with the current look">▦ Benefit matrix</button>
+					<button data-import title="Load your own .glb or .gltf (or drop a file anywhere)">⇪ Import .glb…</button>
+					<button data-pick class="${picking ? "on" : ""}" title="Click objects in the view to see and change their part">⌖ Pick parts</button>
+				</div>
+				<input type="file" accept=".glb,.gltf,model/gltf-binary" data-file hidden>
+				${picking ? pickPanel() : ""}
+			</article>
+			<h4 class="section">All scenes</h4>
+			<div class="scene-cards">${SCENES.map((sc) => `
+				<button class="scene-card ${sc.id === scene.id ? "on" : ""}" data-scene="${sc.id}">
+					<b>${esc2(sc.name)}</b>
+					<span class="hint">${esc2(sc.inspiredBy.join(", "))}</span>
+					<span class="hint">${esc2(sc.genre)}</span>
+				</button>`).join("")}
+			</div>
+			<p class="hint">${esc2(TIERS[s.tier].name)} tier. Complexity and density keep the layout and camera; only geometry and prop counts change.</p>`;
+  };
+  const pickPanel = () => {
+    if (!picked) return '<p class="hint pick-hint">Click an object in the view.</p>';
+    return `
+			<div class="pick">
+				<p><b>${esc2(picked.name)}</b> · guessed by: ${esc2(picked.reason)}</p>
+				<label class="field">Part <select data-part>${PARTS.map((p10) => `<option ${p10 === picked.part ? "selected" : ""}>${p10}</option>`).join("")}</select></label>
+			</div>`;
+  };
+  pane.addEventListener("click", async (ev) => {
+    const t = ev.target.closest("button");
+    if (!t) return;
+    if (t.dataset.shot) return app.actions.setShot(t.dataset.shot);
+    if (t.dataset.scene) return app.actions.setScene(t.dataset.scene);
+    if (t.dataset.import !== void 0) return pane.querySelector("[data-file]").click();
+    if (t.dataset.pick !== void 0) {
+      picking = !picking;
+      picked = null;
+      render();
+      return;
+    }
+    if (t.dataset.matrix !== void 0) {
+      t.disabled = true;
+      t.textContent = "Rendering…";
+      try {
+        showImage(await benefitMatrix(), `Benefit matrix: ${app.look().name} on ${app.scene().name}`);
+      } catch (e) {
+        toast2(`Benefit matrix failed: ${e.message}`);
+      }
+      render();
+    }
+  });
+  pane.addEventListener("input", (ev) => {
+    if (ev.target.dataset.density === void 0) return;
+    ev.target.nextElementSibling.textContent = `×${ev.target.value}`;
+  });
+  pane.addEventListener("change", async (ev) => {
+    const t = ev.target;
+    if (t.dataset.density !== void 0) app.actions.setDensity(Number(t.value));
+    if (t.dataset.part !== void 0 && picked) app.actions.setPart(picked.mesh, t.value);
+    if (t.dataset.file !== void 0 && t.files[0]) await importFile(t.files[0]);
+  });
+  async function importFile(file) {
+    toast2(`Importing ${file.name}…`);
+    try {
+      const r = await app.actions.importModel(await file.arrayBuffer(), file.name);
+      const counts = {};
+      for (const g of r.guesses) counts[g.part] = (counts[g.part] || 0) + 1;
+      toast2(`Imported ${r.meshes} meshes: ${Object.entries(counts).map(([p10, n]) => `${n} ${p10}`).join(", ")}${r.warnings.length ? ` · ${r.warnings.join(" ")}` : ""}`, 7e3);
+      picking = true;
+    } catch (e) {
+      toast2(`Import failed: ${e.message}`, 7e3);
+    }
+    render();
+  }
+  app.on((type, detail) => {
+    if (type === "pick") {
+      picked = detail;
+      if (picking) render();
+    }
+    if (["scene", "shot", "imported"].includes(type)) {
+      picked = null;
+      render();
+    }
+  });
+  return { render, importFile, get picking() {
+    return picking;
+  } };
+}
+
 // src/app/ui/learn.js
 var COST2 = { cheap: "🟢 cheap", medium: "🟡 moderate", heavy: "🔴 heavy" };
 function paramCard(e, value) {
@@ -5315,7 +7316,7 @@ function bindLearnLinks(root, open) {
 }
 
 // src/app/ui/inspector.js
-var TABS = [["look", "Look"], ["tune", "Tune"], ["learn", "Learn"]];
+var TABS = [["look", "Look"], ["scene", "Scene"], ["tune", "Tune"], ["learn", "Learn"]];
 function lookTab(app) {
   const look2 = app.look();
   const scene = app.scene();
@@ -5346,7 +7347,7 @@ function lookTab(app) {
 			<p>${esc2(scene.notes)}</p>
 		</article>`;
 }
-function createInspector(root, app) {
+function createInspector(root, app, sceneOptions) {
   const nav = h("nav.tabs");
   const panes = Object.fromEntries(TABS.map(([id]) => [id, h("div.tab-pane", { dataset: { tab: id } })]));
   root.append(nav, ...Object.values(panes));
@@ -5360,6 +7361,7 @@ function createInspector(root, app) {
   };
   nav.append(...TABS.map(([id, label]) => h("button", { dataset: { tab: id }, onclick: () => setTab(id) }, label)));
   const tune = createTune(panes.tune, app, openLearn);
+  const sceneTab = createSceneTab(panes.scene, app, sceneOptions);
   function renderLearn() {
     const id = app.store.get().ui.learn;
     const e = id && byId.get(id);
@@ -5371,6 +7373,7 @@ function createInspector(root, app) {
     for (const [id, el] of Object.entries(panes)) el.hidden = id !== tab;
     if (tab === "look") panes.look.innerHTML = lookTab(app);
     if (tab === "learn") renderLearn();
+    if (tab === "scene") sceneTab.render();
   }
   bindLearnLinks(root, openLearn);
   root.addEventListener("input", (ev) => {
@@ -5401,7 +7404,7 @@ function createInspector(root, app) {
     if (tab === "learn" && type === "resolved" && !document.activeElement?.closest?.('.tab-pane[data-tab="learn"]')) renderLearn();
   });
   render();
-  return { render, openLearn, setTab, tune };
+  return { render, openLearn, setTab, tune, sceneTab };
 }
 
 // src/app/ui/compare.js
@@ -5647,7 +7650,51 @@ async function boot() {
   const appRoot = $("app");
   createTopBar(app);
   createLookBar($("looks"), app);
-  const inspector = createInspector($("inspector"), app);
+  let lastBuildMs = 0;
+  app.on((type, d) => {
+    if (type === "scene") lastBuildMs = Math.round(d.buildMs);
+  });
+  const readouts = () => ({
+    triangles: app.built?.triangles ?? 0,
+    objects: app.built?.objects ?? 0,
+    calls: renderer.info.render.drawCalls,
+    materials: app.runtime.materials.styled.size + app.runtime.materials.plain.size + app.runtime.materials.hulls.size,
+    geometries: renderer.info.memory.geometries,
+    buildMs: lastBuildMs
+  });
+  const showImage = (url, title) => {
+    const modal = $("modal");
+    modal.replaceChildren(h(
+      "div.modal-box",
+      {},
+      h("header", {}, h("b", {}, title), h("a", { href: url, download: `${title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.png` }, "Download PNG"), h("button", { onclick: () => {
+        modal.hidden = true;
+      } }, "✕")),
+      h("img", { src: url, alt: title })
+    ));
+    modal.hidden = false;
+  };
+  const inspector = createInspector($("inspector"), app, { readouts, benefitMatrix: () => api.benefitMatrix(), showImage, toast });
+  window.addEventListener("dragover", (e) => {
+    e.preventDefault();
+  });
+  window.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const file = [...e.dataTransfer?.files || []].find((f) => /\.(glb|gltf)$/i.test(f.name));
+    if (file) {
+      inspector.setTab("scene");
+      inspector.sceneTab.importFile(file);
+    } else if (e.dataTransfer?.files?.length) toast("Drop a .glb or .gltf file to import it.");
+  });
+  let down = null;
+  canvas.addEventListener("pointerdown", (e) => {
+    down = [e.clientX, e.clientY];
+  });
+  canvas.addEventListener("pointerup", (e) => {
+    if (!down || !inspector.sceneTab.picking || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
+    const r = canvas.getBoundingClientRect();
+    app.actions.pick((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height * 2 - 1));
+  });
   const compareUI = createCompareUI(app);
   const ui = {
     inspector,
@@ -5689,7 +7736,7 @@ async function boot() {
   resize();
   app.start();
   const stats = { fps: 0, cpuMs: 0, gpuMs: null, method: timestampsSupported(renderer) ? "timestamp" : "n/a", triangles: 0, calls: 0 };
-  const timer = new THREE17.Timer();
+  const timer = new THREE18.Timer();
   let paused = false, resolving = false, frames = 0, last = performance.now();
   renderer.setAnimationLoop(() => {
     if (paused) return;
@@ -5757,7 +7804,7 @@ async function boot() {
     getPerf: () => ({ ...stats }),
     runSpikes: (onResult) => runSpikes2(null, onResult),
     setup,
-    lookNames: Object.fromEntries(LOOKS.map((l) => [l.id, l.name]))
+    names: Object.fromEntries([...LOOKS, ...SCENES].map((x) => [x.id, x.name]))
   });
   const verifyButton = $("verify-btn");
   verifyButton.addEventListener("click", () => panel.toggle());
@@ -5779,6 +7826,10 @@ async function boot() {
     looks: () => LOOKS.map((l) => ({ id: l.id, name: l.name })),
     setScene: async (id, opts) => {
       app.actions.setScene(id, opts);
+      await nextFrames();
+    },
+    setDensity: async (d) => {
+      app.actions.setDensity(d);
       await nextFrames();
     },
     setTier: async (tier) => {
@@ -5814,12 +7865,16 @@ async function boot() {
         const px = await withRendererSize(renderer, width, height, async () => {
           app.tick(0);
           await renderToPixels(renderer, width, height, () => app.runtime.render());
-          return renderToPixels(renderer, width, height, () => app.runtime.render());
+          const pixels = await renderToPixels(renderer, width, height, () => app.runtime.render());
+          if (stats.method === "timestamp") await renderer.resolveTimestampsAsync("render");
+          return pixels;
         });
         const id = ++captureId;
         captures.set(id, px);
         if (captures.size > 16) captures.delete(captures.keys().next().value);
-        return { id, stats: pixelStats(px) };
+        let hash = 2166136261;
+        for (let i = 0; i < px.data.length; i++) hash = Math.imul(hash ^ px.data[i], 16777619);
+        return { id, stats: pixelStats(px), hash: (hash >>> 0).toString(16) };
       } finally {
         cam.aspect = aspect;
         cam.updateProjectionMatrix();
@@ -5850,6 +7905,38 @@ async function boot() {
       app.actions.setScene(previous.scene, { tier: previous.tier });
       app.actions.setLook(previous.look);
       return sheet.toDataURL("image/png");
+    },
+    /** The benefit matrix (§6.2): rows plain / styled, columns Blockout / Detailed, current look. */
+    benefitMatrix: async ({ cell = [480, 270] } = {}) => {
+      if (app.scene().imported) throw new Error("the benefit matrix needs a built-in scene (it compares tiers)");
+      const [w, hgt] = cell, pad = 22;
+      const sheet = document.createElement("canvas");
+      sheet.width = w * 2;
+      sheet.height = (hgt + pad) * 2;
+      const ctx = sheet.getContext("2d");
+      ctx.fillStyle = "#1b1b1c";
+      ctx.fillRect(0, 0, sheet.width, sheet.height);
+      ctx.font = "13px system-ui, sans-serif";
+      const tier = app.store.get().tier;
+      for (const [col, t] of [[0, 0], [1, TIERS.length - 1]]) {
+        app.actions.setTier(t);
+        for (const [row, plain2] of [[0, true], [1, false]]) {
+          app.actions.setHold(plain2);
+          const { id } = await api.capture({ width: w, height: hgt });
+          ctx.putImageData(new ImageData(new Uint8ClampedArray(captures.get(id).data), w, hgt), col * w, row * (hgt + pad) + pad);
+          ctx.fillStyle = "#e6e6e6";
+          ctx.fillText(`${plain2 ? "Plain" : app.look().name} · ${TIERS[t].name}`, col * w + 8, row * (hgt + pad) + 15);
+        }
+      }
+      app.actions.setHold(false);
+      app.actions.setTier(tier);
+      return sheet.toDataURL("image/png");
+    },
+    /** Imports a .glb/.gltf from an ArrayBuffer; returns counts and part guesses. */
+    importModel: async (buffer, name) => {
+      const r = await app.actions.importModel(buffer, name);
+      await nextFrames();
+      return { meshes: r.meshes, warnings: r.warnings, guesses: r.guesses };
     },
     /** Mean absolute difference (0–1) between two captures. */
     diff: (a, b) => {
