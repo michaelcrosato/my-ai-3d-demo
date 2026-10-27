@@ -5,4 +5,4 @@ export { StyleLightingModel, StyleSurfaceMaterial, createSurfaceUniforms } from 
 export { computeOutlineNormals, createHullMaterial } from './materials/outline.js';
 export { measureFrames, timestampsSupported, gpuIdle } from './perf/timer.js';
 
-export const RUNTIME_VERSION = '0.1.0';
+export const RUNTIME_VERSION = '0.1.1';

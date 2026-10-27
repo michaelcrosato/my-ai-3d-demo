@@ -35,12 +35,12 @@ function firstLine( text, max = 160 ) {
  * @param {{version: string, commit: string}} d.build
  * @param {object} d.env - from collectCaps(), plus viewport {width, height}
  * @param {Array<{id: string, title: string, status?: string, note?: string}>} d.checks
- * @param {Array<object>} [d.spikes] - spike results
+ * @param {Object<string, object[]>} [d.spikeRuns] - spike results by backend name
  * @param {Array<{level: string, message: string, count: number}>} [d.log]
  * @param {object} [d.perf] - {gpuMs, cpuMs, fps, method}
  * @param {string} [d.date] - ISO date
  */
-export function formatReport( { build, env, checks, spikes = [], log = [], perf = null, date = new Date().toISOString() } ) {
+export function formatReport( { build, env, checks, spikeRuns = {}, log = [], perf = null, date = new Date().toISOString() } ) {
 
 	const lines = [];
 	lines.push( `### Style Lab verify report — v${build.version} (${build.commit}) — ${date.slice( 0, 10 )}` );
@@ -59,10 +59,11 @@ export function formatReport( { build, env, checks, spikes = [], log = [], perf 
 
 	}
 
-	if ( spikes.length ) {
+	for ( const [ backend, spikes ] of Object.entries( spikeRuns ) ) {
 
+		if ( ! spikes.length ) continue;
 		const sc = ( s ) => spikes.filter( ( r ) => r.status === s ).length;
-		lines.push( `Spikes (${env.backend}): ${sc( 'go' )} go · ${sc( 'go-fallback' )} go-fallback · ${sc( 'no-go' )} no-go · ${sc( 'error' )} error` );
+		lines.push( `Spikes (${backend}): ${sc( 'go' )} go · ${sc( 'go-fallback' )} go-fallback · ${sc( 'no-go' )} no-go · ${sc( 'error' )} error` );
 
 		for ( const r of spikes ) {
 

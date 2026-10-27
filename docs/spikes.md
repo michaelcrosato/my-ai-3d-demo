@@ -13,8 +13,9 @@ The eight API spikes from DESIGN.md §9 (M0). Every spike lives in `src/app/spik
 | WebGPU | `google / swiftshader`, software fallback adapter, `timestamp-query` available |
 | WebGL2 | ANGLE on SwiftShader Vulkan, `EXT_disjoint_timer_query_webgl2` available |
 | Targets | dev page over http (WebGL2), built file over http (WebGL2 and WebGPU), built file from `file://` (WebGL2, and auto, which picked WebGPU) |
+| Real hardware | Chrome 156 / Windows, NVIDIA GeForce RTX 3060 Ti, built file from `file://`, WebGPU and WebGL2 (ANGLE D3D11). Run by the user through the Verify panel; see [Real hardware](#real-hardware) |
 
-The values were identical on both backends, apart from timings. A software GPU says nothing about speed or about vendor driver quirks, so the real-hardware run is check **M0-04** in the Verify panel.
+The values were identical on both backends, apart from timings, and the real-hardware run matched them (see below).
 
 ## Summary
 
@@ -139,7 +140,26 @@ The flat-normal cracks confirm why outline normals are needed. The unit tests ch
 
 **Known warning.** The compat build itself logs `using deprecated parameters for the initialization function; pass a single object instead` during `RAPIER.init()`. It comes from Rapier's own call to its WASM loader, so there's nothing to fix on our side, and it's harmless.
 
+## Real hardware
+
+The user ran the Verify checklist on Chrome 156 / Windows with an RTX 3060 Ti (2026-10-27). All six checks pass: the WebGPU badge, `file://`, no errors while orbiting, spikes on WebGPU, spikes on forced WebGL2, and resize/zoom.
+
+- **Spikes.** All 8 are go on both backends. Every measured value matches the software-GPU run within rounding. For example, the cast shadow equals the form-shadow band at 0.1508 vs 0.1508, and the four posterize levels are 0/64/127/191.
+- **Numbers that differ** (WebGL2 run; the WebGPU run was reported as statuses and times only):
+
+| Measurement | Software GPU | RTX 3060 Ti |
+|---|---|---|
+| S2: pixels with blended ids under MSAA ×4 | ~520 | 460 |
+| S5: average per rebuild + render | 51 ms | 19.7 ms |
+| S5: whole spike, WebGPU / WebGL2 | — | 3.1 s / 4.0 s |
+| S7: GPU time per frame, 256 px torus knot | 1.4 ms | 0.14 ms |
+| S8: Rapier load + init | 82–118 ms | 14 ms |
+| Test stage at 3387×1855, DPR 1.5 (WebGL2) | — | GPU 4.7–5.8 ms/frame, 60 fps |
+
+- **Warnings.** The only one is Rapier's known init warning (§8).
+- **UX fix from this run (v0.1.1).** The WebGL2 reload button was labeled "Set it up for me" while the step said "Reload with WebGL2", so it was hard to find. Action buttons are now labeled with what they do. The report also keeps one spike run per backend, so M0-04 and M0-05 fit in one report.
+
 ## What I could not verify here
 
-- Hardware GPUs, Safari, Firefox, and phones. These are Verify panel checks **M0-01** (WebGPU badge), **M0-04** (spikes on your GPU) and **M0-05** (forced WebGL2).
-- Performance on real hardware: everything above ran on a software GPU.
+- Safari, Firefox, phones, and AMD, Intel or Apple GPUs.
+- Performance on phones. The M7 perf audit covers it.

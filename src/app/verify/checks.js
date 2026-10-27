@@ -1,5 +1,5 @@
 // Human checks for each milestone (design §6.14). Later milestones append here.
-// `action` names a "Set it up for me" handler in the panel.
+// `actions` name panel handlers; each button is labeled with what it does (panel.js ACTION_LABELS).
 
 export const CHECKS = [
 	{
@@ -23,16 +23,16 @@ export const CHECKS = [
 	{
 		id: 'M0-04',
 		title: 'Spikes pass on your GPU',
-		steps: [ 'Open the Spikes tab and press "Run all spikes" (takes a few seconds).' ],
+		steps: [ 'Press "Run all spikes" below (takes a few seconds). The Spikes tab shows the details.' ],
 		expected: 'Every spike is "go" or "go-fallback". Any "no-go" or "error" is exactly what I need to see.',
-		action: 'runSpikes',
+		actions: [ 'runSpikes' ],
 	},
 	{
 		id: 'M0-05',
 		title: 'Forced WebGL2 also works',
-		steps: [ 'Press "Reload with WebGL2" (adds ?backend=webgl).', 'Then run the spikes again and copy that report too.' ],
+		steps: [ 'Press "Reload with WebGL2" below (adds ?backend=webgl to the URL).', 'Press "Run all spikes" again. The report keeps the results from both backends.' ],
 		expected: 'Badge reads "WebGL2", the scene renders, spikes are go or go-fallback.',
-		action: 'reloadWebGL',
+		actions: [ 'reloadWebGL', 'runSpikes' ],
 	},
 	{
 		id: 'M0-06',

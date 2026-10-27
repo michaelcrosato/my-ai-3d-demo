@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.1 — Verify panel fixes from the first hardware run (2026-10-27)
+
+M0 passed on real hardware (Chrome 156 / Windows / RTX 3060 Ti): all six checks pass, and all 8 spikes are go on WebGPU and WebGL2. Details: [docs/spikes.md](docs/spikes.md#real-hardware).
+
+**Fixed**
+- Checklist buttons are labeled with what they do (**▶ Run all spikes**, **↻ Reload with WebGL2**) instead of "Set it up for me", and M0-05 has both.
+- The report keeps one spike run per backend. One copied report now covers the WebGPU and WebGL2 runs, so you don't need to paste results into notes.
+
+**What to test:** nothing new is required. If you open the new build, the checklist starts fresh, because results are stored per build.
+
 ## v0.1.0 — M0: foundations and API spikes (2026-10-27)
 
 **What's new**
@@ -17,7 +27,7 @@
 2. **M0-02** The downloaded file works when double-clicked (`file://`).
 3. **M0-03** Orbit for about 10 s, then check the Environment tab shows no errors.
 4. **M0-04** Spikes tab → **Run all spikes** on your GPU.
-5. **M0-05** **Reload with WebGL2**, then run the spikes again.
+5. **M0-05** **Reload with WebGL2**, then run the spikes again. The report keeps both runs.
 6. **M0-06** Resize the window and zoom the browser; everything stays crisp.
 
 Then Report → **Copy report** and paste it back.

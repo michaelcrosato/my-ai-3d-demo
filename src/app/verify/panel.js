@@ -4,6 +4,7 @@ import { CHECKS } from './checks.js';
 import { formatReport } from './report.js';
 
 const STORE_KEY = 'stylelab.verify.v1';
+const ACTION_LABELS = { runSpikes: '▶ Run all spikes', reloadWebGL: '↻ Reload with WebGL2' };
 
 function load() {
 
@@ -32,13 +33,16 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 
 	const store = load();
 	const key = `${build.version}+${build.commit}`;
-	const state = store[ key ] || ( store[ key ] = { checks: {}, spikes: [] } );
+	// Spike results are kept per backend, so one report covers the WebGPU and the WebGL2 run.
+	const state = store[ key ] || ( store[ key ] = { checks: {}, spikeRuns: {} } );
+	const backend = () => getEnv().backend;
+	const currentSpikes = () => state.spikeRuns[ backend() ] || [];
 	let tab = 'checklist';
 	let running = false;
 
 	const persist = () => save( store );
 	const checks = () => CHECKS.map( ( c ) => ( { ...c, ...state.checks[ c.id ] } ) );
-	const report = () => formatReport( { build, env: getEnv(), checks: checks(), spikes: state.spikes, log: log.entries, perf: getPerf() } );
+	const report = () => formatReport( { build, env: getEnv(), checks: checks(), spikeRuns: state.spikeRuns, log: log.entries, perf: getPerf() } );
 
 	const actions = {
 		runSpikes: () => { tab = 'spikes'; render(); startSpikes(); },
@@ -49,9 +53,9 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 
 		if ( running ) return;
 		running = true;
-		state.spikes = [];
+		const results = state.spikeRuns[ backend() ] = [];
 		render();
-		await runSpikes( ( r ) => { state.spikes.push( r ); persist(); render(); } );
+		await runSpikes( ( r ) => { results.push( r ); persist(); render(); } );
 		running = false;
 		render();
 
@@ -68,15 +72,15 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 					<p class="expected"><b>Expected:</b> ${esc( c.expected )}</p>
 					<div class="row">
 						${[ 'pass', 'fail', 'unsure' ].map( ( s ) => `<button class="status ${c.status === s ? 'on ' + s : ''}" data-status="${s}">${{ pass: '✅ Pass', fail: '❌ Fail', unsure: '⚠️ Unsure' }[ s ]}</button>` ).join( '' )}
-						${c.action ? `<button data-action="${c.action}">Set it up for me</button>` : ''}
+						${( c.actions || [] ).map( ( a ) => `<button data-action="${a}" ${a === 'runSpikes' && running ? 'disabled' : ''}>${ACTION_LABELS[ a ] || 'Set it up for me'}</button>` ).join( '' )}
 					</div>
 					<textarea placeholder="Notes (what you saw)" data-note>${esc( c.note || '' )}</textarea>
 				</section>` ).join( '' )}`,
 
 		spikes: () => `
 			<div class="row"><button class="primary" data-run ${running ? 'disabled' : ''}>${running ? 'Running…' : 'Run all spikes'}</button>
-			<span class="hint">Runs offscreen at 256×256 on the current backend (${esc( getEnv().backend )}).</span></div>
-			${state.spikes.map( ( r ) => `
+			<span class="hint">Runs offscreen at 256×256 on the current backend (${esc( backend() )}).${Object.keys( state.spikeRuns ).filter( ( b ) => b !== backend() && state.spikeRuns[ b ].length ).map( ( b ) => ` Your ${esc( b )} run is kept for the report.` ).join( '' )}</span></div>
+			${currentSpikes().map( ( r ) => `
 				<details class="spike ${r.status}" ${r.status !== 'go' ? 'open' : ''}>
 					<summary><span class="chip ${r.status}">${r.status}</span> S${r.id} ${esc( r.title )} <span class="ms">${r.ms} ms</span></summary>
 					${r.error ? `<pre class="err">${esc( r.error )}</pre>` : ''}
@@ -140,7 +144,7 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 
 		if ( t.dataset.download !== undefined ) {
 
-			const data = { build, env: getEnv(), checks: checks(), spikes: state.spikes, log: log.entries, perf: getPerf() };
+			const data = { build, env: getEnv(), checks: checks(), spikeRuns: state.spikeRuns, log: log.entries, perf: getPerf() };
 			const a = document.createElement( 'a' );
 			a.href = URL.createObjectURL( new Blob( [ JSON.stringify( data, null, 2 ) ], { type: 'application/json' } ) );
 			a.download = `stylelab-verify-${build.version}.json`;
@@ -172,12 +176,12 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 	/** Records spike results run outside the panel (test API), so the report includes them. */
 	function setSpikes( results ) {
 
-		state.spikes = results;
+		state.spikeRuns[ backend() ] = results;
 		persist();
 		if ( ! root.hidden ) render();
 
 	}
 
-	return { toggle, startSpikes, setSpikes, report, render, get spikes() { return state.spikes; } };
+	return { toggle, startSpikes, setSpikes, report, render, get spikes() { return currentSpikes(); } };
 
 }

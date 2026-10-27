@@ -30,11 +30,14 @@ test( 'report has the header, env, counts, failures, spikes, errors and perf', (
 			{ id: 'M0-03', title: 'No errors', status: 'unsure' },
 			{ id: 'M0-04', title: 'Spikes pass' },
 		],
-		spikes: [
-			{ id: 1, key: 'cel-ramp', status: 'go', checks: [], notes: [] },
-			{ id: 7, key: 'timestamps', status: 'go-fallback', checks: [], notes: [ 'No timestamp queries on this GPU.' ] },
-			{ id: 2, key: 'mrt-ids', status: 'no-go', checks: [ { name: 'box writes part 3', pass: false, info: false, value: [ 0, 0 ], expect: '[3, 10]' } ], notes: [] },
-		],
+		spikeRuns: {
+			WebGPU: [
+				{ id: 1, key: 'cel-ramp', status: 'go', checks: [], notes: [] },
+				{ id: 7, key: 'timestamps', status: 'go-fallback', checks: [], notes: [ 'No timestamp queries on this GPU.' ] },
+				{ id: 2, key: 'mrt-ids', status: 'no-go', checks: [ { name: 'box writes part 3', pass: false, info: false, value: [ 0, 0 ], expect: '[3, 10]' } ], notes: [] },
+			],
+			WebGL2: [ { id: 1, key: 'cel-ramp', status: 'go', checks: [], notes: [] } ],
+		},
 		log: [ { level: 'error', message: '[webgpu] validation failed\nstack…', count: 3 }, { level: 'warn', message: 'benign', count: 1 } ],
 		perf: { gpuMs: 3.14159, cpuMs: 0.5, fps: 59.6, method: 'timestamp' },
 	} );
@@ -46,6 +49,7 @@ test( 'report has the header, env, counts, failures, spikes, errors and perf', (
 	assert.ok( text.includes( '❌ M0-02 Works when opened from disk — "blank page"' ) );
 	assert.ok( ! text.includes( 'M0-01' ), 'passing checks without notes are omitted' );
 	assert.ok( text.includes( 'Spikes (WebGPU): 1 go · 1 go-fallback · 1 no-go · 0 error' ) );
+	assert.ok( text.includes( 'Spikes (WebGL2): 1 go · 0 go-fallback · 0 no-go · 0 error' ), 'runs from both backends are kept' );
 	assert.ok( text.includes( '⚠️ S7 timestamps — go-fallback: No timestamp queries on this GPU.' ) );
 	assert.ok( text.includes( '❌ S2 mrt-ids — no-go: box writes part 3 (got [0,0], want [3, 10])' ) );
 	assert.ok( text.includes( '  - [webgpu] validation failed ×3' ), 'errors show first line and count' );

@@ -1283,7 +1283,7 @@ The strategy is **cheap automated checks for correctness, and human eyes for aes
 Each milestone ends with: `npm test` and `npm run smoke` green, a rebuilt `dist/style-lab.html`, new Verify-panel checks, and a short `CHANGELOG.md` entry with *what to test*. Effort levels are summarized in [§11](#11-effort-level-per-milestone).
 
 ### M0 — Foundations and spikes
-- **Status:** done (v0.1.0). All 8 spikes are go on WebGPU and WebGL2; results and decisions are in [docs/spikes.md](docs/spikes.md).
+- **Status:** done (v0.1.0) and verified on real hardware (Chrome 156 / Windows / RTX 3060 Ti, all six checks pass). All 8 spikes are go on WebGPU and WebGL2; results and decisions are in [docs/spikes.md](docs/spikes.md).
 - **Scope:**
   - Repository scaffold (layout in §7.2), dev `index.html` with the import map, `scripts/build.mjs` producing `dist/style-lab.html`, the `node:test` setup, the smoke-test skeleton
   - Renderer bootstrap: WebGPU with WebGL2 forcing, resize, DPR, loop, `OrbitControls`
