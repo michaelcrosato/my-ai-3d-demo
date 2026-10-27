@@ -26,8 +26,8 @@ const distFile = pathToFileURL( path.join( ROOT, 'dist/style-lab.html' ) ).href;
 
 const RUNS = [
 	{ name: 'dev  · http · WebGL2', url: ( base ) => `${base}/index.html?backend=webgl`, backend: 'WebGL2' },
-	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2' },
-	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm0-webgpu.png', panel: true },
+	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2', m1: true },
+	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm1-webgpu.png', panel: true, m1: true, sheet: 'm1-contact.png' },
 	{ name: 'dist · file · WebGL2', url: () => `${distFile}?backend=webgl`, backend: 'WebGL2' },
 	{ name: 'dist · file · auto  ', url: () => distFile, backend: null },
 ].filter( ( r ) => ! value( '--only' ) || r.name.includes( value( '--only' ) ) );
@@ -47,6 +47,114 @@ async function routeCdn( context ) {
 		} );
 
 	} );
+
+}
+
+/**
+ * M1 acceptance checks (design §8 numeric image checks, §9 M1), all numeric:
+ * every scene × look renders and differs from plain, hold compare shows exactly the
+ * baseline, the Plain look matches the baseline, strength 0 equals the neutral look,
+ * sliders never rebuild, switches rebuild only what they affect, tiers keep the camera.
+ */
+async function m1Checks( page, fail, run ) {
+
+	const out = await page.evaluate( async () => {
+
+		const s = window.__stylelab;
+		const res = { cells: [], checks: [] };
+		const check = ( name, pass, value ) => res.checks.push( { name, pass, value } );
+		const cap = async () => ( await s.capture( { width: 320, height: 180 } ) );
+		s.freeze( 1 );
+
+		for ( const scene of s.scenes() ) {
+
+			await s.setScene( scene.id, { tier: 1 } );
+			await s.applyLook( 'plain' );
+			const styledPlain = await cap();
+			s.compare( 'hold', { on: true } );
+			const baseline = await cap();
+			s.compare( 'hold', { on: false } );
+			const camAt = () => JSON.stringify( [ ...s.app.camera.position.toArray(), s.app.camera.fov ].map( ( v ) => +v.toFixed( 3 ) ) );
+			const baseCam = camAt();
+			check( `${scene.id}: Plain look matches the baseline set`, s.diff( styledPlain.id, baseline.id ).mae < 0.02, s.diff( styledPlain.id, baseline.id ).mae );
+
+			for ( const look of s.looks().filter( ( l ) => l.id !== 'plain' ) ) {
+
+				await s.applyLook( look.id );
+				const a = await cap();
+				s.compare( 'hold', { on: true } );
+				const held = await cap();
+				s.compare( 'hold', { on: false } );
+				// A look with its own lens moves the shared camera, so the baseline image moves too.
+				const sameCamera = camAt() === baseCam;
+				const differs = s.diff( a.id, held.id ).mae, holdErr = sameCamera ? s.diff( held.id, baseline.id ).mae : null;
+				res.cells.push( { scene: scene.id, look: look.id, meanLuma: a.stats.meanLuma, lumaStd: a.stats.lumaStd, differs, holdErr } );
+				check( `${scene.id} × ${look.id}: not blank`, a.stats.lumaStd > 0.03 && a.stats.meanLuma > 0.05 && a.stats.meanLuma < 0.95, a.stats );
+				check( `${scene.id} × ${look.id}: differs from plain`, differs > 0.03, differs );
+				if ( sameCamera ) check( `${scene.id} × ${look.id}: hold compare shows exactly the baseline`, holdErr < 0.004, holdErr );
+
+			}
+
+		}
+
+		// Strength 0 renders the same as that look's neutral version, applied directly.
+		await s.setScene( 'lookdev', { tier: 1 } );
+		await s.applyLook( 'sea-breeze' );
+		const before = s.info();
+		s.setStrength( 0 );
+		check( 'strength slider never rebuilds', s.info().materialBuilds === before.materialBuilds && s.info().graphBuilds === before.graphBuilds, s.info().lastRebuild );
+		const zero = await cap();
+		const r = s.getResolvedLook();
+		s.setStrength( 1 );
+		const params = { ...r.global };
+		if ( ! [ 'look', 'override' ].includes( r.sources[ 'lens.fov' ] ) ) delete params[ 'lens.fov' ]; // keep the shot's lens
+		await s.applyLook( { schema: 'stylelab.look@1', id: 'neutral-test', name: 'Neutral (test)', params, parts: Object.fromEntries( Object.entries( r.parts ).map( ( [ p, v ] ) => [ p, { params: v } ] ) ) } );
+		const neutral = await cap();
+		check( 'strength 0 equals the neutral look', s.diff( zero.id, neutral.id ).mae < 0.004, s.diff( zero.id, neutral.id ).mae );
+
+		// Sliders are uniforms; switches rebuild only what they affect.
+		await s.applyLook( 'sea-breeze' );
+		const i0 = s.info();
+		for ( const [ id, v ] of [ [ 'atmosphere.fog.density', 0.02 ], [ 'surface.softness', 0.2 ], [ 'grade.contrast', 1.3 ], [ 'lines.hull.thickness', 3 ], [ 'lighting.key.elevation', 20 ], [ 'palette.saturation', 0.5 ] ] ) s.setParam( id, v );
+		const i1 = s.info();
+		check( 'sliders never rebuild', i1.materialBuilds === i0.materialBuilds && i1.graphBuilds === i0.graphBuilds && i1.passBuilds === i0.passBuilds, [ i0, i1 ].map( ( i ) => [ i.materialBuilds, i.graphBuilds, i.passBuilds ] ) );
+		const bloom = s.setParam( 'lens.bloom.enabled', false );
+		check( 'bloom switch rebuilds only the post graph', bloom.graph && ! bloom.pass && bloom.parts.length === 0, bloom );
+		const flat = s.setParam( 'surface.flatNormals', true );
+		check( 'flat-normals switch rebuilds only materials', flat.parts.length > 0 && ! flat.graph && ! flat.pass, flat );
+		const ink = s.setParam( 'lines.screen.enabled', true );
+		check( 'ink switch rebuilds the scene pass and graph, not materials', ink.pass && ink.graph && ink.parts.length === 0, ink );
+		const inked = await cap();
+		check( 'ink renders', inked.stats.lumaStd > 0.03, inked.stats );
+		s.app.actions.resetParams();
+
+		// Tiers change geometry, not the camera.
+		await s.setScene( 'harbor', { tier: 0 } );
+		const cam0 = s.app.camera.position.toArray().map( ( v ) => +v.toFixed( 4 ) );
+		const tris = [];
+		for ( const t of [ 0, 1, 2, 3 ] ) { await s.setTier( t ); tris.push( s.info().triangles ); }
+		const cam1 = s.app.camera.position.toArray().map( ( v ) => +v.toFixed( 4 ) );
+		check( 'tiers add geometry', tris.every( ( n, i ) => i === 0 || n > tris[ i - 1 ] ), tris );
+		check( 'tiers keep the camera', JSON.stringify( cam0 ) === JSON.stringify( cam1 ), [ cam0, cam1 ] );
+		const detailed = await cap();
+		check( 'Detailed tier renders', detailed.stats.lumaStd > 0.03, detailed.stats );
+		await s.setTier( 1 );
+		s.freeze( null );
+		return res;
+
+	} );
+
+	for ( const c of out.checks ) if ( ! c.pass ) fail( `M1: ${c.name} (${JSON.stringify( c.value )})` );
+
+	if ( run.sheet ) {
+
+		const url = await page.evaluate( () => window.__stylelab.contactSheet( { tier: 2 } ) );
+		await mkdir( ARTIFACTS, { recursive: true } );
+		await writeFile( path.join( ARTIFACTS, run.sheet ), Buffer.from( url.split( ',' )[ 1 ], 'base64' ) );
+
+	}
+
+	return out;
 
 }
 
@@ -72,7 +180,7 @@ async function smoke( browser, run, base ) {
 		if ( run.backend && result.backend !== run.backend ) fail( `backend ${result.backend}, expected ${run.backend}` );
 
 		await page.waitForTimeout( 500 );
-		result.frame = await page.evaluate( () => window.__stylelab.capture() );
+		result.frame = ( await page.evaluate( () => window.__stylelab.capture() ) ).stats;
 		if ( ! ( result.frame.lumaStd > 0.02 && result.frame.meanLuma > 0.05 && result.frame.meanLuma < 0.95 ) ) fail( `frame looks blank: ${JSON.stringify( result.frame )}` );
 		result.stats = await page.evaluate( () => window.__stylelab.frameStats() );
 
@@ -82,6 +190,8 @@ async function smoke( browser, run, base ) {
 			await page.screenshot( { path: path.join( ARTIFACTS, run.screenshot ) } );
 
 		}
+
+		if ( run.m1 && ! flag( '--no-m1' ) ) result.m1 = await m1Checks( page, fail, run );
 
 		if ( ! flag( '--no-spikes' ) ) {
 
@@ -95,7 +205,7 @@ async function smoke( browser, run, base ) {
 		if ( run.panel ) {
 
 			await page.click( '#verify-btn' );
-			await page.click( '.check[data-id="M0-01"] [data-status="pass"]' );
+			await page.click( '.check[data-id="M1-01"] [data-status="pass"]' );
 			await page.click( '[data-tab="report"]' );
 			result.report = await page.inputValue( 'textarea.report' );
 			if ( ! result.report.includes( 'Checks: 1 pass' ) ) fail( 'Verify report does not record the clicked check' );

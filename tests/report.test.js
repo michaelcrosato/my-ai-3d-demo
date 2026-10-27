@@ -29,6 +29,7 @@ test( 'report has the header, env, counts, failures, spikes, errors and perf', (
 			{ id: 'M0-02', title: 'Works when opened from disk', status: 'fail', note: 'blank page' },
 			{ id: 'M0-03', title: 'No errors', status: 'unsure' },
 			{ id: 'M0-04', title: 'Spikes pass' },
+			{ id: 'M1-07', title: 'Rate the four looks', ratingsList: [ { id: 'sea-breeze', name: 'Sea Breeze Toon', evoke: 4, like: 5 }, { id: 'graffiti-rush', name: 'Graffiti Rush', evoke: 3, note: 'more purple' }, { id: 'golden-hour', name: 'Golden Hour' } ] },
 		],
 		spikeRuns: {
 			WebGPU: [
@@ -45,7 +46,8 @@ test( 'report has the header, env, counts, failures, spikes, errors and perf', (
 	const lines = text.split( '\n' );
 	assert.equal( lines[ 0 ], '### Style Lab verify report — v0.1.0 (abc1234) — 2026-11-02' );
 	assert.equal( lines[ 1 ], 'Env: Chrome 141 / macOS · WebGPU · apple metal-3 · 2560×1440 @2 · timestamp-query ✓ · file:' );
-	assert.ok( text.includes( 'Checks: 1 pass · 1 fail · 1 unsure · 1 not done' ) );
+	assert.ok( text.includes( 'Checks: 1 pass · 1 fail · 1 unsure · 2 not done' ) );
+	assert.ok( text.includes( '📝 M1-07 Rate the four looks — Sea Breeze Toon evokes 4/5 · likes 5/5; Graffiti Rush evokes 3/5 · likes –/5 ("more purple")' ), 'ratings line' );
 	assert.ok( text.includes( '❌ M0-02 Works when opened from disk — "blank page"' ) );
 	assert.ok( ! text.includes( 'M0-01' ), 'passing checks without notes are omitted' );
 	assert.ok( text.includes( 'Spikes (WebGPU): 1 go · 1 go-fallback · 1 no-go · 0 error' ) );

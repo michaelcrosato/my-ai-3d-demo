@@ -1,16 +1,23 @@
-// Style Lab app entry (M0): renderer bootstrap, test stage, status bar,
-// Verify panel and the window.__stylelab test API (design §7.20).
+// Style Lab app entry: renderer bootstrap, the app controller and its UI, the frame
+// loop with GPU timing, the Verify panel and the window.__stylelab test API (§7.20).
 
 import * as THREE from 'three/webgpu';
-import { pass } from 'three/tsl';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { installErrorCapture } from './diagnostics/errors.js';
 import { parseParams } from './boot/params.js';
 import { createRenderer, collectCaps, backendName } from './boot/renderer.js';
-import { renderToPixels, pixelStats } from './gpu/readback.js';
+import { renderToPixels, withRendererSize, pixelStats } from './gpu/readback.js';
 import { runSpikes as runSpikeSuite, SPIKES } from './spikes/index.js';
 import { createVerifyPanel } from './verify/panel.js';
-import { buildStage } from '../scenes/m0-stage.js';
+import { createApp } from './app.js';
+import { createTopBar } from './ui/topbar.js';
+import { createLookBar } from './ui/lookbar.js';
+import { createInspector } from './ui/inspector.js';
+import { createCompareUI } from './ui/compare.js';
+import { $, h, toast } from './ui/dom.js';
+import { bindKeyboard, KEYS } from './input/keyboard.js';
+import { createGamepad } from './input/gamepad.js';
+import { LOOKS } from '../content/looks/index.js';
+import { SCENES, TIERS } from '../scenes/index.js';
 import { timestampsSupported } from '../runtime/index.js';
 
 const log = installErrorCapture();
@@ -19,7 +26,6 @@ const log = installErrorCapture();
 const BUILD = typeof __STYLELAB_BUILD__ !== 'undefined' ? __STYLELAB_BUILD__ : { version: 'dev', commit: 'dev', date: '' };
 
 const params = parseParams( location.search );
-const $ = ( id ) => document.getElementById( id );
 
 let markReady;
 const ready = new Promise( ( resolve ) => { markReady = resolve; } );
@@ -37,6 +43,48 @@ boot().catch( ( e ) => {
 
 } );
 
+const nextFrames = ( n = 2 ) => new Promise( ( resolve ) => { let k = 0; const f = () => ( ++ k >= n ? resolve() : requestAnimationFrame( f ) ); requestAnimationFrame( f ); } );
+
+/** First-run coach marks (§5.2). Each can be dismissed; they don't come back. */
+function createCoach( app ) {
+
+	const el = $( 'coach' );
+	const tried = new Set();
+	const seen = ( id ) => app.store.get().tips.seen.includes( id );
+	const mark = ( id ) => { if ( ! seen( id ) ) app.store.set( { tips: { seen: [ ...app.store.get().tips.seen, id ] } } ); };
+	let current = null;
+
+	const show = ( id, text ) => {
+
+		if ( seen( id ) ) return;
+		current = id;
+		el.replaceChildren( h( 'span', {}, text ), h( 'button', { onclick: () => { mark( id ); el.hidden = true; } }, '✕' ) );
+		el.hidden = false;
+
+	};
+
+	const done = ( id ) => { mark( id ); if ( current === id ) el.hidden = true; };
+
+	app.on( ( type, detail ) => {
+
+		if ( type === 'look' && detail.id !== 'plain' ) {
+
+			tried.add( detail.id );
+			done( 'start' );
+			show( 'compare', 'Hold Space (or Hold to compare) to see the difference against the plain baseline.' );
+			if ( tried.size >= 3 ) show( 'tiers', 'Try Complexity in the top bar: stylization lifts blockout geometry the most.' );
+
+		}
+
+		if ( type === 'hold' && detail ) done( 'compare' );
+		if ( type === 'scene' && seen( 'compare' ) && tried.size >= 3 ) done( 'tiers' );
+
+	} );
+
+	show( 'start', 'This is what a typical agent-made scene looks like. Pick a look on the left (or press 2).' );
+
+}
+
 async function boot() {
 
 	const canvas = $( 'view' );
@@ -53,50 +101,87 @@ async function boot() {
 	badge.title = api.caps.adapter ? JSON.stringify( api.caps.adapter ) : '';
 	$( 'build' ).textContent = `v${BUILD.version} · ${BUILD.commit}`;
 
-	const stage = buildStage();
-	const camera = new THREE.PerspectiveCamera( 40, 1, 0.1, 200 );
-	camera.position.set( 6.5, 4.6, 7.5 );
-	const controls = new OrbitControls( camera, canvas );
-	controls.target.set( 0, 1, 0 );
-	controls.enableDamping = true;
-	controls.update();
+	const app = createApp( { renderer, canvas } );
+	const appRoot = $( 'app' );
 
-	const post = new THREE.PostProcessing( renderer );
-	post.outputNode = pass( stage.scene, camera );
+	createTopBar( app );
+	createLookBar( $( 'looks' ), app );
+	const inspector = createInspector( $( 'inspector' ), app );
+	const compareUI = createCompareUI( app );
+
+	const ui = {
+		inspector,
+		toggleHidden: () => appRoot.classList.toggle( 'ui-hidden' ),
+		showKeys: () => toast( KEYS.map( ( [ k, v ] ) => `${k}: ${v}` ).join( ' · ' ), 9000 ),
+		closePanels: () => { $( 'verify' ).hidden = true; appRoot.classList.remove( 'inspector-open', 'ui-hidden' ); },
+	};
+
+	$( 'inspector-btn' ).addEventListener( 'click', () => appRoot.classList.toggle( 'inspector-open' ) );
+	bindKeyboard( app, ui );
+	const gamepad = createGamepad( app, ui, { onConnect: ( info ) => toast( info.connected ? `Gamepad connected (${info.glyphs}${info.mapping === 'standard' ? '' : ', non-standard mapping'})` : 'Gamepad disconnected' ) } );
+
+	// Rebuild and scene-build feedback: compile time is shown, never gated (§9 M1).
+	const chip = $( 'rebuild-chip' );
+	let chipTimer = null, pendingChip = null;
+	const showChip = ( text ) => { chip.textContent = text; clearTimeout( chipTimer ); chipTimer = setTimeout( () => { chip.textContent = ''; }, 5000 ); };
+	app.on( ( type, detail ) => {
+
+		if ( type === 'resolved' ) {
+
+			const r = detail.rebuilt;
+			const what = [ r.parts.length ? `materials (${r.parts.length === 9 ? 'all parts' : r.parts.join( ', ' )})` : '', r.pass ? 'scene pass' : '', r.graph ? 'post graph' : '' ].filter( Boolean );
+			if ( what.length ) pendingChip = `Rebuilt ${what.join( ' + ' )}`;
+
+		}
+
+		if ( type === 'scene' ) pendingChip = `Built ${detail.scene.name} · ${TIERS[ detail.tier ].name} · ${( detail.triangles / 1000 ).toFixed( 1 )}k triangles in ${Math.round( detail.buildMs )} ms`;
+
+	} );
+
+	createCoach( app );
 
 	const resize = () => {
 
 		const { clientWidth: w, clientHeight: h } = canvas.parentElement;
 		renderer.setSize( w, h, false );
-		camera.aspect = w / Math.max( 1, h );
-		camera.updateProjectionMatrix();
+		app.camera.aspect = w / Math.max( 1, h );
+		app.camera.updateProjectionMatrix();
 
 	};
 
 	new ResizeObserver( resize ).observe( canvas.parentElement );
 	resize();
+	app.start();
 
 	// Frame loop and stats.
 	const stats = { fps: 0, cpuMs: 0, gpuMs: null, method: timestampsSupported( renderer ) ? 'timestamp' : 'n/a', triangles: 0, calls: 0 };
 	const timer = new THREE.Timer();
 	let paused = false, resolving = false, frames = 0, last = performance.now();
 
-	const render = () => post.render();
-
 	renderer.setAnimationLoop( () => {
 
 		if ( paused ) return;
 
 		timer.update();
-		controls.update();
-		stage.animate( timer.getElapsed() );
+		const dt = Math.min( 0.1, timer.getDelta() );
+		gamepad.poll( dt );
+		app.tick( dt );
 
 		const t0 = performance.now();
 		renderer.info.reset();
-		render();
+		app.runtime.render();
 		stats.cpuMs += ( performance.now() - t0 - stats.cpuMs ) * 0.1;
 		stats.triangles = renderer.info.render.triangles;
 		stats.calls = renderer.info.render.drawCalls;
+		compareUI.frame();
+
+		if ( pendingChip ) {
+
+			const ms = app.runtime.info.lastCompileMs;
+			showChip( `${pendingChip}${ms !== null ? ` · first frame ${Math.round( ms )} ms` : ''}` );
+			pendingChip = null;
+
+		}
 
 		if ( stats.method === 'timestamp' && ! resolving ) {
 
@@ -119,25 +204,23 @@ async function boot() {
 			$( 'status' ).textContent = [
 				api.backend,
 				`${Math.round( stats.fps )} fps`,
-				`CPU ${stats.cpuMs.toFixed( 2 )} ms`,
 				`GPU ${stats.gpuMs === null ? 'n/a' : stats.gpuMs.toFixed( 2 ) + ' ms'}`,
+				`CPU ${stats.cpuMs.toFixed( 2 )} ms`,
 				`${( stats.triangles / 1000 ).toFixed( 1 )}k tris`,
 				`${stats.calls} calls`,
-				`DPR ${renderer.getPixelRatio()}`,
 			].join( ' · ' );
 
 		}
 
 	} );
 
-	// Spikes pause the loop and render offscreen.
-	const runSpikes = async ( ids = null, onResult, options ) => {
+	const pausedWhile = async ( fn ) => {
 
 		paused = true;
 		try {
 
 			while ( resolving ) await new Promise( ( r ) => setTimeout( r, 5 ) );
-			return await runSpikeSuite( { renderer, ids, onResult, options } );
+			return await fn();
 
 		} finally {
 
@@ -147,7 +230,19 @@ async function boot() {
 
 	};
 
+	// Spikes pause the loop and render offscreen.
+	const runSpikes = ( ids = null, onResult, options ) => pausedWhile( () => runSpikeSuite( { renderer, ids, onResult, options } ) );
+
 	const viewport = () => ( { width: renderer.domElement.width, height: renderer.domElement.height } );
+
+	const setup = ( s ) => {
+
+		if ( s.scene ) app.actions.setScene( s.scene, { tier: s.tier, shot: s.shot } );
+		else if ( s.tier !== undefined ) app.actions.setTier( s.tier );
+		if ( s.look ) app.actions.setLook( s.look );
+		toast( 'Set up. Close this panel (✕ or Esc) to try it.' );
+
+	};
 
 	const panel = createVerifyPanel( {
 		root: $( 'verify' ),
@@ -156,6 +251,8 @@ async function boot() {
 		log,
 		getPerf: () => ( { ...stats } ),
 		runSpikes: ( onResult ) => runSpikes( null, onResult ),
+		setup,
+		lookNames: Object.fromEntries( LOOKS.map( ( l ) => [ l.id, l.name ] ) ),
 	} );
 
 	const verifyButton = $( 'verify-btn' );
@@ -164,14 +261,105 @@ async function boot() {
 	log.onChange( updateCount );
 	updateCount();
 
+	// Captures keep their pixels so diff() can compare them.
+	const captures = new Map();
+	let captureId = 0;
+
 	Object.assign( api, {
 		renderer,
+		app,
+		version: BUILD.version,
 		frameStats: () => ( { ...stats } ),
-		/** Renders the current view offscreen and returns luma statistics. */
-		capture: async ( { width = 512, height = 288 } = {} ) => {
+		scenes: () => SCENES.map( ( s ) => ( { id: s.id, name: s.name, shots: Object.keys( s.shots ) } ) ),
+		looks: () => LOOKS.map( ( l ) => ( { id: l.id, name: l.name } ) ),
+		setScene: async ( id, opts ) => { app.actions.setScene( id, opts ); await nextFrames(); },
+		setTier: async ( tier ) => { app.actions.setTier( tier ); await nextFrames(); },
+		applyLook: async ( idOrJson ) => { app.actions.setLook( idOrJson ); await nextFrames(); },
+		setParam: ( id, value ) => app.actions.setParam( id, value ),
+		setStrength: ( s ) => app.actions.setStrength( s ),
+		getResolvedLook: () => app.resolved,
+		info: () => ( { ...app.runtime.info, triangles: app.built?.triangles } ),
+		/** compare('hold', {on}) · compare('split', {pos}) · compare('flicker') · compare('off') */
+		compare: ( mode, opts = {} ) => {
 
-			paused = true;
-			try { return pixelStats( await renderToPixels( renderer, width, height, render ) ); } finally { paused = false; }
+			if ( mode === 'hold' ) return app.actions.setHold( opts.on ?? true );
+			const current = app.store.get().compare.mode;
+			if ( mode === 'off' ) { if ( current !== 'off' ) app.actions.setCompareMode( current ); return; }
+			if ( current !== mode ) app.actions.setCompareMode( mode );
+			if ( opts.pos !== undefined ) app.actions.setSplit( opts.pos );
+
+		},
+		freeze: ( t ) => app.actions.freeze( t ),
+		/** Renders the current view offscreen; returns { id, stats }. */
+		capture: ( { width = 512, height = 288 } = {} ) => pausedWhile( async () => {
+
+			const cam = app.camera, aspect = cam.aspect;
+			cam.aspect = width / height;
+			cam.updateProjectionMatrix();
+
+			try {
+
+				const px = await withRendererSize( renderer, width, height, async () => {
+
+					app.tick( 0 );
+					await renderToPixels( renderer, width, height, () => app.runtime.render() ); // warm-up: compiles after rebuilds
+					return renderToPixels( renderer, width, height, () => app.runtime.render() );
+
+				} );
+				const id = ++ captureId;
+				captures.set( id, px );
+				if ( captures.size > 16 ) captures.delete( captures.keys().next().value );
+				return { id, stats: pixelStats( px ) };
+
+			} finally {
+
+				cam.aspect = aspect;
+				cam.updateProjectionMatrix();
+
+			}
+
+		} ),
+		/** A labeled grid, rows = scenes, columns = looks (§6.14); returns a PNG data URL. */
+		contactSheet: async ( { looks = LOOKS.map( ( l ) => l.id ), scenes = SCENES.map( ( s ) => s.id ), tier = app.store.get().tier, cell = [ 320, 180 ] } = {} ) => {
+
+			const [ w, hgt ] = cell;
+			const sheet = document.createElement( 'canvas' );
+			sheet.width = w * looks.length; sheet.height = ( hgt + 18 ) * scenes.length;
+			const ctx = sheet.getContext( '2d' );
+			ctx.fillStyle = '#1b1b1c'; ctx.fillRect( 0, 0, sheet.width, sheet.height );
+			ctx.font = '12px system-ui, sans-serif';
+			const previous = { scene: app.store.get().sceneId, look: app.store.get().lookId, tier: app.store.get().tier };
+
+			for ( const [ row, sceneId ] of scenes.entries() ) {
+
+				app.actions.setScene( sceneId, { tier } );
+
+				for ( const [ col, lookId ] of looks.entries() ) {
+
+					app.actions.setLook( lookId );
+					const { id } = await api.capture( { width: w, height: hgt } );
+					const px = captures.get( id );
+					ctx.putImageData( new ImageData( new Uint8ClampedArray( px.data ), w, hgt ), col * w, row * ( hgt + 18 ) + 18 );
+					ctx.fillStyle = '#e6e6e6';
+					ctx.fillText( `${String.fromCharCode( 65 + row )}${col + 1} · ${sceneId} · ${lookId}`, col * w + 6, row * ( hgt + 18 ) + 13 );
+
+				}
+
+			}
+
+			app.actions.setScene( previous.scene, { tier: previous.tier } );
+			app.actions.setLook( previous.look );
+			return sheet.toDataURL( 'image/png' );
+
+		},
+		/** Mean absolute difference (0–1) between two captures. */
+		diff: ( a, b ) => {
+
+			const p = captures.get( a ), q = captures.get( b );
+			if ( ! p || ! q || p.data.length !== q.data.length ) throw new Error( 'diff: unknown or mismatched captures' );
+			let sum = 0, n = 0;
+			for ( let i = 0; i < p.data.length; i += 4 ) { sum += Math.abs( p.data[ i ] - q.data[ i ] ) + Math.abs( p.data[ i + 1 ] - q.data[ i + 1 ] ) + Math.abs( p.data[ i + 2 ] - q.data[ i + 2 ] ); n += 3; }
+			return { mae: sum / n / 255 };
 
 		},
 		/** Runs spikes and returns their results; `ids` defaults to all. */
@@ -186,7 +374,7 @@ async function boot() {
 	} );
 
 	// First presented frame, then ready.
-	await new Promise( ( r ) => requestAnimationFrame( () => requestAnimationFrame( r ) ) );
+	await nextFrames();
 	markReady( true );
 
 	if ( params.spikes ) {

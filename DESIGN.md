@@ -1302,6 +1302,16 @@ Each milestone ends with: `npm test` and `npm run smoke` green, a rebuilt `dist/
 - **Verify checks:** backend badge shows WebGPU on your machine · the file works when opened from disk · the report shows no errors.
 
 ### M1 — Vertical slice: plain vs. styled
+- **Status:** done (v0.2.0), waiting on the Verify report. Every acceptance item has a numeric smoke check on WebGPU and WebGL2. Decisions made while building it:
+  - **Strength** fades only continuous parameters toward `neutral`. Switches and structural values keep the look's value, so the slider never rebuilds; strength 0 equals that look's neutral version exactly.
+  - **Tune overrides beat the look's part values** (resolution: global → look parts → overrides → part overrides), so a slider always changes what you see.
+  - **Baseline looks** (`baseline: true`, used by Plain) skip the scene's light rig and sky. The Plain look then matches the P set (mean difference 0.00002 on Lookdev; 0.014 on Harbor, where styled PBR keeps the kit's glossier water).
+  - **Sky per set.** `scene.backgroundNode` is shared by both passes, so each set gets a camera-centered sky dome on its own layer. Plain materials set `fog = false`, so `scene.fogNode` styles only set A.
+  - **Material `mrtNode` is `mrt({ output, ids })`.** A material MRT without `output` replaces the color when the pass has no MRT; `MRTNode` skips names the target doesn't have.
+  - **Depth edges use the Laplacian of inverse depth** (zero on any plane), with the threshold raised on grazing surfaces, so a wavy sea toward the horizon gets no ink. Waves also fade out with distance.
+  - **Object ids** come from a hash of the world matrix's translation, because materials are shared across objects.
+  - **A look's FOV doesn't dolly the camera.** Keeping the framing pushed the camera into the boat on Harbor at 70°+. The view just gets wider.
+  - **No InstancedMesh in M1 scenes.** Micro-detail is merged instead, because hull extrusion along `outlineNormal` would also need the instance matrix.
 - **Scope:**
   - Scenes `lookdev` and `harbor` with tiers T0–T3 for the props they use
   - Parameter registry v1 and look schema v1 (resolve, sparse looks, strength)

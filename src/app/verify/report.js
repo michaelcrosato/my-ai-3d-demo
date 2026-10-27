@@ -34,7 +34,7 @@ function firstLine( text, max = 160 ) {
  * @param {object} d
  * @param {{version: string, commit: string}} d.build
  * @param {object} d.env - from collectCaps(), plus viewport {width, height}
- * @param {Array<{id: string, title: string, status?: string, note?: string}>} d.checks
+ * @param {Array<{id: string, title: string, status?: string, note?: string, ratingsList?: object[]}>} d.checks
  * @param {Object<string, object[]>} [d.spikeRuns] - spike results by backend name
  * @param {Array<{level: string, message: string, count: number}>} [d.log]
  * @param {object} [d.perf] - {gpuMs, cpuMs, fps, method}
@@ -53,6 +53,15 @@ export function formatReport( { build, env, checks, spikeRuns = {}, log = [], pe
 	lines.push( `Checks: ${count( 'pass' )} pass · ${count( 'fail' )} fail · ${count( 'unsure' )} unsure · ${checks.length - done.length} not done` );
 
 	for ( const c of checks ) {
+
+		const rated = ( c.ratingsList || [] ).filter( ( r ) => r.evoke || r.like || r.note );
+		if ( rated.length ) {
+
+			const text = rated.map( ( r ) => `${r.name} evokes ${r.evoke ?? '–'}/5 · likes ${r.like ?? '–'}/5${r.note ? ` ("${firstLine( r.note, 120 )}")` : ''}` ).join( '; ' );
+			lines.push( `${ICON[ c.status ] || '📝'} ${c.id} ${c.title} — ${text}${c.note ? ` — "${firstLine( c.note, 300 )}"` : ''}` );
+			continue;
+
+		}
 
 		if ( ! c.status || ( c.status === 'pass' && ! c.note ) ) continue;
 		lines.push( `${ICON[ c.status ]} ${c.id} ${c.title}${c.note ? ` — "${firstLine( c.note, 300 )}"` : ''}` );

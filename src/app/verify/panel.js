@@ -1,6 +1,6 @@
 // Verify panel shell (design §6.14): checklist, spikes, environment & errors, report.
 
-import { CHECKS } from './checks.js';
+import { CHECKS, CURRENT_MILESTONE } from './checks.js';
 import { formatReport } from './report.js';
 
 const STORE_KEY = 'stylelab.verify.v1';
@@ -28,8 +28,10 @@ const esc = ( s ) => String( s ).replace( /[&<>"]/g, ( c ) => ( { '&': '&amp;', 
  * @param {object} o.log - error capture
  * @param {() => object} o.getPerf
  * @param {(onResult: Function) => Promise<object[]>} o.runSpikes
+ * @param {(setup: object) => void} [o.setup] - loads a check's scene, look, tier and shot
+ * @param {object} [o.lookNames] - { lookId: name } for the ratings form
  */
-export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpikes } ) {
+export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpikes, setup = () => {}, lookNames = {} } ) {
 
 	const store = load();
 	const key = `${build.version}+${build.commit}`;
@@ -41,8 +43,32 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 	let running = false;
 
 	const persist = () => save( store );
-	const checks = () => CHECKS.map( ( c ) => ( { ...c, ...state.checks[ c.id ] } ) );
-	const report = () => formatReport( { build, env: getEnv(), checks: checks(), spikeRuns: state.spikeRuns, log: log.entries, perf: getPerf() } );
+	const checks = () => CHECKS.map( ( c ) => {
+
+		const saved = state.checks[ c.id ] || {};
+		const ratingsList = c.ratings ? c.ratings.map( ( id ) => ( { id, name: lookNames[ id ] || id, ...saved.ratings?.[ id ] } ) ) : undefined;
+		return { ...c, ...saved, ratingsList };
+
+	} );
+	// The report covers this milestone, plus earlier checks only if you marked them.
+	const reported = () => checks().filter( ( c ) => c.milestone === CURRENT_MILESTONE || c.status );
+	const report = () => formatReport( { build, env: getEnv(), checks: reported(), spikeRuns: state.spikeRuns, log: log.entries, perf: getPerf() } );
+
+	const RATING = ( c, r, field ) => `<select data-rate="${r.id}" data-field="${field}"><option value="">–</option>${[ 1, 2, 3, 4, 5 ].map( ( n ) => `<option ${r[ field ] === n ? 'selected' : ''}>${n}</option>` ).join( '' )}</select>`;
+
+	const checkView = ( c ) => `
+				<section class="check" data-id="${c.id}">
+					<h4><span class="cid">${c.id}</span> ${esc( c.title )}</h4>
+					<ol>${c.steps.map( ( s ) => `<li>${esc( s )}</li>` ).join( '' )}</ol>
+					<p class="expected"><b>Expected:</b> ${esc( c.expected )}</p>
+					${c.ratingsList ? `<table class="ratings"><tr><th>Look</th><th>Evokes it</th><th>I like it</th><th>Note</th></tr>${c.ratingsList.map( ( r ) => `<tr><td>${esc( r.name )}</td><td>${RATING( c, r, 'evoke' )}</td><td>${RATING( c, r, 'like' )}</td><td><input data-rate="${r.id}" data-field="note" value="${esc( r.note || '' )}" placeholder="optional"></td></tr>` ).join( '' )}</table>` : ''}
+					<div class="row">
+						${[ 'pass', 'fail', 'unsure' ].map( ( s ) => `<button class="status ${c.status === s ? 'on ' + s : ''}" data-status="${s}">${{ pass: '✅ Pass', fail: '❌ Fail', unsure: '⚠️ Unsure' }[ s ]}</button>` ).join( '' )}
+						${c.setup ? '<button data-setup>Set it up for me</button>' : ''}
+						${( c.actions || [] ).map( ( a ) => `<button data-action="${a}" ${a === 'runSpikes' && running ? 'disabled' : ''}>${ACTION_LABELS[ a ] || a}</button>` ).join( '' )}
+					</div>
+					<textarea placeholder="Notes (what you saw)" data-note>${esc( c.note || '' )}</textarea>
+				</section>`;
 
 	const actions = {
 		runSpikes: () => { tab = 'spikes'; render(); startSpikes(); },
@@ -63,19 +89,17 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 
 	const views = {
 
-		checklist: () => `
-			<p class="hint">Work through these, then copy the report from the Report tab and paste it back to me.</p>
-			${checks().map( ( c ) => `
-				<section class="check" data-id="${c.id}">
-					<h4><span class="cid">${c.id}</span> ${esc( c.title )}</h4>
-					<ol>${c.steps.map( ( s ) => `<li>${esc( s )}</li>` ).join( '' )}</ol>
-					<p class="expected"><b>Expected:</b> ${esc( c.expected )}</p>
-					<div class="row">
-						${[ 'pass', 'fail', 'unsure' ].map( ( s ) => `<button class="status ${c.status === s ? 'on ' + s : ''}" data-status="${s}">${{ pass: '✅ Pass', fail: '❌ Fail', unsure: '⚠️ Unsure' }[ s ]}</button>` ).join( '' )}
-						${( c.actions || [] ).map( ( a ) => `<button data-action="${a}" ${a === 'runSpikes' && running ? 'disabled' : ''}>${ACTION_LABELS[ a ] || 'Set it up for me'}</button>` ).join( '' )}
-					</div>
-					<textarea placeholder="Notes (what you saw)" data-note>${esc( c.note || '' )}</textarea>
-				</section>` ).join( '' )}`,
+		checklist: () => {
+
+			const all = checks();
+			const current = all.filter( ( c ) => c.milestone === CURRENT_MILESTONE );
+			const earlier = all.filter( ( c ) => c.milestone !== CURRENT_MILESTONE );
+			return `
+			<p class="hint">Work through the ${CURRENT_MILESTONE} checks, then copy the report from the Report tab and paste it back to me. "Set it up for me" loads the right scene, look and camera.</p>
+			${current.map( checkView ).join( '' )}
+			<details class="earlier"><summary>Earlier milestones (${earlier.length} checks, optional)</summary>${earlier.map( checkView ).join( '' )}</details>`;
+
+		},
 
 		spikes: () => `
 			<div class="row"><button class="primary" data-run ${running ? 'disabled' : ''}>${running ? 'Running…' : 'Run all spikes'}</button>
@@ -122,6 +146,7 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 		if ( t.dataset.tab ) { tab = t.dataset.tab; return render(); }
 		if ( t.dataset.run !== undefined ) return startSpikes();
 		if ( t.dataset.action ) return actions[ t.dataset.action ]();
+		if ( t.dataset.setup !== undefined ) return setup( CHECKS.find( ( c ) => c.id === t.closest( '.check' ).dataset.id ).setup );
 
 		if ( t.dataset.status ) {
 
@@ -144,7 +169,7 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 
 		if ( t.dataset.download !== undefined ) {
 
-			const data = { build, env: getEnv(), checks: checks(), spikeRuns: state.spikeRuns, log: log.entries, perf: getPerf() };
+			const data = { build, env: getEnv(), checks: reported(), spikeRuns: state.spikeRuns, log: log.entries, perf: getPerf() };
 			const a = document.createElement( 'a' );
 			a.href = URL.createObjectURL( new Blob( [ JSON.stringify( data, null, 2 ) ], { type: 'application/json' } ) );
 			a.download = `stylelab-verify-${build.version}.json`;
@@ -155,8 +180,24 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 
 	} );
 
+	const rate = ( e ) => {
+
+		const t = e.target;
+		if ( t.dataset.rate === undefined ) return false;
+		const entry = state.checks[ t.closest( '.check' ).dataset.id ] || ( state.checks[ t.closest( '.check' ).dataset.id ] = {} );
+		const ratings = entry.ratings || ( entry.ratings = {} );
+		const r = ratings[ t.dataset.rate ] || ( ratings[ t.dataset.rate ] = {} );
+		r[ t.dataset.field ] = t.dataset.field === 'note' ? t.value : ( t.value ? Number( t.value ) : undefined );
+		persist();
+		return true;
+
+	};
+
+	root.addEventListener( 'change', rate );
+
 	root.addEventListener( 'input', ( e ) => {
 
+		if ( e.target.dataset.field === 'note' ) return rate( e );
 		if ( e.target.dataset.note === undefined ) return;
 		const id = e.target.closest( '.check' ).dataset.id;
 		( state.checks[ id ] || ( state.checks[ id ] = {} ) ).note = e.target.value;

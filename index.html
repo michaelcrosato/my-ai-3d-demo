@@ -24,17 +24,37 @@
 	<div id="app">
 		<header class="topbar">
 			<span class="brand">Style Lab</span>
-			<span class="milestone">M0 · foundations</span>
+			<label class="field">Scene <select id="scene-select"></select></label>
+			<label class="field tier" title="Model complexity: the same layout and colors, more geometric detail (- / =)">Complexity <input id="tier-range" type="range" min="0" max="3" step="1" value="0"> <span id="tier-label">Blockout</span></label>
+			<label class="field">Shot <select id="shot-select"></select></label>
+			<button id="turntable-btn" type="button" title="Turntable (T)">⟳ Turntable</button>
+			<span class="spacer"></span>
 			<span id="backend-badge" class="badge">starting…</span>
 			<span id="build" class="build"></span>
-			<span class="spacer"></span>
+			<button id="inspector-btn" type="button" class="narrow-only">⚙ Inspector</button>
 			<button id="verify-btn" type="button">🧪 Verify</button>
 		</header>
-		<main class="viewport">
-			<canvas id="view"></canvas>
-			<div id="fatal" hidden></div>
-		</main>
-		<footer id="status" class="statusbar">Starting…</footer>
+		<div class="workspace">
+			<aside id="looks" class="looks"></aside>
+			<main id="viewport" class="viewport">
+				<canvas id="view"></canvas>
+				<div id="plain-badge" class="plain-badge" hidden>PLAIN</div>
+				<div id="split-handle" class="split-handle" hidden><span>PLAIN</span><span>STYLED</span></div>
+				<div id="coach" class="coach" hidden></div>
+				<div id="toast" class="toast" hidden></div>
+				<div id="fatal" hidden></div>
+			</main>
+			<aside id="inspector" class="inspector"></aside>
+		</div>
+		<footer class="statusbar">
+			<div class="compare">
+				<button id="hold-btn" type="button" title="Hold to see the plain baseline (Space, gamepad X)">Hold to compare <kbd>Space</kbd></button>
+				<button id="split-btn" type="button" title="Split wipe: plain left, styled right (C, gamepad LT)">Split <kbd>C</kbd></button>
+				<button id="flicker-btn" type="button" title="Alternate every 0.5 s (F)">Flicker <kbd>F</kbd></button>
+			</div>
+			<span id="rebuild-chip" class="rebuild-chip"></span>
+			<span id="status" class="status">Starting…</span>
+		</footer>
 	</div>
 	<aside id="verify" class="drawer" hidden></aside>
 	<script type="module" src="./src/app/main.js"></script>
