@@ -1,0 +1,1541 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Style Lab</title>
+	<style>
+/* Neutral-gray UI so the chrome doesn't bias color judgment (design §5.1). */
+:root {
+	--bg: #1b1b1c;
+	--panel: #242426;
+	--panel-2: #2d2d30;
+	--line: #3a3a3e;
+	--text: #e6e6e6;
+	--muted: #9a9a9f;
+	--accent: #8ab4f8;
+	--ok: #7cc47f;
+	--bad: #e5786d;
+	--warn: #e2c06b;
+	color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+button { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.primary { border-color: var(--accent); color: var(--accent); }
+code, pre { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+#app { display: grid; grid-template-rows: auto 1fr auto; height: 100%; }
+
+.topbar { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.brand { font-weight: 650; letter-spacing: 0.2px; }
+.milestone, .build { color: var(--muted); }
+.spacer { flex: 1; }
+.badge { padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.badge.gpu { color: var(--ok); border-color: var(--ok); }
+.badge.gl { color: var(--warn); border-color: var(--warn); }
+#verify-btn.has-errors { border-color: var(--bad); color: var(--bad); }
+
+.viewport { position: relative; min-height: 0; }
+#view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+#fatal { position: absolute; inset: 24px; padding: 16px; background: var(--panel); border: 1px solid var(--bad); border-radius: 8px; color: var(--bad); }
+
+.statusbar { padding: 4px 16px; background: var(--panel); border-top: 1px solid var(--line); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100%); background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; z-index: 10; box-shadow: -8px 0 24px rgb(0 0 0 / 0.35); }
+.drawer[hidden] { display: none; }
+.drawer header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.drawer header .close { margin-left: auto; }
+.drawer nav { display: flex; gap: 4px; padding: 8px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.drawer nav button.on { border-color: var(--accent); color: var(--accent); }
+.drawer .count { color: var(--bad); }
+.drawer .body { overflow: auto; padding: 12px 16px 24px; }
+.hint { color: var(--muted); }
+.row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+
+.check { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 10px 0; background: var(--panel-2); }
+.check h4 { margin: 2px 0 4px; font-size: 13px; }
+.check ol { margin: 4px 0; padding-left: 20px; }
+.check .expected { margin: 4px 0; color: var(--muted); }
+.cid { color: var(--muted); font-weight: 500; margin-right: 4px; }
+.check textarea, textarea.report { width: 100%; min-height: 44px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px; font: inherit; }
+textarea.report { min-height: 340px; font: 12px/1.4 ui-monospace, monospace; }
+button.status.on.pass { border-color: var(--ok); color: var(--ok); }
+button.status.on.fail { border-color: var(--bad); color: var(--bad); }
+button.status.on.unsure { border-color: var(--warn); color: var(--warn); }
+
+.spike { border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; padding: 6px 10px; background: var(--panel-2); }
+.spike summary { cursor: pointer; }
+.spike table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+.spike td { padding: 2px 4px; border-top: 1px solid var(--line); vertical-align: top; }
+.spike tr.bad td { color: var(--bad); }
+.spike tr.info td { color: var(--muted); }
+.chip { display: inline-block; min-width: 76px; text-align: center; padding: 0 6px; border-radius: 999px; border: 1px solid currentColor; font-size: 11px; }
+.chip.go { color: var(--ok); }
+.chip.go-fallback { color: var(--warn); }
+.chip.no-go, .chip.error { color: var(--bad); }
+.ms { color: var(--muted); float: right; }
+pre.err, pre.warn { white-space: pre-wrap; word-break: break-word; padding: 6px 8px; border-radius: 6px; background: var(--bg); margin: 4px 0; }
+pre.err { color: var(--bad); }
+pre.warn { color: var(--warn); }
+table.env td { padding: 2px 6px; vertical-align: top; border-bottom: 1px solid var(--line); }
+table.env td:first-child { color: var(--muted); white-space: nowrap; }
+table.env code { word-break: break-all; }
+
+@media (max-width: 700px) {
+	.milestone, .build { display: none; }
+	.topbar { padding: 8px 12px; }
+}
+</style>
+	<script type="importmap">
+	{
+		"imports": {
+			"three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.webgpu.js",
+			"three/webgpu": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.webgpu.js",
+			"three/tsl": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.tsl.js",
+			"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/",
+			"@dimforge/rapier3d-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.19.3/rapier.mjs",
+			"tweakpane": "https://cdn.jsdelivr.net/npm/tweakpane@4.0.5/dist/tweakpane.min.js",
+			"@tweakpane/plugin-essentials": "https://cdn.jsdelivr.net/npm/@tweakpane/plugin-essentials@0.2.1/dist/tweakpane-plugin-essentials.min.js",
+			"uqr": "https://cdn.jsdelivr.net/npm/uqr@0.1.3/dist/index.mjs"
+		}
+	}
+	</script>
+</head>
+<body>
+	<div id="app">
+		<header class="topbar">
+			<span class="brand">Style Lab</span>
+			<span class="milestone">M0 · foundations</span>
+			<span id="backend-badge" class="badge">starting…</span>
+			<span id="build" class="build"></span>
+			<span class="spacer"></span>
+			<button id="verify-btn" type="button">🧪 Verify</button>
+		</header>
+		<main class="viewport">
+			<canvas id="view"></canvas>
+			<div id="fatal" hidden></div>
+		</main>
+		<footer id="status" class="statusbar">Starting…</footer>
+	</div>
+	<aside id="verify" class="drawer" hidden></aside>
+	<script type="module">
+/* Style Lab v0.1.0 (5c3b709) — built from src/, do not edit */
+// <define:__STYLELAB_BUILD__>
+var define_STYLELAB_BUILD_default = { version: "0.1.0", commit: "5c3b709", date: "2026-10-27T17:17:41+00:00" };
+
+// src/app/main.js
+import * as THREE11 from "three/webgpu";
+import { pass as pass6 } from "three/tsl";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+// src/app/diagnostics/errors.js
+var MAX_LENGTH = 1500;
+function format(value) {
+  if (value instanceof Error) return value.stack || value.message;
+  if (typeof value === "object" && value !== null) {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+function installErrorCapture() {
+  const entries = [];
+  const listeners = /* @__PURE__ */ new Set();
+  const add = (level, parts) => {
+    const message = parts.map(format).join(" ").slice(0, MAX_LENGTH);
+    const existing = entries.find((e) => e.level === level && e.message === message);
+    if (existing) existing.count++;
+    else entries.push({ level, message, count: 1, time: (/* @__PURE__ */ new Date()).toISOString() });
+    for (const fn of listeners) fn(entries);
+  };
+  for (const level of ["error", "warn"]) {
+    const original = console[level].bind(console);
+    console[level] = (...args) => {
+      add(level, args);
+      original(...args);
+    };
+  }
+  window.addEventListener("error", (e) => add("error", [`${e.message} (${e.filename}:${e.lineno})`]));
+  window.addEventListener("unhandledrejection", (e) => add("error", ["Unhandled rejection:", e.reason]));
+  return {
+    entries,
+    add,
+    errors: () => entries.filter((e) => e.level === "error"),
+    warnings: () => entries.filter((e) => e.level === "warn"),
+    onChange: (fn) => listeners.add(fn),
+    attachDevice(device) {
+      device.addEventListener("uncapturederror", (e) => add("error", ["[webgpu]", e.error?.message || e.error]));
+      device.lost.then((info) => {
+        if (info.reason !== "destroyed") add("error", ["[webgpu] device lost:", info.message]);
+      });
+    }
+  };
+}
+
+// src/app/boot/params.js
+function parseParams(search = "") {
+  const p = new URLSearchParams(search);
+  const b = (p.get("backend") || "").toLowerCase();
+  const backend = b === "webgl" || b === "webgl2" ? "webgl" : b === "webgpu" ? "webgpu" : "auto";
+  const raw = p.get("spikes");
+  let spikes = null;
+  if (raw === "all" || raw === "") spikes = "all";
+  else if (raw) spikes = raw.split(",").map(Number).filter((n) => Number.isInteger(n) && n > 0);
+  const dpr = Number.parseFloat(p.get("dpr"));
+  return { backend, spikes, dprCap: Number.isFinite(dpr) && dpr > 0 ? dpr : 2 };
+}
+
+// src/app/boot/renderer.js
+import * as THREE from "three/webgpu";
+async function createRenderer({ canvas, backend = "auto", dprCap = 2 }) {
+  const renderer = new THREE.WebGPURenderer({
+    canvas,
+    antialias: true,
+    forceWebGL: backend === "webgl",
+    trackTimestamp: true
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, dprCap));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  await renderer.init();
+  return renderer;
+}
+var backendName = (renderer) => renderer.backend.isWebGPUBackend ? "WebGPU" : "WebGL2";
+async function collectCaps(renderer, requested) {
+  const caps = {
+    backend: backendName(renderer),
+    requestedBackend: requested,
+    threeRevision: THREE.REVISION,
+    secureContext: window.isSecureContext,
+    protocol: location.protocol,
+    userAgent: navigator.userAgent,
+    devicePixelRatio: window.devicePixelRatio,
+    pixelRatioUsed: renderer.getPixelRatio(),
+    timestampQuery: renderer.hasFeature("timestamp-query"),
+    webgpuAvailable: !!navigator.gpu
+  };
+  if (renderer.backend.isWebGPUBackend) {
+    const device = renderer.backend.device;
+    let info = device.adapterInfo;
+    if (!info && navigator.gpu) info = (await navigator.gpu.requestAdapter())?.info;
+    caps.adapter = info ? { vendor: info.vendor, architecture: info.architecture, description: info.description, isFallbackAdapter: info.isFallbackAdapter } : null;
+    caps.features = [...device.features].sort();
+    caps.maxColorAttachments = device.limits.maxColorAttachments;
+    caps.maxTextureSize = device.limits.maxTextureDimension2D;
+  } else {
+    const gl = renderer.backend.gl;
+    const ext = gl.getExtension("WEBGL_debug_renderer_info");
+    caps.adapter = { description: ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER) };
+    caps.maxColorAttachments = gl.getParameter(gl.MAX_DRAW_BUFFERS);
+    caps.maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+    caps.floatColorBuffer = !!gl.getExtension("EXT_color_buffer_float");
+  }
+  return caps;
+}
+
+// src/app/gpu/readback.js
+import { RenderTarget, UnsignedByteType, Vector2 } from "three/webgpu";
+var Pixels = class {
+  constructor(data, width, height) {
+    this.data = data;
+    this.width = width;
+    this.height = height;
+  }
+  at(x, y) {
+    const i = (Math.min(this.height - 1, Math.max(0, y | 0)) * this.width + Math.min(this.width - 1, Math.max(0, x | 0))) * 4;
+    return [this.data[i], this.data[i + 1], this.data[i + 2], this.data[i + 3]];
+  }
+  /** Pixel at normalized coordinates (0..1, origin top-left). */
+  atUV(u, v) {
+    return this.at(u * (this.width - 1), v * (this.height - 1));
+  }
+};
+var luma = (p) => (0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]) / 255;
+function normalize(raw, width, height, bottomUp) {
+  const tight = width * 4;
+  const stride = raw.length === width * height * 4 ? tight : Math.ceil(tight / 256) * 256;
+  const out = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    const src = (bottomUp ? height - 1 - y : y) * stride;
+    out.set(raw.subarray(src, src + tight), y * tight);
+  }
+  return out;
+}
+async function renderToPixels(renderer, width, height, renderFn) {
+  const target = new RenderTarget(width, height, { type: UnsignedByteType, depthBuffer: true });
+  const previous = renderer.getRenderTarget();
+  try {
+    renderer.setRenderTarget(target);
+    await renderFn();
+    renderer.setRenderTarget(previous);
+    const raw = await renderer.readRenderTargetPixelsAsync(target, 0, 0, width, height);
+    const bottomUp = renderer.backend.isWebGPUBackend !== true;
+    return new Pixels(normalize(new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength), width, height, bottomUp), width, height);
+  } finally {
+    renderer.setRenderTarget(previous);
+    target.dispose();
+  }
+}
+async function withRendererSize(renderer, width, height, fn) {
+  const size = renderer.getSize(new Vector2());
+  const ratio = renderer.getPixelRatio();
+  renderer.setPixelRatio(1);
+  renderer.setSize(width, height, false);
+  try {
+    return await fn();
+  } finally {
+    renderer.setPixelRatio(ratio);
+    renderer.setSize(size.x, size.y, false);
+  }
+}
+function pixelStats(pixels, step2 = 2) {
+  let n = 0, sum = 0, sum2 = 0, black = 0, white = 0;
+  for (let y = 0; y < pixels.height; y += step2) {
+    for (let x = 0; x < pixels.width; x += step2) {
+      const l = luma(pixels.at(x, y));
+      sum += l;
+      sum2 += l * l;
+      n++;
+      if (l < 0.01) black++;
+      if (l > 0.99) white++;
+    }
+  }
+  const mean = sum / n;
+  return { meanLuma: mean, lumaStd: Math.sqrt(Math.max(0, sum2 / n - mean * mean)), clippedBlack: black / n, clippedWhite: white / n };
+}
+
+// src/app/spikes/kit.js
+import * as THREE2 from "three/webgpu";
+var SIZE = 256;
+var SpikeReport = class {
+  constructor(spike) {
+    this.id = spike.id;
+    this.key = spike.key;
+    this.title = spike.title;
+    this.checks = [];
+    this.notes = [];
+    this.fallback = false;
+    this.errorMessage = null;
+    this.ms = 0;
+  }
+  /** A gating check: any failure makes the spike "no-go". */
+  check(name, pass7, value, expect) {
+    this.checks.push({ name, pass: !!pass7, value: fmt(value), expect, info: false });
+    return !!pass7;
+  }
+  /** An informational measurement; never changes the status. */
+  info(name, value, note = "") {
+    this.checks.push({ name, pass: true, value: fmt(value), expect: note, info: true });
+  }
+  note(text) {
+    this.notes.push(text);
+  }
+  error(e) {
+    this.errorMessage = String(e && e.stack ? e.stack.split("\n").slice(0, 4).join(" | ") : e);
+  }
+  get status() {
+    if (this.errorMessage) return "error";
+    if (this.checks.some((c) => !c.info && !c.pass)) return "no-go";
+    return this.fallback ? "go-fallback" : "go";
+  }
+  toJSON() {
+    return { id: this.id, key: this.key, title: this.title, status: this.status, ms: Math.round(this.ms), checks: this.checks, notes: this.notes, error: this.errorMessage };
+  }
+};
+function fmt(v) {
+  if (typeof v === "number") return Number.isInteger(v) ? v : Number(v.toFixed(4));
+  if (Array.isArray(v)) return v.map(fmt);
+  return v;
+}
+function topDownCamera() {
+  const camera = new THREE2.OrthographicCamera(-1, 1, 1, -1, 0.01, 50);
+  camera.position.set(0, 10, 0);
+  camera.up.set(0, 0, -1);
+  camera.lookAt(0, 0, 0);
+  return camera;
+}
+function frontCamera(r = 1.1) {
+  const camera = new THREE2.OrthographicCamera(-r, r, r, -r, 0.01, 50);
+  camera.position.set(0, 0, 5);
+  camera.lookAt(0, 0, 0);
+  return camera;
+}
+function groundPlane(material, size = 4) {
+  const mesh = new THREE2.Mesh(new THREE2.PlaneGeometry(size, size), material);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+function disposeScene(scene) {
+  scene.traverse((o) => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) for (const m of [].concat(o.material)) m.dispose();
+    if (o.shadow && o.shadow.map) o.shadow.map.dispose();
+  });
+}
+function countClusters(pixels, include, minShare = 0.02) {
+  const counts = /* @__PURE__ */ new Map();
+  let total = 0;
+  for (let y = 0; y < pixels.height; y++) {
+    for (let x = 0; x < pixels.width; x++) {
+      if (!include(x, y)) continue;
+      const p = pixels.at(x, y);
+      const key = p[0] >> 2 << 12 | p[1] >> 2 << 6 | p[2] >> 2;
+      counts.set(key, (counts.get(key) || 0) + 1);
+      total++;
+    }
+  }
+  let clusters = 0;
+  for (const c of counts.values()) if (c >= total * minShare) clusters++;
+  return clusters;
+}
+function transitionWidth(pixels, y, lo, hi) {
+  let n = 0;
+  for (let x = 0; x < pixels.width; x++) {
+    const l = luma(pixels.at(x, y));
+    if (l > lo && l < hi) n++;
+  }
+  return n;
+}
+function regionLuma(pixels, u0, v0, u1, v1) {
+  let n = 0, sum = 0, sum2 = 0;
+  for (let y = Math.floor(v0 * pixels.height); y < Math.floor(v1 * pixels.height); y++) {
+    for (let x = Math.floor(u0 * pixels.width); x < Math.floor(u1 * pixels.width); x++) {
+      const l = luma(pixels.at(x, y));
+      sum += l;
+      sum2 += l * l;
+      n++;
+    }
+  }
+  const mean = sum / n;
+  return { mean, std: Math.sqrt(Math.max(0, sum2 / n - mean * mean)) };
+}
+
+// src/app/spikes/s1-cel.js
+import * as THREE3 from "three/webgpu";
+
+// src/runtime/materials/StyleLightingModel.js
+import { Color, LightingModel, MeshToonNodeMaterial } from "three/webgpu";
+import { float, vec3, uniform, normalView, diffuseColor, luminance, smoothstep, max, fwidth, select } from "three/tsl";
+var RECIPROCAL_PI = 1 / Math.PI;
+function createSurfaceUniforms({
+  softness = 0.02,
+  shadowTint = "#5866d0",
+  tintStrength = 0.5
+} = {}) {
+  return {
+    softness: uniform(softness),
+    shadowTint: uniform(new Color(shadowTint)),
+    tintStrength: uniform(tintStrength)
+  };
+}
+var StyleLightingModel = class extends LightingModel {
+  /**
+   * @param {object} surface
+   * @param {number} surface.bands - Number of light bands (structural). 1 = continuous.
+   * @param {boolean} surface.wrap - Half-Lambert wrap lighting (structural).
+   * @param {object} surface.uniforms - From createSurfaceUniforms().
+   */
+  constructor(surface) {
+    super();
+    this.surface = surface;
+    this.keyRamp = null;
+  }
+  start(builder) {
+    this.keyRamp = float(0).toVar("styleKeyRamp");
+    super.start(builder);
+  }
+  ramp(amount) {
+    const bands = this.surface.bands;
+    if (bands <= 1) return amount;
+    const s = max(this.surface.uniforms.softness, fwidth(amount).mul(0.5));
+    let r = float(0);
+    for (let k = 1; k < bands; k++) {
+      const t = k / bands;
+      r = r.add(smoothstep(s.negate().add(t), s.add(t), amount));
+    }
+    return r.div(bands - 1);
+  }
+  direct({ lightDirection, lightColor, lightNode, reflectedLight }) {
+    const NdotL = normalView.dot(lightDirection);
+    const facing = this.surface.wrap ? NdotL.mul(0.5).add(0.5).pow(2) : NdotL.max(0);
+    const base = lightNode.baseColorNode || lightNode.colorNode;
+    const baseLuminance = luminance(base);
+    const visibility = select(baseLuminance.greaterThan(1e-5), luminance(lightColor).div(baseLuminance), 0);
+    const r = this.ramp(facing.mul(visibility).clamp());
+    this.keyRamp.assign(max(this.keyRamp, r));
+    reflectedLight.directDiffuse.addAssign(diffuseColor.rgb.mul(base).mul(r).mul(RECIPROCAL_PI));
+  }
+  indirect(builder) {
+    const { irradiance, reflectedLight, ambientOcclusion } = builder.context;
+    reflectedLight.indirectDiffuse.addAssign(irradiance.mul(diffuseColor.rgb).mul(RECIPROCAL_PI));
+    reflectedLight.indirectDiffuse.mulAssign(ambientOcclusion);
+  }
+  finish(builder) {
+    const { shadowTint, tintStrength } = this.surface.uniforms;
+    const fill = diffuseColor.rgb.mul(shadowTint).mul(tintStrength).mul(this.keyRamp.oneMinus());
+    builder.context.outgoingLight.addAssign(vec3(fill));
+  }
+};
+var StyleSurfaceMaterial = class extends MeshToonNodeMaterial {
+  constructor(surface, parameters) {
+    super(parameters);
+    this.surface = surface;
+    this.isStyleSurfaceMaterial = true;
+  }
+  setupLightingModel() {
+    return new StyleLightingModel(this.surface);
+  }
+};
+
+// src/runtime/materials/outline.js
+import { BufferAttribute, Vector3, BackSide } from "three";
+var _a = new Vector3();
+var _b = new Vector3();
+var _c = new Vector3();
+var _e1 = new Vector3();
+var _e2 = new Vector3();
+var _n = new Vector3();
+function computeOutlineNormals(geometry, { name = "outlineNormal", precision = 1e4 } = {}) {
+  const pos = geometry.getAttribute("position");
+  const index = geometry.getIndex();
+  const triCount = index ? index.count / 3 : pos.count / 3;
+  const keyOf = (i) => `${Math.round(pos.getX(i) * precision)},${Math.round(pos.getY(i) * precision)},${Math.round(pos.getZ(i) * precision)}`;
+  const keys = new Array(pos.count);
+  for (let i = 0; i < pos.count; i++) keys[i] = keyOf(i);
+  const sums = /* @__PURE__ */ new Map();
+  const corners = [[_a, _b, _c], [_b, _c, _a], [_c, _a, _b]];
+  for (let t = 0; t < triCount; t++) {
+    const ia = index ? index.getX(t * 3) : t * 3;
+    const ib = index ? index.getX(t * 3 + 1) : t * 3 + 1;
+    const ic = index ? index.getX(t * 3 + 2) : t * 3 + 2;
+    _a.fromBufferAttribute(pos, ia);
+    _b.fromBufferAttribute(pos, ib);
+    _c.fromBufferAttribute(pos, ic);
+    _n.subVectors(_c, _b).cross(_e1.subVectors(_a, _b));
+    if (_n.lengthSq() === 0) continue;
+    _n.normalize();
+    const ids = [ia, ib, ic];
+    for (let k = 0; k < 3; k++) {
+      const [p, q, r] = corners[k];
+      _e1.subVectors(q, p).normalize();
+      _e2.subVectors(r, p).normalize();
+      const angle = Math.acos(Math.min(1, Math.max(-1, _e1.dot(_e2))));
+      const key = keys[ids[k]];
+      let sum = sums.get(key);
+      if (sum === void 0) sums.set(key, sum = new Vector3());
+      sum.addScaledVector(_n, angle);
+    }
+  }
+  const out = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const sum = sums.get(keys[i]);
+    if (sum === void 0) continue;
+    _n.copy(sum).normalize();
+    out[i * 3] = _n.x;
+    out[i * 3 + 1] = _n.y;
+    out[i * 3 + 2] = _n.z;
+  }
+  geometry.setAttribute(name, new BufferAttribute(out, 3));
+  return geometry;
+}
+function createHullMaterial({ THREE: THREE12, TSL: TSL2, color: color2, thickness, normalName = "outlineNormal" }) {
+  const { Fn, vec4: vec42, attribute, positionLocal: positionLocal2, modelViewMatrix, cameraProjectionMatrix, screenSize } = TSL2;
+  const material = new THREE12.MeshBasicNodeMaterial({ side: BackSide });
+  material.colorNode = color2;
+  material.vertexNode = Fn(() => {
+    const clip = cameraProjectionMatrix.mul(modelViewMatrix).mul(vec42(positionLocal2, 1));
+    const nView = modelViewMatrix.mul(vec42(attribute(normalName, "vec3"), 0)).xyz;
+    const nClip = cameraProjectionMatrix.mul(vec42(nView, 0)).xy;
+    const pixels = thickness.mul(screenSize.y.div(1080));
+    const offset = nClip.normalize().mul(pixels).mul(2).div(screenSize).mul(clip.w);
+    return vec42(clip.xy.add(offset), clip.zw);
+  })();
+  return material;
+}
+
+// src/runtime/perf/timer.js
+function timestampsSupported(renderer) {
+  return renderer.backend.trackTimestamp === true && renderer.hasFeature("timestamp-query");
+}
+async function gpuIdle(renderer) {
+  const backend = renderer.backend;
+  if (backend.isWebGPUBackend) {
+    await backend.device.queue.onSubmittedWorkDone();
+  } else {
+    const gl = backend.gl;
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+  }
+}
+async function measureFrames(renderer, renderFrame, { frames = 30, method = "auto" } = {}) {
+  const useTimestamps = method === "timestamp" || method === "auto" && timestampsSupported(renderer);
+  if (useTimestamps) {
+    await renderer.resolveTimestampsAsync("render");
+    for (let i = 0; i < frames; i++) renderFrame();
+    const total = await renderer.resolveTimestampsAsync("render");
+    return { method: "timestamp", msPerFrame: (total || 0) / frames };
+  }
+  await gpuIdle(renderer);
+  const t0 = performance.now();
+  for (let i = 0; i < frames; i++) renderFrame();
+  await gpuIdle(renderer);
+  return { method: "wallclock", msPerFrame: (performance.now() - t0) / frames };
+}
+
+// src/app/spikes/s1-cel.js
+function toon(bands, color2 = 13421772) {
+  return new StyleSurfaceMaterial({ bands, wrap: false, uniforms: createSurfaceUniforms({ softness: 0.01, tintStrength: 0.35 }) }, { color: color2 });
+}
+var s1_cel_default = {
+  id: 1,
+  key: "cel-ramp",
+  title: "Cel ramp lighting model (shadowed sun + point light)",
+  async run({ renderer, R }) {
+    for (const bands of [2, 3]) {
+      const scene = new THREE3.Scene();
+      scene.add(new THREE3.AmbientLight(16777215, 0.6));
+      const sun2 = new THREE3.DirectionalLight(16777215, 3);
+      sun2.position.set(5, 0, 2);
+      scene.add(sun2);
+      scene.add(new THREE3.Mesh(new THREE3.SphereGeometry(1, 96, 64), toon(bands)));
+      const camera2 = frontCamera(1.1);
+      const px = await renderToPixels(renderer, SIZE, SIZE, () => renderer.render(scene, camera2));
+      const c = SIZE / 2, r = SIZE / 2 * (0.95 / 1.1);
+      const clusters = countClusters(px, (x, y) => (x - c) ** 2 + (y - c) ** 2 < r * r);
+      R.check(`${bands} bands → ${bands} flat levels on a sphere`, clusters === bands, clusters, `${bands}`);
+      disposeScene(scene);
+    }
+    const shadowScene = (groundMaterial, sunIntensity) => {
+      const scene = new THREE3.Scene();
+      scene.add(new THREE3.AmbientLight(16777215, 0.6));
+      const sun2 = new THREE3.DirectionalLight(16777215, sunIntensity);
+      sun2.position.set(5, 5, 0);
+      sun2.castShadow = true;
+      sun2.shadow.mapSize.set(1024, 1024);
+      Object.assign(sun2.shadow.camera, { left: -3, right: 3, top: 3, bottom: -3, near: 0.1, far: 20 });
+      sun2.shadow.bias = -1e-3;
+      scene.add(sun2);
+      scene.add(groundPlane(groundMaterial));
+      const wall = new THREE3.Mesh(new THREE3.BoxGeometry(0.2, 1.1, 4), new THREE3.MeshStandardNodeMaterial());
+      wall.position.set(1.2, 0.55, 0);
+      wall.castShadow = true;
+      scene.add(wall);
+      return scene;
+    };
+    const camera = topDownCamera();
+    const render = async (scene) => {
+      const px = await renderToPixels(renderer, SIZE, SIZE, () => renderer.render(scene, camera));
+      disposeScene(scene);
+      return px;
+    };
+    const lit = await render(shadowScene(toon(2), 3));
+    const ambientOnly = await render(shadowScene(toon(2), 0));
+    const standard = await render(shadowScene(new THREE3.MeshStandardNodeMaterial({ color: 13421772 }), 3));
+    const litHalf = regionLuma(lit, 0.05, 0.1, 0.4, 0.9);
+    const shadowHalf = regionLuma(lit, 0.6, 0.1, 0.95, 0.9);
+    const formShadow = regionLuma(ambientOnly, 0.6, 0.1, 0.95, 0.9);
+    R.check("cast shadow darker than lit ground", litHalf.mean - shadowHalf.mean > 0.1, [litHalf.mean, shadowHalf.mean], "Δ > 0.1");
+    R.check("cast shadow equals form-shadow band (not darker)", Math.abs(shadowHalf.mean - formShadow.mean) < 0.02, [shadowHalf.mean, formShadow.mean], "|Δ| < 0.02");
+    R.check("shadow region is flat (one band)", shadowHalf.std < 0.01, shadowHalf.std, "std < 0.01");
+    const mid = SIZE / 2;
+    const toonEdge = transitionWidth(lit, mid, shadowHalf.mean + 0.02, litHalf.mean - 0.02);
+    const stdLit = regionLuma(standard, 0.05, 0.1, 0.4, 0.9).mean;
+    const stdShadow = regionLuma(standard, 0.6, 0.1, 0.95, 0.9).mean;
+    const standardEdge = transitionWidth(standard, mid, stdShadow + 0.02, stdLit - 0.02);
+    R.check("toon shadow edge no softer than standard PCF edge", toonEdge <= Math.max(3, standardEdge), [toonEdge, standardEdge], "toon ≤ max(3, standard) px");
+    const pointScene = (material) => {
+      const scene = new THREE3.Scene();
+      scene.add(new THREE3.AmbientLight(16777215, 0.3));
+      const point = new THREE3.PointLight(16777215, 3, 0, 2);
+      point.position.set(0, 0.5, 0);
+      scene.add(point);
+      scene.add(groundPlane(material));
+      return scene;
+    };
+    const pool = await render(pointScene(toon(3)));
+    const poolStandard = await render(pointScene(new THREE3.MeshStandardNodeMaterial({ color: 13421772 })));
+    const centre = luma(pool.atUV(0.5, 0.5)), corner = luma(pool.atUV(0.02, 0.02));
+    R.check("point light lights the ground (center brighter than corner)", centre - corner > 0.1, [centre, corner], "Δ > 0.1");
+    const rings = countClusters(pool, () => true, 0.01);
+    R.check("point light falloff is banded (2–4 levels)", rings >= 2 && rings <= 4, rings, "2–4");
+    R.info("standard material levels for the same light", countClusters(poolStandard, () => true, 0.01), "continuous falloff, for comparison");
+    R.note("Shadow and attenuation are read as luminance(lightColor) / luminance(lightNode.baseColorNode) inside direct(), so they are banded with N·L instead of multiplied afterwards.");
+  }
+};
+
+// src/app/spikes/s2-mrt.js
+import * as THREE4 from "three/webgpu";
+import { pass, mrt, output, normalView as normalView2, directionToColor, vec4 } from "three/tsl";
+var PARTS = { box: [3, 10], instanced: [5, 30], sphere: [7, 20] };
+function idMaterial([part, object], color2) {
+  const material = new THREE4.MeshBasicNodeMaterial({ color: color2 });
+  material.mrtNode = mrt({ ids: vec4(part / 255, object / 255, 0, 1) });
+  return material;
+}
+function buildScene() {
+  const scene = new THREE4.Scene();
+  const box = new THREE4.Mesh(new THREE4.BoxGeometry(0.6, 0.6, 0.6), idMaterial(PARTS.box, 11158596));
+  box.position.x = -0.65;
+  box.rotation.set(0.4, 0.6, 0);
+  scene.add(box);
+  const instanced = new THREE4.InstancedMesh(new THREE4.BoxGeometry(0.3, 0.3, 0.3), idMaterial(PARTS.instanced, 4500036), 2);
+  const m = new THREE4.Matrix4();
+  instanced.setMatrixAt(0, m.makeTranslation(0, 0.45, 0));
+  instanced.setMatrixAt(1, m.makeTranslation(0, -0.45, 0));
+  scene.add(instanced);
+  const sphere = new THREE4.Mesh(new THREE4.SphereGeometry(0.32, 48, 32), idMaterial(PARTS.sphere, 4474026));
+  sphere.position.x = 0.65;
+  scene.add(sphere);
+  return scene;
+}
+var s2_mrt_default = {
+  id: 2,
+  key: "mrt-ids",
+  title: "Scene-pass MRT: normal + ids via per-material mrtNode, read in post",
+  async run({ renderer, R }) {
+    const scene = buildScene();
+    const camera = frontCamera(1.1);
+    const readPass = async (samples, name) => {
+      const scenePass = pass(scene, camera, { samples });
+      scenePass.setMRT(mrt({ output, normal: directionToColor(normalView2), ids: vec4(0, 0, 0, 0) }));
+      const post = new THREE4.PostProcessing(renderer);
+      post.outputColorTransform = false;
+      post.outputNode = scenePass.getTextureNode(name);
+      const px = await renderToPixels(renderer, SIZE, SIZE, () => post.render());
+      scenePass.dispose();
+      post.dispose();
+      return px;
+    };
+    const ids = await readPass(0, "ids");
+    const at = (u, v) => ids.atUV(u, v).slice(0, 2);
+    const box = at(0.2, 0.5), top = at(0.5, 0.3), bottom = at(0.5, 0.7), sphere = at(0.8, 0.5), bg = at(0.5, 0.5);
+    R.check("box writes part 3 / object 10", box[0] === 3 && box[1] === 10, box, "[3, 10]");
+    R.check("instanced mesh writes part 5 on both instances", top[0] === 5 && bottom[0] === 5, [top, bottom], "[5, *]");
+    R.check("sphere writes part 7 / object 20", sphere[0] === 7 && sphere[1] === 20, sphere, "[7, 20]");
+    R.check("background keeps the pass default (0)", bg[0] === 0, bg, "[0, 0]");
+    const normals = await readPass(0, "normal");
+    const facing = normals.atUV(0.8, 0.5);
+    R.check("normal attachment holds view-space normals (sphere center ≈ +Z)", facing[2] > 230 && Math.abs(facing[0] - 128) < 20, facing.slice(0, 3), "≈ [128, 128, 255]");
+    const msaa = await readPass(4, "ids");
+    const valid = /* @__PURE__ */ new Set([0, 3, 5, 7]);
+    let mixed = 0, edge = 0;
+    for (let y = 0; y < SIZE; y++) {
+      for (let x = 1; x < SIZE; x++) {
+        const a = ids.at(x, y)[0], b = ids.at(x - 1, y)[0];
+        if (a !== b) edge++;
+        if (!valid.has(msaa.at(x, y)[0])) mixed++;
+      }
+    }
+    R.info("MSAA ×4: pixels with blended (invalid) part ids", mixed, `${edge} id-edge pixels in the samples:0 image`);
+    R.note(mixed > 0 ? "MSAA blends ids at edges → the ids pass must render with samples: 0 (anti-alias in post with FXAA/SMAA), or ids need a separate non-MSAA pass." : "MSAA did not blend ids on this backend; still render ids with samples: 0 to be safe across GPUs.");
+    disposeScene(scene);
+  }
+};
+
+// src/app/spikes/s3-render-sets.js
+import * as THREE5 from "three/webgpu";
+import { pass as pass2, uniform as uniform2, mix, step, screenUV, max as max2 } from "three/tsl";
+var A = 1;
+var P = 2;
+function onLayer(object, layer) {
+  object.layers.set(layer);
+  return object;
+}
+function sun(intensity, layer) {
+  const light = new THREE5.DirectionalLight(16777215, intensity);
+  light.position.set(0.01, 10, 0.01);
+  light.castShadow = true;
+  light.shadow.mapSize.set(512, 512);
+  Object.assign(light.shadow.camera, { left: -2, right: 2, top: 2, bottom: -2, near: 0.1, far: 20 });
+  return onLayer(light, layer);
+}
+function roof(x, layer) {
+  const mesh = new THREE5.Mesh(new THREE5.BoxGeometry(1.2, 0.05, 4), new THREE5.MeshStandardNodeMaterial());
+  mesh.position.set(x, 1, 0);
+  mesh.castShadow = true;
+  return onLayer(mesh, layer);
+}
+var s3_render_sets_default = {
+  id: 3,
+  key: "render-sets",
+  title: "Render sets via pass().setLayers(): twins, layer-filtered rigs, shadow-map layer inheritance",
+  async run({ renderer, R }) {
+    const scene = new THREE5.Scene();
+    const parent = new THREE5.Group();
+    const geometry = new THREE5.PlaneGeometry(4, 4);
+    parent.add(onLayer(groundPlane(new THREE5.MeshStandardNodeMaterial({ color: new THREE5.Color(1, 0.35, 0.35) })), A));
+    parent.add(onLayer(groundPlane(new THREE5.MeshStandardNodeMaterial({ color: new THREE5.Color(0.35, 1, 0.35) })), P));
+    parent.children.forEach((c) => {
+      c.geometry.dispose();
+      c.geometry = geometry;
+    });
+    scene.add(parent);
+    scene.add(sun(2, A), sun(1, P));
+    scene.add(roof(-0.6, A), roof(0.6, P));
+    const ambient = new THREE5.AmbientLight(16777215, 0.3);
+    ambient.layers.set(A);
+    ambient.layers.enable(P);
+    scene.add(ambient);
+    const camera = new THREE5.OrthographicCamera(-1, 1, 1, -1, 0.01, 10);
+    camera.position.set(0, 0.5, 0);
+    camera.up.set(0, 0, -1);
+    camera.lookAt(0, 0, 0);
+    const layersA = new THREE5.Layers();
+    layersA.set(A);
+    const layersP = new THREE5.Layers();
+    layersP.set(P);
+    const passA = pass2(scene, camera);
+    passA.setLayers(layersA);
+    const passP = pass2(scene, camera);
+    passP.setLayers(layersP);
+    const hold = uniform2(0);
+    const split = uniform2(0);
+    const showPlain = max2(hold, step(screenUV.x, split));
+    const post = new THREE5.PostProcessing(renderer);
+    post.outputColorTransform = false;
+    post.outputNode = mix(passA, passP, showPlain);
+    const snap = () => renderToPixels(renderer, SIZE, SIZE, () => post.render());
+    const styled = await snap();
+    hold.value = 1;
+    const plain = await snap();
+    hold.value = 0;
+    split.value = 0.5;
+    const wiped = await snap();
+    const L = (px, u) => px.atUV(u, 0.5);
+    const lum = (p) => p[0] + p[1] + p[2];
+    R.check("set A: its own roof shades the left half only", lum(L(styled, 0.25)) < lum(L(styled, 0.75)) - 60, [lum(L(styled, 0.25)), lum(L(styled, 0.75))], "left darker");
+    R.check("set P: its own roof shades the right half only", lum(L(plain, 0.75)) < lum(L(plain, 0.25)) - 60, [lum(L(plain, 0.25)), lum(L(plain, 0.75))], "right darker");
+    const aLit = L(styled, 0.75), pLit = L(plain, 0.25);
+    R.check("materials separated (A red-tinted, P green-tinted)", aLit[0] > aLit[1] && pLit[1] > pLit[0], [aLit.slice(0, 3), pLit.slice(0, 3)], "A: R>G, P: G>R");
+    R.check("light rigs separated (A sun 2.0 brighter than P sun 1.0)", aLit[0] > pLit[1] + 25, [aLit[0], pLit[1]], "A dominant > P dominant");
+    const sameAs = (p, q) => Math.abs(lum(p) - lum(q)) < 6;
+    R.check("split wipe: left from P, right from A, by uniform only", sameAs(L(wiped, 0.25), L(plain, 0.25)) && sameAs(L(wiped, 0.75), L(styled, 0.75)), [L(wiped, 0.25).slice(0, 3), L(wiped, 0.75).slice(0, 3)], "P | A");
+    R.note("Lights are filtered by camera layers (Renderer.js: light.layers.test(camera.layers)); shadow cameras left on layer 0 inherit the pass layers (ShadowNode). Both confirmed above: each roof only shades its own set.");
+    passA.dispose();
+    passP.dispose();
+    post.dispose();
+    disposeScene(scene);
+  }
+};
+
+// src/app/spikes/s4-output-transform.js
+import * as THREE6 from "three/webgpu";
+import { pass as pass3, renderOutput, posterize, uv, vec3 as vec32 } from "three/tsl";
+function levelsAlongRow(px) {
+  const levels = /* @__PURE__ */ new Set();
+  for (let x = 3; x < px.width - 3; x++) levels.add(px.at(x, px.height / 2)[0]);
+  return [...levels].sort((a, b) => a - b);
+}
+var s4_output_transform_default = {
+  id: 4,
+  key: "output-transform",
+  title: "outputColorTransform = false + renderOutput() mid-graph, display-space ops after",
+  async run({ renderer, R }) {
+    const scene = new THREE6.Scene();
+    const material = new THREE6.MeshBasicNodeMaterial();
+    material.colorNode = vec32(uv().x);
+    scene.add(new THREE6.Mesh(new THREE6.PlaneGeometry(2.2, 2.2), material));
+    const camera = frontCamera(1.1);
+    const scenePass = pass3(scene, camera);
+    const post = new THREE6.PostProcessing(renderer);
+    post.outputColorTransform = false;
+    const snap = async (node) => {
+      post.outputNode = node;
+      post.needsUpdate = true;
+      return levelsAlongRow(await renderToPixels(renderer, SIZE, SIZE, () => post.render()));
+    };
+    const display = await snap(posterize(renderOutput(scenePass, THREE6.NoToneMapping, THREE6.SRGBColorSpace), 4));
+    const linear = await snap(renderOutput(posterize(scenePass, 4), THREE6.NoToneMapping, THREE6.SRGBColorSpace));
+    const expected = [0, 64, 128, 191];
+    const near = (v) => expected.some((e) => Math.abs(v - e) <= 2) || v >= 253;
+    R.check("posterize after renderOutput → even display steps", display.every(near) && display.length >= 4, display, "≈ 0, 64, 128, 191");
+    R.check("posterize before renderOutput → sRGB-spaced steps (control)", linear.some((v) => Math.abs(v - 137) <= 3), linear, "≈ 0, 137, 188, 225");
+    R.note("GRADE / MEDIUM / DISPLAY stages can run after renderOutput() in display-referred space, as §7.7 assumes.");
+    scenePass.dispose();
+    post.dispose();
+    disposeScene(scene);
+  }
+};
+
+// src/app/spikes/s5-rebuild.js
+import * as THREE7 from "three/webgpu";
+import { pass as pass4, posterize as posterize2 } from "three/tsl";
+import { gaussianBlur } from "three/addons/tsl/display/GaussianBlurNode.js";
+import { bloom } from "three/addons/tsl/display/BloomNode.js";
+var s5_rebuild_default = {
+  id: 5,
+  key: "rebuild",
+  title: "Structural rebuild: outputNode swap + needsUpdate, leak check",
+  iterations: 200,
+  async run({ renderer, R, options = {} }) {
+    const iterations = options.rebuildIterations || this.iterations;
+    const scene = new THREE7.Scene();
+    scene.add(new THREE7.HemisphereLight(16777215, 3355443, 2));
+    scene.add(new THREE7.Mesh(new THREE7.TorusKnotGeometry(0.5, 0.18, 96, 16), new THREE7.MeshStandardNodeMaterial({ color: 16746564, emissive: 3346688 })));
+    const camera = frontCamera(1.1);
+    const scenePass = pass4(scene, camera);
+    const post = new THREE7.PostProcessing(renderer);
+    const target = new THREE7.RenderTarget(SIZE, SIZE);
+    const variants = [
+      () => ({ node: scenePass, owned: [] }),
+      () => ({ node: posterize2(scenePass, 6), owned: [] }),
+      () => {
+        const b = gaussianBlur(scenePass, 1, 2);
+        return { node: b, owned: [b] };
+      },
+      () => {
+        const b = bloom(scenePass, 1, 0.5, 0.2);
+        return { node: scenePass.add(b), owned: [b] };
+      }
+    ];
+    let current = null;
+    const apply = (i) => {
+      const next = variants[i % variants.length]();
+      post.outputNode = next.node;
+      post.needsUpdate = true;
+      renderer.setRenderTarget(target);
+      post.render();
+      renderer.setRenderTarget(null);
+      if (current) for (const n of current.owned) n.dispose();
+      current = next;
+    };
+    const memory = () => ({ textures: renderer.info.memory.textures, geometries: renderer.info.memory.geometries });
+    let warm = null;
+    const t0 = performance.now();
+    for (let i = 0; i < iterations; i++) {
+      apply(i);
+      if (i === variants.length * 2 - 1) warm = memory();
+      if (i % 25 === 0) {
+        if (timestampsSupported(renderer)) await renderer.resolveTimestampsAsync("render");
+        await new Promise((r) => setTimeout(r, 0));
+      }
+    }
+    const ms = (performance.now() - t0) / iterations;
+    const end = memory();
+    R.check(`GPU textures stable over ${iterations} rebuilds`, end.textures - warm.textures <= 2, [warm.textures, end.textures], "growth ≤ 2");
+    R.check("geometries stable", end.geometries - warm.geometries <= 1, [warm.geometries, end.geometries], "growth ≤ 1");
+    R.info("average ms per rebuild + render", ms, "compiles are cached after the first cycle");
+    const stats = async (i) => {
+      post.outputNode = variants[i]().node;
+      post.needsUpdate = true;
+      return pixelStats(await renderToPixels(renderer, SIZE, SIZE, () => post.render()));
+    };
+    const plain = await stats(0), poster = await stats(1);
+    R.check("swapped graph changes the image", Math.abs(plain.lumaStd - poster.lumaStd) > 2e-3 || Math.abs(plain.meanLuma - poster.meanLuma) > 2e-3, [plain.meanLuma, poster.meanLuma], "differs");
+    if (current) for (const n of current.owned) n.dispose();
+    scenePass.dispose();
+    post.dispose();
+    target.dispose();
+    disposeScene(scene);
+  }
+};
+
+// src/app/spikes/s6-hull.js
+import * as THREE8 from "three/webgpu";
+import * as TSL from "three/tsl";
+var PIXELS = 3;
+function traceOutline(px) {
+  let cx = 0, cy = 0, n = 0;
+  const isRed = (p) => p[0] > 180 && p[1] < 80 && p[2] < 80;
+  for (let y = 0; y < px.height; y++) for (let x = 0; x < px.width; x++) if (isRed(px.at(x, y))) {
+    cx += x;
+    cy += y;
+    n++;
+  }
+  cx /= n;
+  cy /= n;
+  let gaps = 0, widthSum = 0, covered = 0;
+  for (let a = 0; a < 360; a++) {
+    const dx = Math.cos(a * Math.PI / 180), dy = Math.sin(a * Math.PI / 180);
+    let t = 0;
+    while (t < px.width && isRed(px.at(cx + dx * t, cy + dy * t))) t += 0.5;
+    const first = px.at(cx + dx * (t + 0.5), cy + dy * (t + 0.5));
+    if (luma(first) > 0.6) {
+      gaps++;
+      continue;
+    }
+    let w = 0;
+    while (w < 20 && luma(px.at(cx + dx * (t + w), cy + dy * (t + w))) < 0.4) w += 0.5;
+    widthSum += w;
+    covered++;
+  }
+  return { gapShare: gaps / 360, width: covered ? widthSum / covered : 0, objectPixels: n };
+}
+var s6_hull_default = {
+  id: 6,
+  key: "hull-outline",
+  title: "Hull outlines with smoothed outline normals on faceted geometry",
+  async run({ renderer, R }) {
+    const thickness = TSL.uniform(PIXELS * 1080 / SIZE);
+    const black = TSL.uniform(new THREE8.Color(0, 0, 0));
+    const shapes = {
+      cube: () => new THREE8.BoxGeometry(1, 1, 1),
+      icosahedron: () => new THREE8.IcosahedronGeometry(0.7, 0)
+    };
+    for (const [name, make] of Object.entries(shapes)) {
+      const results = {};
+      for (const normalName of ["outlineNormal", "normal"]) {
+        const scene = new THREE8.Scene();
+        scene.background = new THREE8.Color(1, 1, 1);
+        const geometry = computeOutlineNormals(make());
+        const object = new THREE8.Mesh(geometry, new THREE8.MeshBasicNodeMaterial({ color: 16711680 }));
+        object.rotation.set(0.5, 0.7, 0.1);
+        object.add(new THREE8.Mesh(geometry, createHullMaterial({ THREE: THREE8, TSL, color: black, thickness, normalName })));
+        scene.add(object);
+        const camera = new THREE8.PerspectiveCamera(35, 1, 0.1, 20);
+        camera.position.set(0, 0, 4);
+        const px = await renderToPixels(renderer, SIZE, SIZE, () => renderer.render(scene, camera));
+        results[normalName] = traceOutline(px);
+        scene.background = null;
+        disposeScene(scene);
+      }
+      const smooth = results.outlineNormal, flat = results.normal;
+      R.check(`${name}: smoothed hull closes the silhouette`, smooth.gapShare <= 0.01, smooth.gapShare, "gaps ≤ 1% of 360 rays");
+      R.check(`${name}: outline width ≈ ${PIXELS} px`, smooth.width >= PIXELS - 1.5 && smooth.width <= PIXELS + 1.5, smooth.width, `${PIXELS} ± 1.5`);
+      R.info(`${name}: flat-normal hull gap share`, flat.gapShare, "cracks expected; shows why outline normals are needed");
+    }
+    R.note("Hull width is constant in screen space (clip-space extrusion, specified at 1080p and scaled by output height).");
+  }
+};
+
+// src/app/spikes/s7-timestamps.js
+import * as THREE9 from "three/webgpu";
+import { pass as pass5 } from "three/tsl";
+var s7_timestamps_default = {
+  id: 7,
+  key: "timestamps",
+  title: "GPU timing: trackTimestamp + resolveTimestampsAsync, with wall-clock fallback",
+  async run({ renderer, R }) {
+    const scene = new THREE9.Scene();
+    scene.add(new THREE9.HemisphereLight(16777215, 3355443, 2));
+    scene.add(new THREE9.Mesh(new THREE9.TorusKnotGeometry(0.5, 0.18, 256, 32), new THREE9.MeshStandardNodeMaterial()));
+    const post = new THREE9.PostProcessing(renderer);
+    const scenePass = pass5(scene, frontCamera(1.1));
+    post.outputNode = scenePass;
+    const target = new THREE9.RenderTarget(SIZE, SIZE);
+    const frame = () => {
+      renderer.setRenderTarget(target);
+      post.render();
+      renderer.setRenderTarget(null);
+    };
+    frame();
+    const supported = timestampsSupported(renderer);
+    R.info("timestamp-query available", supported, renderer.backend.isWebGPUBackend ? "WebGPU feature" : "EXT_disjoint_timer_query_webgl2");
+    if (supported) {
+      const ts = await measureFrames(renderer, frame, { frames: 30, method: "timestamp" });
+      R.check("timestamp timer returns GPU time", ts.msPerFrame > 0, ts.msPerFrame, "> 0 ms/frame");
+    } else {
+      R.fallback = true;
+      R.note("No timestamp queries on this backend/GPU: the audit will use the wall-clock fallback and say so.");
+    }
+    const wall = await measureFrames(renderer, frame, { frames: 30, method: "wallclock" });
+    R.check("wall-clock fallback returns a time", wall.msPerFrame > 0, wall.msPerFrame, "> 0 ms/frame");
+    scenePass.dispose();
+    post.dispose();
+    target.dispose();
+    disposeScene(scene);
+  }
+};
+
+// src/app/spikes/s8-rapier.js
+var s8_rapier_default = {
+  id: 8,
+  key: "rapier",
+  title: "Rapier 0.19.3 (compat) loads from the CDN inside the single file",
+  async run({ R }) {
+    const t0 = performance.now();
+    const RAPIER = (await import("@dimforge/rapier3d-compat")).default;
+    await RAPIER.init();
+    R.info("load + init ms", performance.now() - t0);
+    R.check("version is 0.19.3", RAPIER.version() === "0.19.3", RAPIER.version(), "0.19.3");
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    world.createCollider(RAPIER.ColliderDesc.cuboid(10, 0.1, 10));
+    const ball = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(0, 3, 0));
+    world.createCollider(RAPIER.ColliderDesc.ball(0.5), ball);
+    for (let i = 0; i < 180; i++) world.step();
+    const y = ball.translation().y;
+    R.check("ball falls and rests on the ground", y > 0.5 && y < 0.7, y, "≈ 0.6");
+    const body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, 1, 2));
+    const capsule = world.createCollider(RAPIER.ColliderDesc.capsule(0.5, 0.3), body);
+    const controller = world.createCharacterController(0.02);
+    controller.computeColliderMovement(capsule, { x: 1, y: -0.2, z: 0 });
+    const move = controller.computedMovement();
+    R.check("character controller computes a movement", Number.isFinite(move.x) && move.x > 0.9, [move.x, move.y, move.z], "x ≈ 1");
+    world.free();
+  }
+};
+
+// src/app/spikes/index.js
+var SPIKES = [s1_cel_default, s2_mrt_default, s3_render_sets_default, s4_output_transform_default, s5_rebuild_default, s6_hull_default, s7_timestamps_default, s8_rapier_default];
+async function runSpikes({ renderer, ids = null, onResult = () => {
+}, options = {} }) {
+  const results = [];
+  for (const spike of SPIKES) {
+    if (ids && !ids.includes(spike.id)) continue;
+    const report = new SpikeReport(spike);
+    const t0 = performance.now();
+    try {
+      await withRendererSize(renderer, SIZE, SIZE, () => spike.run({ renderer, R: report, options }));
+    } catch (e) {
+      report.error(e);
+    }
+    report.ms = performance.now() - t0;
+    const json = report.toJSON();
+    results.push(json);
+    onResult(json);
+  }
+  return results;
+}
+
+// src/app/verify/checks.js
+var CHECKS = [
+  {
+    id: "M0-01",
+    title: "Backend badge shows WebGPU",
+    steps: ["Open the page normally (no ?backend= in the URL).", "Look at the badge next to the title."],
+    expected: 'It reads "WebGPU". If it reads "WebGL2", note your browser and version.'
+  },
+  {
+    id: "M0-02",
+    title: "Works when opened from disk",
+    steps: ["Download dist/style-lab.html from the repo.", "Double-click it (opens as file://)."],
+    expected: 'The same scene renders and the Environment tab shows protocol "file:".'
+  },
+  {
+    id: "M0-03",
+    title: "No errors while orbiting",
+    steps: ["Drag to orbit and scroll to zoom for about 10 seconds.", "Open the Environment tab."],
+    expected: "Errors (0). Warnings are fine; paste them anyway."
+  },
+  {
+    id: "M0-04",
+    title: "Spikes pass on your GPU",
+    steps: ['Open the Spikes tab and press "Run all spikes" (takes a few seconds).'],
+    expected: 'Every spike is "go" or "go-fallback". Any "no-go" or "error" is exactly what I need to see.',
+    action: "runSpikes"
+  },
+  {
+    id: "M0-05",
+    title: "Forced WebGL2 also works",
+    steps: ['Press "Reload with WebGL2" (adds ?backend=webgl).', "Then run the spikes again and copy that report too."],
+    expected: 'Badge reads "WebGL2", the scene renders, spikes are go or go-fallback.',
+    action: "reloadWebGL"
+  },
+  {
+    id: "M0-06",
+    title: "Resize and zoom stay sharp",
+    steps: ["Resize the window, and try browser zoom (Ctrl/⌘ + and -)."],
+    expected: "No stretching or blur; shapes stay crisp and correctly proportioned."
+  }
+];
+
+// src/app/verify/report.js
+var ICON = { pass: "✅", fail: "❌", unsure: "⚠️", go: "✅", "go-fallback": "⚠️", "no-go": "❌", error: "💥" };
+function shortUA(ua = "") {
+  const version = (re) => re.exec(ua)?.[1];
+  const browsers = [["Edge", /Edg\/(\d+)/], ["Firefox", /Firefox\/(\d+)/], ["Chrome", /Chrome\/(\d+)/], ["Safari", /Version\/(\d+)[\d.]* .*Safari/]];
+  const found = browsers.find(([, re]) => version(re));
+  const browser = found ? `${found[0]} ${version(found[1])}` : "Unknown browser";
+  const os = /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS" : /Mac OS X/.test(ua) ? "macOS" : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : "unknown OS";
+  return `${browser} / ${os}`;
+}
+function adapterLabel(adapter) {
+  if (!adapter) return "unknown GPU";
+  const parts = [adapter.vendor, adapter.architecture].filter(Boolean).join(" ");
+  const label = parts ? `${parts}${adapter.description ? ` — ${adapter.description}` : ""}` : adapter.description || "unknown GPU";
+  return adapter.isFallbackAdapter ? `${label} (software fallback)` : label;
+}
+function firstLine(text, max3 = 160) {
+  const line = String(text).split("\n")[0];
+  return line.length > max3 ? `${line.slice(0, max3 - 1)}…` : line;
+}
+function formatReport({ build, env, checks, spikes = [], log: log2 = [], perf = null, date = (/* @__PURE__ */ new Date()).toISOString() }) {
+  const lines = [];
+  lines.push(`### Style Lab verify report — v${build.version} (${build.commit}) — ${date.slice(0, 10)}`);
+  const vp = env.viewport ? ` · ${env.viewport.width}×${env.viewport.height} @${env.pixelRatioUsed}` : "";
+  lines.push(`Env: ${shortUA(env.userAgent)} · ${env.backend}${env.requestedBackend && env.requestedBackend !== "auto" ? ` (forced ${env.requestedBackend})` : ""} · ${adapterLabel(env.adapter)}${vp} · timestamp-query ${env.timestampQuery ? "✓" : "✗"} · ${env.protocol}`);
+  const done = checks.filter((c) => c.status);
+  const count = (s) => done.filter((c) => c.status === s).length;
+  lines.push(`Checks: ${count("pass")} pass · ${count("fail")} fail · ${count("unsure")} unsure · ${checks.length - done.length} not done`);
+  for (const c of checks) {
+    if (!c.status || c.status === "pass" && !c.note) continue;
+    lines.push(`${ICON[c.status]} ${c.id} ${c.title}${c.note ? ` — "${firstLine(c.note, 300)}"` : ""}`);
+  }
+  if (spikes.length) {
+    const sc = (s) => spikes.filter((r) => r.status === s).length;
+    lines.push(`Spikes (${env.backend}): ${sc("go")} go · ${sc("go-fallback")} go-fallback · ${sc("no-go")} no-go · ${sc("error")} error`);
+    for (const r of spikes) {
+      if (r.status === "go") continue;
+      const failed = r.checks.filter((c) => !c.info && !c.pass).map((c) => `${c.name} (got ${JSON.stringify(c.value)}, want ${c.expect})`);
+      const detail = r.error ? firstLine(r.error, 240) : failed.length ? failed.join("; ") : firstLine(r.notes[0] || "");
+      lines.push(`${ICON[r.status]} S${r.id} ${r.key} — ${r.status}: ${detail}`);
+    }
+  }
+  const errors = log2.filter((e) => e.level === "error");
+  const warnings = log2.filter((e) => e.level === "warn");
+  lines.push(`Errors (${errors.length})${errors.length ? ":" : ""}`);
+  for (const e of errors.slice(0, 5)) lines.push(`  - ${firstLine(e.message)}${e.count > 1 ? ` ×${e.count}` : ""}`);
+  if (warnings.length) {
+    lines.push(`Warnings (${warnings.length}):`);
+    for (const w of warnings.slice(0, 5)) lines.push(`  - ${firstLine(w.message)}${w.count > 1 ? ` ×${w.count}` : ""}`);
+  }
+  if (perf) {
+    const gpu = perf.gpuMs != null ? `GPU ${perf.gpuMs.toFixed(2)} ms/frame (${perf.method})` : "GPU n/a";
+    lines.push(`Perf: ${gpu} · CPU ${perf.cpuMs.toFixed(2)} ms · ${Math.round(perf.fps)} fps`);
+  }
+  return lines.join("\n");
+}
+
+// src/app/verify/panel.js
+var STORE_KEY = "stylelab.verify.v1";
+function load() {
+  try {
+    return JSON.parse(localStorage.getItem(STORE_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+function save(data) {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(data));
+  } catch {
+  }
+}
+var esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+function createVerifyPanel({ root, build, getEnv, log: log2, getPerf, runSpikes: runSpikes2 }) {
+  const store = load();
+  const key = `${build.version}+${build.commit}`;
+  const state = store[key] || (store[key] = { checks: {}, spikes: [] });
+  let tab = "checklist";
+  let running = false;
+  const persist = () => save(store);
+  const checks = () => CHECKS.map((c) => ({ ...c, ...state.checks[c.id] }));
+  const report = () => formatReport({ build, env: getEnv(), checks: checks(), spikes: state.spikes, log: log2.entries, perf: getPerf() });
+  const actions = {
+    runSpikes: () => {
+      tab = "spikes";
+      render();
+      startSpikes();
+    },
+    reloadWebGL: () => {
+      const u = new URL(location.href);
+      u.searchParams.set("backend", "webgl");
+      location.href = u.href;
+    }
+  };
+  async function startSpikes() {
+    if (running) return;
+    running = true;
+    state.spikes = [];
+    render();
+    await runSpikes2((r) => {
+      state.spikes.push(r);
+      persist();
+      render();
+    });
+    running = false;
+    render();
+  }
+  const views = {
+    checklist: () => `
+			<p class="hint">Work through these, then copy the report from the Report tab and paste it back to me.</p>
+			${checks().map((c) => `
+				<section class="check" data-id="${c.id}">
+					<h4><span class="cid">${c.id}</span> ${esc(c.title)}</h4>
+					<ol>${c.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
+					<p class="expected"><b>Expected:</b> ${esc(c.expected)}</p>
+					<div class="row">
+						${["pass", "fail", "unsure"].map((s) => `<button class="status ${c.status === s ? "on " + s : ""}" data-status="${s}">${{ pass: "✅ Pass", fail: "❌ Fail", unsure: "⚠️ Unsure" }[s]}</button>`).join("")}
+						${c.action ? `<button data-action="${c.action}">Set it up for me</button>` : ""}
+					</div>
+					<textarea placeholder="Notes (what you saw)" data-note>${esc(c.note || "")}</textarea>
+				</section>`).join("")}`,
+    spikes: () => `
+			<div class="row"><button class="primary" data-run ${running ? "disabled" : ""}>${running ? "Running…" : "Run all spikes"}</button>
+			<span class="hint">Runs offscreen at 256×256 on the current backend (${esc(getEnv().backend)}).</span></div>
+			${state.spikes.map((r) => `
+				<details class="spike ${r.status}" ${r.status !== "go" ? "open" : ""}>
+					<summary><span class="chip ${r.status}">${r.status}</span> S${r.id} ${esc(r.title)} <span class="ms">${r.ms} ms</span></summary>
+					${r.error ? `<pre class="err">${esc(r.error)}</pre>` : ""}
+					<table>${r.checks.map((c) => `<tr class="${c.info ? "info" : c.pass ? "ok" : "bad"}"><td>${c.info ? "ℹ️" : c.pass ? "✓" : "✗"}</td><td>${esc(c.name)}</td><td><code>${esc(JSON.stringify(c.value))}</code></td><td>${esc(c.expect || "")}</td></tr>`).join("")}</table>
+					${r.notes.map((n) => `<p class="hint">${esc(n)}</p>`).join("")}
+				</details>`).join("")}`,
+    environment: () => {
+      const env = getEnv();
+      return `
+				<table class="env">${Object.entries(env).filter(([k]) => k !== "features").map(([k, v]) => `<tr><td>${esc(k)}</td><td><code>${esc(typeof v === "object" ? JSON.stringify(v) : v)}</code></td></tr>`).join("")}</table>
+				${env.features ? `<details><summary>${env.features.length} GPU features</summary><code>${esc(env.features.join(", "))}</code></details>` : ""}
+				<h4>Errors (${log2.errors().length}) and warnings (${log2.warnings().length})</h4>
+				${log2.entries.length ? log2.entries.map((e) => `<pre class="${e.level === "error" ? "err" : "warn"}">${e.count > 1 ? `×${e.count} ` : ""}${esc(e.message)}</pre>`).join("") : '<p class="hint">Nothing captured.</p>'}`;
+    },
+    report: () => `
+			<div class="row"><button class="primary" data-copy>Copy report</button><button data-download>Download JSON</button><span class="hint" data-copied></span></div>
+			<textarea class="report" readonly>${esc(report())}</textarea>`
+  };
+  function render() {
+    root.innerHTML = `
+			<header><b>🧪 Verify</b><span class="hint">v${esc(build.version)} (${esc(build.commit)})</span><button class="close" data-close aria-label="Close">✕</button></header>
+			<nav>${Object.keys(views).map((t) => `<button class="${t === tab ? "on" : ""}" data-tab="${t}">${t[0].toUpperCase() + t.slice(1)}${t === "environment" && log2.errors().length ? ` <span class="count">${log2.errors().length}</span>` : ""}</button>`).join("")}</nav>
+			<div class="body">${views[tab]()}</div>`;
+  }
+  root.addEventListener("click", async (e) => {
+    const t = e.target.closest("button");
+    if (!t) return;
+    if (t.dataset.close !== void 0) return toggle(false);
+    if (t.dataset.tab) {
+      tab = t.dataset.tab;
+      return render();
+    }
+    if (t.dataset.run !== void 0) return startSpikes();
+    if (t.dataset.action) return actions[t.dataset.action]();
+    if (t.dataset.status) {
+      const id = t.closest(".check").dataset.id;
+      const entry = state.checks[id] || (state.checks[id] = {});
+      entry.status = entry.status === t.dataset.status ? void 0 : t.dataset.status;
+      persist();
+      return render();
+    }
+    if (t.dataset.copy !== void 0) {
+      const text = report();
+      const done = (msg) => {
+        const s = root.querySelector("[data-copied]");
+        if (s) s.textContent = msg;
+      };
+      try {
+        await navigator.clipboard.writeText(text);
+        done("Copied.");
+      } catch {
+        root.querySelector("textarea.report").select();
+        done("Press Ctrl/⌘+C to copy.");
+      }
+      return;
+    }
+    if (t.dataset.download !== void 0) {
+      const data = { build, env: getEnv(), checks: checks(), spikes: state.spikes, log: log2.entries, perf: getPerf() };
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+      a.download = `stylelab-verify-${build.version}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1e3);
+    }
+  });
+  root.addEventListener("input", (e) => {
+    if (e.target.dataset.note === void 0) return;
+    const id = e.target.closest(".check").dataset.id;
+    (state.checks[id] || (state.checks[id] = {})).note = e.target.value;
+    persist();
+  });
+  function toggle(open = root.hidden) {
+    root.hidden = !open;
+    if (open) render();
+  }
+  log2.onChange(() => {
+    if (!root.hidden && tab === "environment") render();
+  });
+  function setSpikes(results) {
+    state.spikes = results;
+    persist();
+    if (!root.hidden) render();
+  }
+  return { toggle, startSpikes, setSpikes, report, render, get spikes() {
+    return state.spikes;
+  } };
+}
+
+// src/scenes/m0-stage.js
+import * as THREE10 from "three/webgpu";
+import { mix as mix2, color, positionLocal, smoothstep as smoothstep2 } from "three/tsl";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+function buildStage() {
+  const scene = new THREE10.Scene();
+  const up = positionLocal.normalize().y;
+  scene.backgroundNode = mix2(color("#dfe9f2"), color("#5b8fd6"), smoothstep2(-0.02, 0.3, up));
+  scene.add(new THREE10.HemisphereLight("#cfe3ff", "#5a4c3e", 1.2));
+  const sun2 = new THREE10.DirectionalLight("#fff4e0", 2.6);
+  sun2.position.set(6, 9, 4);
+  sun2.castShadow = true;
+  sun2.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun2.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8, near: 0.5, far: 30 });
+  sun2.shadow.bias = -5e-4;
+  sun2.shadow.normalBias = 0.03;
+  scene.add(sun2);
+  const standard = (c) => new THREE10.MeshStandardNodeMaterial({ color: c, roughness: 0.8, metalness: 0 });
+  const ground = new THREE10.Mesh(new THREE10.PlaneGeometry(30, 30), standard("#9a9784"));
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+  const shapes = [
+    [new THREE10.SphereGeometry(0.8, 48, 32), "#d9534f", [-2.4, 0.8, 0]],
+    [new RoundedBoxGeometry(1.4, 1.4, 1.4, 4, 0.18), "#f0ad4e", [0, 0.7, -0.4]],
+    [new THREE10.CylinderGeometry(0.6, 0.6, 1.6, 40), "#5cb85c", [2.3, 0.8, 0.2]],
+    [new THREE10.TorusKnotGeometry(0.45, 0.16, 160, 24), "#5bc0de", [0.2, 2.35, -0.4]]
+  ];
+  const meshes = shapes.map(([geometry, c, p]) => {
+    const mesh = new THREE10.Mesh(geometry, standard(c));
+    mesh.position.set(...p);
+    mesh.castShadow = mesh.receiveShadow = true;
+    scene.add(mesh);
+    return mesh;
+  });
+  const knot = meshes[3];
+  return {
+    scene,
+    animate(t) {
+      knot.rotation.y = t * 0.6;
+      knot.position.y = 2.35 + Math.sin(t * 1.3) * 0.08;
+    }
+  };
+}
+
+// src/app/main.js
+var log = installErrorCapture();
+var BUILD = typeof define_STYLELAB_BUILD_default !== "undefined" ? define_STYLELAB_BUILD_default : { version: "dev", commit: "dev", date: "" };
+var params = parseParams(location.search);
+var $ = (id) => document.getElementById(id);
+var markReady;
+var ready = new Promise((resolve) => {
+  markReady = resolve;
+});
+var api = { ready, build: BUILD, params, backend: null, caps: null, errors: () => log.entries.map((e) => ({ ...e })), spikes: SPIKES.map((s) => ({ id: s.id, key: s.key, title: s.title })) };
+window.__stylelab = api;
+boot().catch((e) => {
+  log.add("error", ["Boot failed:", e]);
+  const fatal = $("fatal");
+  fatal.hidden = false;
+  fatal.textContent = `Style Lab could not start: ${e && e.message ? e.message : e}`;
+  markReady(false);
+});
+async function boot() {
+  const canvas = $("view");
+  const renderer = await createRenderer({ canvas, backend: params.backend, dprCap: params.dprCap });
+  if (renderer.backend.isWebGPUBackend) log.attachDevice(renderer.backend.device);
+  renderer.info.autoReset = false;
+  api.backend = backendName(renderer);
+  api.caps = await collectCaps(renderer, params.backend);
+  const badge = $("backend-badge");
+  badge.textContent = api.backend;
+  badge.className = `badge ${api.backend === "WebGPU" ? "gpu" : "gl"}`;
+  badge.title = api.caps.adapter ? JSON.stringify(api.caps.adapter) : "";
+  $("build").textContent = `v${BUILD.version} · ${BUILD.commit}`;
+  const stage = buildStage();
+  const camera = new THREE11.PerspectiveCamera(40, 1, 0.1, 200);
+  camera.position.set(6.5, 4.6, 7.5);
+  const controls = new OrbitControls(camera, canvas);
+  controls.target.set(0, 1, 0);
+  controls.enableDamping = true;
+  controls.update();
+  const post = new THREE11.PostProcessing(renderer);
+  post.outputNode = pass6(stage.scene, camera);
+  const resize = () => {
+    const { clientWidth: w, clientHeight: h } = canvas.parentElement;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / Math.max(1, h);
+    camera.updateProjectionMatrix();
+  };
+  new ResizeObserver(resize).observe(canvas.parentElement);
+  resize();
+  const stats = { fps: 0, cpuMs: 0, gpuMs: null, method: timestampsSupported(renderer) ? "timestamp" : "n/a", triangles: 0, calls: 0 };
+  const timer = new THREE11.Timer();
+  let paused = false, resolving = false, frames = 0, last = performance.now();
+  const render = () => post.render();
+  renderer.setAnimationLoop(() => {
+    if (paused) return;
+    timer.update();
+    controls.update();
+    stage.animate(timer.getElapsed());
+    const t0 = performance.now();
+    renderer.info.reset();
+    render();
+    stats.cpuMs += (performance.now() - t0 - stats.cpuMs) * 0.1;
+    stats.triangles = renderer.info.render.triangles;
+    stats.calls = renderer.info.render.drawCalls;
+    if (stats.method === "timestamp" && !resolving) {
+      resolving = true;
+      renderer.resolveTimestampsAsync("render").then((ms) => {
+        if (ms > 0) stats.gpuMs = stats.gpuMs === null ? ms : stats.gpuMs + (ms - stats.gpuMs) * 0.1;
+        resolving = false;
+      });
+    }
+    frames++;
+    const now = performance.now();
+    if (now - last > 500) {
+      stats.fps = frames * 1e3 / (now - last);
+      frames = 0;
+      last = now;
+      $("status").textContent = [
+        api.backend,
+        `${Math.round(stats.fps)} fps`,
+        `CPU ${stats.cpuMs.toFixed(2)} ms`,
+        `GPU ${stats.gpuMs === null ? "n/a" : stats.gpuMs.toFixed(2) + " ms"}`,
+        `${(stats.triangles / 1e3).toFixed(1)}k tris`,
+        `${stats.calls} calls`,
+        `DPR ${renderer.getPixelRatio()}`
+      ].join(" · ");
+    }
+  });
+  const runSpikes2 = async (ids = null, onResult, options) => {
+    paused = true;
+    try {
+      while (resolving) await new Promise((r) => setTimeout(r, 5));
+      return await runSpikes({ renderer, ids, onResult, options });
+    } finally {
+      paused = false;
+    }
+  };
+  const viewport = () => ({ width: renderer.domElement.width, height: renderer.domElement.height });
+  const panel = createVerifyPanel({
+    root: $("verify"),
+    build: BUILD,
+    getEnv: () => ({ ...api.caps, viewport: viewport() }),
+    log,
+    getPerf: () => ({ ...stats }),
+    runSpikes: (onResult) => runSpikes2(null, onResult)
+  });
+  const verifyButton = $("verify-btn");
+  verifyButton.addEventListener("click", () => panel.toggle());
+  const updateCount = () => {
+    const n = log.errors().length;
+    verifyButton.textContent = n ? `🧪 Verify · ${n} error${n > 1 ? "s" : ""}` : "🧪 Verify";
+    verifyButton.classList.toggle("has-errors", n > 0);
+  };
+  log.onChange(updateCount);
+  updateCount();
+  Object.assign(api, {
+    renderer,
+    frameStats: () => ({ ...stats }),
+    /** Renders the current view offscreen and returns luma statistics. */
+    capture: async ({ width = 512, height = 288 } = {}) => {
+      paused = true;
+      try {
+        return pixelStats(await renderToPixels(renderer, width, height, render));
+      } finally {
+        paused = false;
+      }
+    },
+    /** Runs spikes and returns their results; `ids` defaults to all. */
+    runSpikes: async (ids = null, options = {}) => {
+      const results = await runSpikes2(ids, () => {
+      }, options);
+      if (!ids) panel.setSpikes(results);
+      return results;
+    },
+    report: () => panel.report()
+  });
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  markReady(true);
+  if (params.spikes) {
+    panel.toggle(true);
+    await panel.startSpikes();
+  }
+}
+</script>
+</body>
+</html>
