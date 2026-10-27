@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Style Lab</title>
+	<link rel="stylesheet" href="./src/app/styles.css">
+	<script type="importmap">
+	{
+		"imports": {
+			"three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.webgpu.js",
+			"three/webgpu": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.webgpu.js",
+			"three/tsl": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.tsl.js",
+			"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/",
+			"@dimforge/rapier3d-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.19.3/rapier.mjs",
+			"tweakpane": "https://cdn.jsdelivr.net/npm/tweakpane@4.0.5/dist/tweakpane.min.js",
+			"@tweakpane/plugin-essentials": "https://cdn.jsdelivr.net/npm/@tweakpane/plugin-essentials@0.2.1/dist/tweakpane-plugin-essentials.min.js",
+			"uqr": "https://cdn.jsdelivr.net/npm/uqr@0.1.3/dist/index.mjs"
+		}
+	}
+	</script>
+</head>
+<body>
+	<div id="app">
+		<header class="topbar">
+			<span class="brand">Style Lab</span>
+			<span class="milestone">M0 · foundations</span>
+			<span id="backend-badge" class="badge">starting…</span>
+			<span id="build" class="build"></span>
+			<span class="spacer"></span>
+			<button id="verify-btn" type="button">🧪 Verify</button>
+		</header>
+		<main class="viewport">
+			<canvas id="view"></canvas>
+			<div id="fatal" hidden></div>
+		</main>
+		<footer id="status" class="statusbar">Starting…</footer>
+	</div>
+	<aside id="verify" class="drawer" hidden></aside>
+	<script type="module" src="./src/app/main.js"></script>
+</body>
+</html>

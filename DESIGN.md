@@ -1042,7 +1042,7 @@ The post chain is organized as five stages. The stages are also the teaching mod
 | `emissive` | emissive color | selective bloom |
 | `velocity` | screen-space velocity (`velocity` node) | motion blur, TRAA |
 
-The part id is written per material through `material.mrtNode` (r182 merges it into the pass MRT).
+The part id is written per material through `material.mrtNode` (r182 merges it into the pass MRT). The pass that writes `ids` renders with `samples: 0`, because MSAA averages every attachment and would blend ids at edges (M0 spike 2). Anti-aliasing comes from post (FXAA/SMAA), or MSAA color plus a separate non-MSAA id pass.
 
 ### 7.8 Styled materials
 
@@ -1058,15 +1058,14 @@ The part id is written per material through `material.mrtNode` (r182 merges it i
 
    It also accumulates the light's color.
 
-   To get the shadow factor separately, capture it with `material.receivedShadowNode` (assign it to a property and return 1). Fallback: derive it from `lightColor` luminance relative to the light's intensity uniform.
+   Shadow × attenuation comes out as one scalar: `luminance(lightColor) / luminance(lightNode.baseColorNode)`. In r182 `direct()` receives the light node, and only `lightColor` carries the shadow. A light with zero base luminance gets visibility 0, because its shadow term can be NaN. Both points were confirmed in M0 spike 1 ([docs/spikes.md](docs/spikes.md)), so `receivedShadowNode` isn't needed.
 
-2. **Ramp.** `bands`, `thresholds` and `softness` are applied with `smoothstep`:
+2. **Ramp.** `bands`, `thresholds` and `softness` are applied with `smoothstep`. The shadow tint is an additive fill, which stays controllable when ambient is low:
 
    ```
-   ramp   = Σᵢ smoothstep(tᵢ − s, tᵢ + s, light) / (bands − 1)   // bands = 1 → ramp = light (continuous)
-   shaded = mix(shadowColor, litColor, ramp)
-   litColor    = albedo × keyColor
-   shadowColor = mix(albedo, albedo × shadowTint, tintStrength)  // hue-shifted, never plain black
+   ramp     = Σᵢ smoothstep(tᵢ − s, tᵢ + s, light) / (bands − 1)    // bands = 1 → ramp = light (continuous)
+   diffuse += albedo × baseLightColor × ramp / π                    // per light
+   fill     = albedo × shadowTint × tintStrength × (1 − max ramp)  // once, in finish(): hue-shifted, never plain black
    ```
 
    An optional custom gradient replaces the analytic ramp.
@@ -1284,13 +1283,14 @@ The strategy is **cheap automated checks for correctness, and human eyes for aes
 Each milestone ends with: `npm test` and `npm run smoke` green, a rebuilt `dist/style-lab.html`, new Verify-panel checks, and a short `CHANGELOG.md` entry with *what to test*. Effort levels are summarized in [§11](#11-effort-level-per-milestone).
 
 ### M0 — Foundations and spikes
+- **Status:** done (v0.1.0). All 8 spikes are go on WebGPU and WebGL2; results and decisions are in [docs/spikes.md](docs/spikes.md).
 - **Scope:**
   - Repository scaffold (layout in §7.2), dev `index.html` with the import map, `scripts/build.mjs` producing `dist/style-lab.html`, the `node:test` setup, the smoke-test skeleton
   - Renderer bootstrap: WebGPU with WebGL2 forcing, resize, DPR, loop, `OrbitControls`
   - Error capture, backend badge, `window.__stylelab` skeleton
   - A Verify panel shell with Environment & errors and Copy report
 - **Spikes** (each a tiny test scene; results in `docs/spikes.md` with go/no-go and a fallback):
-  1. `StyleLightingModel` cel ramp with a shadowed sun plus a point light; shadow capture via `receivedShadowNode`
+  1. `StyleLightingModel` cel ramp with a shadowed sun plus a point light; shadow factor read separately inside `direct()`
   2. Pass MRT with `normal` + `ids` through per-material `mrtNode`, read back in post
   3. Render sets via `pass().setLayers()`: twins, layer-filtered light rigs, shadow-map layer inheritance
   4. `outputColorTransform = false` + `renderOutput()` mid-graph, with display-space operations after it
