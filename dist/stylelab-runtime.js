@@ -1,4 +1,4 @@
-/* Style Lab runtime v0.1.0 (5c3b709) */
+/* Style Lab runtime v0.1.1 (e89530c) */
 // src/runtime/materials/StyleLightingModel.js
 import { Color, LightingModel, MeshToonNodeMaterial } from "three/webgpu";
 import { float, vec3, uniform, normalView, diffuseColor, luminance, smoothstep, max, fwidth, select } from "three/tsl";
@@ -168,7 +168,7 @@ async function measureFrames(renderer, renderFrame, { frames = 30, method = "aut
 }
 
 // src/runtime/index.js
-var RUNTIME_VERSION = "0.1.0";
+var RUNTIME_VERSION = "0.1.1";
 export {
   RUNTIME_VERSION,
   StyleLightingModel,

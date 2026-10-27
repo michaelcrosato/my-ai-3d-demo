@@ -123,9 +123,9 @@ table.env code { word-break: break-all; }
 	</div>
 	<aside id="verify" class="drawer" hidden></aside>
 	<script type="module">
-/* Style Lab v0.1.0 (5c3b709) — built from src/, do not edit */
+/* Style Lab v0.1.1 (e89530c) — built from src/, do not edit */
 // <define:__STYLELAB_BUILD__>
-var define_STYLELAB_BUILD_default = { version: "0.1.0", commit: "5c3b709", date: "2026-10-27T17:17:41+00:00" };
+var define_STYLELAB_BUILD_default = { version: "0.1.1", commit: "e89530c", date: "2026-10-27T20:07:58+00:00" };
 
 // src/app/main.js
 import * as THREE11 from "three/webgpu";
@@ -1118,16 +1118,16 @@ var CHECKS = [
   {
     id: "M0-04",
     title: "Spikes pass on your GPU",
-    steps: ['Open the Spikes tab and press "Run all spikes" (takes a few seconds).'],
+    steps: ['Press "Run all spikes" below (takes a few seconds). The Spikes tab shows the details.'],
     expected: 'Every spike is "go" or "go-fallback". Any "no-go" or "error" is exactly what I need to see.',
-    action: "runSpikes"
+    actions: ["runSpikes"]
   },
   {
     id: "M0-05",
     title: "Forced WebGL2 also works",
-    steps: ['Press "Reload with WebGL2" (adds ?backend=webgl).', "Then run the spikes again and copy that report too."],
+    steps: ['Press "Reload with WebGL2" below (adds ?backend=webgl to the URL).', 'Press "Run all spikes" again. The report keeps the results from both backends.'],
     expected: 'Badge reads "WebGL2", the scene renders, spikes are go or go-fallback.',
-    action: "reloadWebGL"
+    actions: ["reloadWebGL", "runSpikes"]
   },
   {
     id: "M0-06",
@@ -1157,7 +1157,7 @@ function firstLine(text, max3 = 160) {
   const line = String(text).split("\n")[0];
   return line.length > max3 ? `${line.slice(0, max3 - 1)}…` : line;
 }
-function formatReport({ build, env, checks, spikes = [], log: log2 = [], perf = null, date = (/* @__PURE__ */ new Date()).toISOString() }) {
+function formatReport({ build, env, checks, spikeRuns = {}, log: log2 = [], perf = null, date = (/* @__PURE__ */ new Date()).toISOString() }) {
   const lines = [];
   lines.push(`### Style Lab verify report — v${build.version} (${build.commit}) — ${date.slice(0, 10)}`);
   const vp = env.viewport ? ` · ${env.viewport.width}×${env.viewport.height} @${env.pixelRatioUsed}` : "";
@@ -1169,9 +1169,10 @@ function formatReport({ build, env, checks, spikes = [], log: log2 = [], perf = 
     if (!c.status || c.status === "pass" && !c.note) continue;
     lines.push(`${ICON[c.status]} ${c.id} ${c.title}${c.note ? ` — "${firstLine(c.note, 300)}"` : ""}`);
   }
-  if (spikes.length) {
+  for (const [backend, spikes] of Object.entries(spikeRuns)) {
+    if (!spikes.length) continue;
     const sc = (s) => spikes.filter((r) => r.status === s).length;
-    lines.push(`Spikes (${env.backend}): ${sc("go")} go · ${sc("go-fallback")} go-fallback · ${sc("no-go")} no-go · ${sc("error")} error`);
+    lines.push(`Spikes (${backend}): ${sc("go")} go · ${sc("go-fallback")} go-fallback · ${sc("no-go")} no-go · ${sc("error")} error`);
     for (const r of spikes) {
       if (r.status === "go") continue;
       const failed = r.checks.filter((c) => !c.info && !c.pass).map((c) => `${c.name} (got ${JSON.stringify(c.value)}, want ${c.expect})`);
@@ -1196,6 +1197,7 @@ function formatReport({ build, env, checks, spikes = [], log: log2 = [], perf = 
 
 // src/app/verify/panel.js
 var STORE_KEY = "stylelab.verify.v1";
+var ACTION_LABELS = { runSpikes: "▶ Run all spikes", reloadWebGL: "↻ Reload with WebGL2" };
 function load() {
   try {
     return JSON.parse(localStorage.getItem(STORE_KEY)) || {};
@@ -1213,12 +1215,14 @@ var esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;
 function createVerifyPanel({ root, build, getEnv, log: log2, getPerf, runSpikes: runSpikes2 }) {
   const store = load();
   const key = `${build.version}+${build.commit}`;
-  const state = store[key] || (store[key] = { checks: {}, spikes: [] });
+  const state = store[key] || (store[key] = { checks: {}, spikeRuns: {} });
+  const backend = () => getEnv().backend;
+  const currentSpikes = () => state.spikeRuns[backend()] || [];
   let tab = "checklist";
   let running = false;
   const persist = () => save(store);
   const checks = () => CHECKS.map((c) => ({ ...c, ...state.checks[c.id] }));
-  const report = () => formatReport({ build, env: getEnv(), checks: checks(), spikes: state.spikes, log: log2.entries, perf: getPerf() });
+  const report = () => formatReport({ build, env: getEnv(), checks: checks(), spikeRuns: state.spikeRuns, log: log2.entries, perf: getPerf() });
   const actions = {
     runSpikes: () => {
       tab = "spikes";
@@ -1234,10 +1238,10 @@ function createVerifyPanel({ root, build, getEnv, log: log2, getPerf, runSpikes:
   async function startSpikes() {
     if (running) return;
     running = true;
-    state.spikes = [];
+    const results = state.spikeRuns[backend()] = [];
     render();
     await runSpikes2((r) => {
-      state.spikes.push(r);
+      results.push(r);
       persist();
       render();
     });
@@ -1254,14 +1258,14 @@ function createVerifyPanel({ root, build, getEnv, log: log2, getPerf, runSpikes:
 					<p class="expected"><b>Expected:</b> ${esc(c.expected)}</p>
 					<div class="row">
 						${["pass", "fail", "unsure"].map((s) => `<button class="status ${c.status === s ? "on " + s : ""}" data-status="${s}">${{ pass: "✅ Pass", fail: "❌ Fail", unsure: "⚠️ Unsure" }[s]}</button>`).join("")}
-						${c.action ? `<button data-action="${c.action}">Set it up for me</button>` : ""}
+						${(c.actions || []).map((a) => `<button data-action="${a}" ${a === "runSpikes" && running ? "disabled" : ""}>${ACTION_LABELS[a] || "Set it up for me"}</button>`).join("")}
 					</div>
 					<textarea placeholder="Notes (what you saw)" data-note>${esc(c.note || "")}</textarea>
 				</section>`).join("")}`,
     spikes: () => `
 			<div class="row"><button class="primary" data-run ${running ? "disabled" : ""}>${running ? "Running…" : "Run all spikes"}</button>
-			<span class="hint">Runs offscreen at 256×256 on the current backend (${esc(getEnv().backend)}).</span></div>
-			${state.spikes.map((r) => `
+			<span class="hint">Runs offscreen at 256×256 on the current backend (${esc(backend())}).${Object.keys(state.spikeRuns).filter((b) => b !== backend() && state.spikeRuns[b].length).map((b) => ` Your ${esc(b)} run is kept for the report.`).join("")}</span></div>
+			${currentSpikes().map((r) => `
 				<details class="spike ${r.status}" ${r.status !== "go" ? "open" : ""}>
 					<summary><span class="chip ${r.status}">${r.status}</span> S${r.id} ${esc(r.title)} <span class="ms">${r.ms} ms</span></summary>
 					${r.error ? `<pre class="err">${esc(r.error)}</pre>` : ""}
@@ -1319,7 +1323,7 @@ function createVerifyPanel({ root, build, getEnv, log: log2, getPerf, runSpikes:
       return;
     }
     if (t.dataset.download !== void 0) {
-      const data = { build, env: getEnv(), checks: checks(), spikes: state.spikes, log: log2.entries, perf: getPerf() };
+      const data = { build, env: getEnv(), checks: checks(), spikeRuns: state.spikeRuns, log: log2.entries, perf: getPerf() };
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
       a.download = `stylelab-verify-${build.version}.json`;
@@ -1341,12 +1345,12 @@ function createVerifyPanel({ root, build, getEnv, log: log2, getPerf, runSpikes:
     if (!root.hidden && tab === "environment") render();
   });
   function setSpikes(results) {
-    state.spikes = results;
+    state.spikeRuns[backend()] = results;
     persist();
     if (!root.hidden) render();
   }
   return { toggle, startSpikes, setSpikes, report, render, get spikes() {
-    return state.spikes;
+    return currentSpikes();
   } };
 }
 
