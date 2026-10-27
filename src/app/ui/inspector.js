@@ -3,10 +3,11 @@
 import { byId, MODULES, valueLabel } from '../../runtime/registry/index.js';
 import { TIERS } from '../../scenes/index.js';
 import { createTune } from './tune.js';
+import { createSceneTab } from './scenetab.js';
 import { paramCard, PIPELINE_CARD, showMe, bindLearnLinks } from './learn.js';
 import { h, esc } from './dom.js';
 
-const TABS = [ [ 'look', 'Look' ], [ 'tune', 'Tune' ], [ 'learn', 'Learn' ] ];
+const TABS = [ [ 'look', 'Look' ], [ 'scene', 'Scene' ], [ 'tune', 'Tune' ], [ 'learn', 'Learn' ] ];
 
 function lookTab( app ) {
 
@@ -47,7 +48,12 @@ function lookTab( app ) {
 
 }
 
-export function createInspector( root, app ) {
+/**
+ * @param {HTMLElement} root
+ * @param {object} app
+ * @param {object} sceneOptions - readouts, benefitMatrix, showImage, toast (see scenetab.js)
+ */
+export function createInspector( root, app, sceneOptions ) {
 
 	const nav = h( 'nav.tabs' );
 	const panes = Object.fromEntries( TABS.map( ( [ id ] ) => [ id, h( 'div.tab-pane', { dataset: { tab: id } } ) ] ) );
@@ -58,6 +64,7 @@ export function createInspector( root, app ) {
 
 	nav.append( ...TABS.map( ( [ id, label ] ) => h( 'button', { dataset: { tab: id }, onclick: () => setTab( id ) }, label ) ) );
 	const tune = createTune( panes.tune, app, openLearn );
+	const sceneTab = createSceneTab( panes.scene, app, sceneOptions );
 
 	function renderLearn() {
 
@@ -74,6 +81,7 @@ export function createInspector( root, app ) {
 		for ( const [ id, el ] of Object.entries( panes ) ) el.hidden = id !== tab;
 		if ( tab === 'look' ) panes.look.innerHTML = lookTab( app );
 		if ( tab === 'learn' ) renderLearn();
+		if ( tab === 'scene' ) sceneTab.render();
 
 	}
 
@@ -107,6 +115,6 @@ export function createInspector( root, app ) {
 	} );
 
 	render();
-	return { render, openLearn, setTab, tune };
+	return { render, openLearn, setTab, tune, sceneTab };
 
 }

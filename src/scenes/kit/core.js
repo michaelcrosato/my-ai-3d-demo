@@ -138,16 +138,43 @@ const PLACEHOLDER = new THREE.MeshBasicMaterial();
  * A kit mesh: geometry plus the style metadata the runtime reads.
  * @param {object} o - part, color (sRGB hex), roughness, emissive, emissiveIntensity, wave, doubleSided
  */
-export function mesh( geometry, { part, color = '#cccccc', roughness = 0.8, emissive = null, emissiveIntensity = 1, wave = null, doubleSided = false, castShadow = true, receiveShadow = true, name = '' } = {} ) {
+export function mesh( geometry, { part, color = '#cccccc', roughness = 0.8, metalness = 0, emissive = null, emissiveIntensity = 1, wave = null, wind = null, opacity = 1, doubleSided = false, castShadow = true, receiveShadow = true, name = '' } = {} ) {
 
 	const m = new THREE.Mesh( geometry, PLACEHOLDER );
 	m.name = name;
-	m.castShadow = castShadow;
+	m.castShadow = castShadow && opacity >= 1;
 	m.receiveShadow = receiveShadow;
-	m.userData.style = { part, color, roughness, emissive, emissiveIntensity, wave, doubleSided };
+	m.userData.style = { part, color, roughness, metalness, emissive, emissiveIntensity, wave, wind, opacity, doubleSided };
 	return m;
 
 }
+
+/**
+ * A practical light (torch, campfire, lamp). The runtime puts it in both render
+ * sets; `flicker` (0–1) animates its intensity with noise.
+ */
+export function practical( { color = '#ffb35c', intensity = 12, distance = 10, flicker = 0, seed = 0 } = {} ) {
+
+	const light = new THREE.PointLight( color, intensity, distance, 2 );
+	light.name = 'practical light';
+	light.userData.practical = { flicker };
+	if ( flicker > 0 ) {
+
+		light.userData.animate = ( t ) => {
+
+			const n = Math.sin( t * 11.3 + seed ) * 0.5 + Math.sin( t * 23.7 + seed * 2.1 ) * 0.3 + Math.sin( t * 5.1 + seed * 0.7 ) * 0.2;
+			light.intensity = intensity * ( 1 + n * flicker * 0.35 );
+
+		};
+
+	}
+
+	return light;
+
+}
+
+/** Number of props for a base count at a density multiplier (×0.5–×4). */
+export const count = ( base, density = 1 ) => Math.max( 1, Math.round( base * density ) );
 
 /** Sets the position (and optional rotation/scale) of an object; returns it. */
 export function at( object, p = [ 0, 0, 0 ], r = [ 0, 0, 0 ], s = 1 ) {

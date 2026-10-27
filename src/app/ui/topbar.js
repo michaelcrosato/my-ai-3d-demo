@@ -23,14 +23,19 @@ export function createTopBar( app ) {
 	const sync = () => {
 
 		const s = app.store.get();
-		sceneSelect.value = s.sceneId;
+		const imported = app.scene().imported ? app.scene() : null;
+		let opt = sceneSelect.querySelector( 'option[value="import"]' );
+		if ( imported && ! opt ) sceneSelect.append( opt = h( 'option', { value: 'import' }, imported.name ) );
+		if ( opt && imported ) opt.textContent = imported.name;
+		sceneSelect.value = app.scene().id;
 		tier.value = String( s.tier );
 		tierLabel.textContent = TIERS[ s.tier ].name;
 		const shots = app.scene().shots;
-		if ( shotSelect.dataset.scene !== s.sceneId ) {
+		tier.disabled = !! imported;
+		if ( shotSelect.dataset.scene !== app.scene().name ) {
 
 			shotSelect.replaceChildren( ...Object.entries( shots ).map( ( [ id, shot ] ) => h( 'option', { value: id }, shot.label ) ) );
-			shotSelect.dataset.scene = s.sceneId;
+			shotSelect.dataset.scene = app.scene().name;
 
 		}
 
@@ -39,7 +44,7 @@ export function createTopBar( app ) {
 
 	};
 
-	app.on( ( type ) => { if ( [ 'scene', 'shot', 'turntable' ].includes( type ) ) sync(); } );
+	app.on( ( type ) => { if ( [ 'scene', 'shot', 'turntable', 'imported' ].includes( type ) ) sync(); } );
 	sync();
 
 }

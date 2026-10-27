@@ -29,9 +29,9 @@ const esc = ( s ) => String( s ).replace( /[&<>"]/g, ( c ) => ( { '&': '&amp;', 
  * @param {() => object} o.getPerf
  * @param {(onResult: Function) => Promise<object[]>} o.runSpikes
  * @param {(setup: object) => void} [o.setup] - loads a check's scene, look, tier and shot
- * @param {object} [o.lookNames] - { lookId: name } for the ratings form
+ * @param {object} [o.names] - { id: name } for looks and scenes in ratings forms
  */
-export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpikes, setup = () => {}, lookNames = {} } ) {
+export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpikes, setup = () => {}, names = {} } ) {
 
 	const store = load();
 	const key = `${build.version}+${build.commit}`;
@@ -46,7 +46,7 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 	const checks = () => CHECKS.map( ( c ) => {
 
 		const saved = state.checks[ c.id ] || {};
-		const ratingsList = c.ratings ? c.ratings.map( ( id ) => ( { id, name: lookNames[ id ] || id, ...saved.ratings?.[ id ] } ) ) : undefined;
+		const ratingsList = c.ratings ? c.ratings.map( ( id ) => ( { id, name: names[ id ] || id, ...saved.ratings?.[ id ] } ) ) : undefined;
 		return { ...c, ...saved, ratingsList };
 
 	} );
@@ -61,7 +61,7 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 					<h4><span class="cid">${c.id}</span> ${esc( c.title )}</h4>
 					<ol>${c.steps.map( ( s ) => `<li>${esc( s )}</li>` ).join( '' )}</ol>
 					<p class="expected"><b>Expected:</b> ${esc( c.expected )}</p>
-					${c.ratingsList ? `<table class="ratings"><tr><th>Look</th><th>Evokes it</th><th>I like it</th><th>Note</th></tr>${c.ratingsList.map( ( r ) => `<tr><td>${esc( r.name )}</td><td>${RATING( c, r, 'evoke' )}</td><td>${RATING( c, r, 'like' )}</td><td><input data-rate="${r.id}" data-field="note" value="${esc( r.note || '' )}" placeholder="optional"></td></tr>` ).join( '' )}</table>` : ''}
+					${c.ratingsList ? `<table class="ratings"><tr><th></th><th>Evokes it</th><th>I like it</th><th>Note</th></tr>${c.ratingsList.map( ( r ) => `<tr><td>${esc( r.name )}</td><td>${RATING( c, r, 'evoke' )}</td><td>${RATING( c, r, 'like' )}</td><td><input data-rate="${r.id}" data-field="note" value="${esc( r.note || '' )}" placeholder="optional"></td></tr>` ).join( '' )}</table>` : ''}
 					<div class="row">
 						${[ 'pass', 'fail', 'unsure' ].map( ( s ) => `<button class="status ${c.status === s ? 'on ' + s : ''}" data-status="${s}">${{ pass: '✅ Pass', fail: '❌ Fail', unsure: '⚠️ Unsure' }[ s ]}</button>` ).join( '' )}
 						${c.setup ? '<button data-setup>Set it up for me</button>' : ''}

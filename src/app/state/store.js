@@ -6,6 +6,7 @@ const KEY = 'stylelab.state.v1';
 const initial = () => ( {
 	sceneId: 'harbor',
 	tier: 0,
+	density: 1,
 	shot: null, // null = the scene's default shot
 	turntable: false,
 	lookId: 'plain',

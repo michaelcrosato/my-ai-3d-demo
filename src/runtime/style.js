@@ -71,6 +71,16 @@ export class StyleRuntime {
 		this.scene.add( root );
 		this.materials.register( root );
 
+		// Practical lights (torches, lamps, campfires) light both render sets; no shadows (cost).
+		root.traverse( ( o ) => {
+
+			if ( ! o.isLight ) return;
+			o.layers.set( LAYER_STYLED );
+			o.layers.enable( LAYER_PLAIN );
+			o.castShadow = false;
+
+		} );
+
 		const hero = def.shots[ def.defaultShot ];
 		this.rigs.setFrame( { center: def.shadow.center, radius: def.shadow.radius, heroPos: hero.pos, heroTarget: hero.target } );
 		this.camera.far = def.far;
@@ -158,6 +168,15 @@ export class StyleRuntime {
 		const rebuilt = { parts, pass: passRebuilt, graph: graphRebuilt };
 		if ( parts.length || passRebuilt || graphRebuilt ) { this.info.lastRebuild = rebuilt; this.markCompile( 'rebuild' ); }
 		return rebuilt;
+
+	}
+
+	/** Reassigns one mesh's part (pick tool); applies the part's look on the next frame. */
+	setPart( mesh, part ) {
+
+		const ok = this.materials.setPart( mesh, part );
+		if ( ok ) this.markCompile( 'part' );
+		return ok;
 
 	}
 

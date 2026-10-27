@@ -2,7 +2,7 @@
 // village with a lighthouse and a dock, open sea, a big sky with clouds and distant
 // islands for atmospheric perspective, plus thin details (masts, ropes).
 
-import { createRng, at, group, hill, hillHeight, ring, sea, cloud, house, lighthouse, dock, tree, rock, boat, barrel, crate, lantern, character } from './kit/index.js';
+import { createRng, count, at, group, hill, hillHeight, ring, sea, cloud, house, lighthouse, dock, tree, rock, boat, barrel, crate, lantern, character } from './kit/index.js';
 
 const BEACH = { radius: 24, height: 1.2, edge: - 0.8, power: 2.5 };
 const GRASS = { radius: 16.5, height: 4.2, edge: 0.2, power: 1.3 };
@@ -40,7 +40,7 @@ export default {
 		'atmosphere.fog.color': '#cfe6ff',
 	},
 
-	build( { tier = 0, seed = 11 } = {} ) {
+	build( { tier = 0, seed = 11, density = 1 } = {} ) {
 
 		const rng = createRng( seed );
 		const root = group( 'harbor' );
@@ -60,7 +60,8 @@ export default {
 		for ( const [ x, z, ry, colors ] of houses ) root.add( at( house( tier, colors ), on( x, z, 0.25 ), [ 0, ry, 0 ] ) );
 
 		const treeRng = rng.fork();
-		for ( const [ x, z, h ] of [ [ - 2, 4, 3.4 ], [ - 9, 3, 3 ], [ 11, - 6, 3.6 ], [ - 1, - 10, 3.2 ], [ 6, - 9, 2.8 ], [ - 11, 8, 2.6 ], [ 12.5, 5.5, 2.9 ] ] ) {
+		const treeSpots = [ [ - 2, 4, 3.4 ], [ - 9, 3, 3 ], [ 11, - 6, 3.6 ], [ - 1, - 10, 3.2 ], [ 6, - 9, 2.8 ], [ - 11, 8, 2.6 ], [ 12.5, 5.5, 2.9 ], [ - 6, - 10, 3.1 ], [ 9, - 11, 2.7 ], [ - 13, - 3, 2.9 ], [ 3.5, - 13, 3.3 ], [ - 4, 12, 2.6 ], [ 13, - 1, 3 ], [ - 9, - 7, 3.4 ] ];
+		for ( const [ x, z, h ] of treeSpots.slice( 0, Math.min( treeSpots.length, count( 7, density ) ) ) ) {
 
 			root.add( at( tree( tier, treeRng.fork(), { height: h, leaf: treeRng.pick( [ '#5f9e3a', '#6aa84f', '#4f8f3a' ] ) } ), on( x, z, 0.2 ) ) );
 
@@ -100,7 +101,7 @@ export default {
 
 		// Clouds drift slowly and wrap around.
 		const cloudRng = rng.fork();
-		for ( let i = 0; i < 7; i ++ ) {
+		for ( let i = 0; i < count( 7, density ); i ++ ) {
 
 			const c = cloud( tier, cloudRng.fork(), { size: cloudRng.range( 16, 30 ) } );
 			const x0 = cloudRng.range( - 320, 320 ), y = cloudRng.range( 55, 85 ), z = cloudRng.range( - 330, - 90 );

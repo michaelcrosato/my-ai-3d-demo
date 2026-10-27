@@ -9,5 +9,6 @@ export * as color from './color/color.js';
 export { StyleLightingModel, StyleSurfaceMaterial, createSurfaceUniforms } from './materials/StyleLightingModel.js';
 export { computeOutlineNormals, createHullMaterial } from './materials/outline.js';
 export { timestampsSupported, gpuIdle, measureFrames } from './perf/timer.js';
+export { guessParts, PART_KEYWORDS } from './parts/guess.js';
 
-export const RUNTIME_VERSION = '0.2.0';
+export const RUNTIME_VERSION = '0.3.0';

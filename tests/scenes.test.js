@@ -32,6 +32,11 @@ test( 'scenes build deterministically, every mesh is tagged, triangles grow with
 		} );
 
 		for ( let t = 1; t < counts.length; t ++ ) assert.ok( counts[ t ] > counts[ t - 1 ], `${scene.id}: T${t} (${counts[ t ]}) > T${t - 1} (${counts[ t - 1 ]})` );
+
+		// Density changes prop counts, deterministically, and never removes the landmarks.
+		const sparse = buildScene( scene, { tier: 1, density: 0.5 } ), dense = buildScene( scene, { tier: 1, density: 4 } );
+		assert.ok( dense.triangles >= sparse.triangles, `${scene.id}: density 4 has at least as much geometry as 0.5` );
+		assert.equal( buildScene( scene, { tier: 1, density: 4 } ).triangles, dense.triangles, `${scene.id}: density is deterministic` );
 		console.log( `${scene.id} triangles by tier: ${counts.map( ( c ) => `${( c / 1000 ).toFixed( 1 )}k` ).join( ' · ' )}` );
 
 	}

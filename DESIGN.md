@@ -599,7 +599,7 @@ The **Tune** tab is generated from the parameter registry, so it always covers e
 | **Tier sweep** (P1) | Compare menu | 2×2 benefit matrix (plain/styled × T0/T3) as a snapshot |
 
 **Baselines**
-- **Agent default** (default): `MeshStandardMaterial` (roughness 0.8, metalness 0), `HemisphereLight` (#ffffff / #444444, 1.0) plus a `DirectionalLight` (2.0, 50° elevation), PCFSoft 2048 shadows, ACES, sRGB, solid `#87CEEB` background, no post.
+- **Agent default** (default): `MeshStandardMaterial` with the model's own roughness and metalness (0.8 and 0 when it doesn't specify them), `HemisphereLight` (#ffffff / #444444, 1.0) plus a `DirectionalLight` (2.0, 50° elevation), PCFSoft 2048 shadows, ACES, sRGB, solid `#87CEEB` background, no post.
 - **Raw unlit:** flat base colors.
 - **Saved look:** any look from the library.
 
@@ -1305,12 +1305,12 @@ Each milestone ends with: `npm test` and `npm run smoke` green, a rebuilt `dist/
 - **Status:** done (v0.2.0), waiting on the Verify report. Every acceptance item has a numeric smoke check on WebGPU and WebGL2. Decisions made while building it:
   - **Strength** fades only continuous parameters toward `neutral`. Switches and structural values keep the look's value, so the slider never rebuilds; strength 0 equals that look's neutral version exactly.
   - **Tune overrides beat the look's part values** (resolution: global → look parts → overrides → part overrides), so a slider always changes what you see.
-  - **Baseline looks** (`baseline: true`, used by Plain) skip the scene's light rig and sky. The Plain look then matches the P set (mean difference 0.00002 on Lookdev; 0.014 on Harbor, where styled PBR keeps the kit's glossier water).
+  - **Baseline looks** (`baseline: true`, used by Plain) skip the scene's light rig and sky, so the Plain look matches the P set exactly (since M2, when the baseline started using the model's roughness and metalness).
   - **Sky per set.** `scene.backgroundNode` is shared by both passes, so each set gets a camera-centered sky dome on its own layer. Plain materials set `fog = false`, so `scene.fogNode` styles only set A.
   - **Material `mrtNode` is `mrt({ output, ids })`.** A material MRT without `output` replaces the color when the pass has no MRT; `MRTNode` skips names the target doesn't have.
   - **Depth edges use the Laplacian of inverse depth** (zero on any plane), with the threshold raised on grazing surfaces, so a wavy sea toward the horizon gets no ink. Waves also fade out with distance.
   - **Object ids** come from a hash of the world matrix's translation, because materials are shared across objects.
-  - **A look's FOV doesn't dolly the camera.** Keeping the framing pushed the camera into the boat on Harbor at 70°+. The view just gets wider.
+  - **A look's lens is relative: `lens.fovScale` multiplies each shot's FOV** (it was an absolute `lens.fov` in v0.2). An absolute 70° pushed the camera into the boat on Harbor when dollying, and without the dolly it shrank M2's near-orthographic and isometric shots to a dot. A scale keeps each genre's camera, and the dolly at ×1.25 is small enough to stay clear of geometry.
   - **No InstancedMesh in M1 scenes.** Micro-detail is merged instead, because hull extrusion along `outlineNormal` would also need the instance matrix.
 - **Scope:**
   - Scenes `lookdev` and `harbor` with tiers T0–T3 for the props they use
@@ -1331,6 +1331,13 @@ Each milestone ends with: `npm test` and `npm run smoke` green, a rebuilt `dist/
 - **Verify checks:** look buttons apply instantly · hold compare feels instant (keyboard and gamepad) · the split divider drags smoothly · outlines stay stable while orbiting (no shimmer, gaps or cracks at hard edges) · cel bands are crisp · the tier slider changes geometry without moving the composition · rate the four looks.
 
 ### M2 — Scene library and asset kit
+- **Status:** done (v0.3.0), waiting on the Verify report. Ten scenes build deterministically at all four tiers (equal triangles and capture hashes on rebuild), and every scene × look passes the M1 checks on WebGPU and WebGL2. Decisions made while building it:
+  - **The plain baseline uses the model's own material values** (roughness, metalness, emissive, textures), defaulting to roughness 0.8 and metalness 0. An agent's export carries those values, and it makes the Plain look equal the baseline exactly.
+  - **Practical lights** (torches, lamps, campfires) live in the scene, light both render sets, and cast no shadows. Flicker is scene animation.
+  - **Grass is merged blades** with a wind `positionNode` (the sea's wave node generalized), not InstancedMesh, for the same hull reason as M1. Deformed, skinned and see-through meshes get no hull.
+  - **Scene lighting must stay readable under any look that inherits it.** The dungeon's first rig (moonlight 0.6, ambient 0.4) left Phone-Safe Toon nearly black, so dark scenes keep enough ambient for shadows to read.
+  - **Imports** are scaled to a 10 m bounding radius and placed on y = 0, so looks' fog and lines behave. A neutral ground is added when nothing is guessed as terrain or water. The first animation clip plays on the app clock; skinned meshes get skinned twins. Draco and meshopt decoders load on demand; KTX2 textures and morph-target twins are not supported yet. Complexity and density don't apply to imports.
+  - **Part guessing** is a pure runtime function (`guessParts`), for later reuse by `convertScene()`. Order: tag → keywords on mesh, material, then ancestors (nearest first) → emissive → the largest low flat mesh is terrain (water if blue) → props.
 - **Scope:**
   - Scenes `garden`, `plaza`, `dungeon`, `kart`, `platforms`, `hangar`, `meadow`, `campsite` (P1 set) on the shared kit
   - Characters (mannequin, goose, skater, robot, knight) with procedural animation

@@ -4,14 +4,14 @@ const p = ( e ) => param( 'lens', e );
 
 export default [
 	p( {
-		id: 'lens.fov', label: 'Field of view', type: 'float', min: 20, max: 110, step: 1, unit: '°', default: 50,
+		id: 'lens.fovScale', label: 'Lens width', type: 'float', min: 0.5, max: 2, step: 0.01, unit: '×', default: 1,
 		learn: {
-			what: 'The vertical field of view. If the look doesn\'t set it, each camera shot uses its own lens. The camera stays put, so a wider lens shows more of the scene.',
-			why: 'Wide lenses exaggerate depth and speed (action, skating games); long lenses flatten and compress (strategy, cinematic close-ups).',
-			typical: '40–55° neutral, 75–90° for fast action.',
+			what: 'Widens (above 1) or narrows (below 1) each camera shot\'s own lens. The camera dollies to keep the subject the same size, so only the perspective changes.',
+			why: 'Wide lenses exaggerate depth and speed (skating and racing games); long lenses flatten and compress (strategy, cinematic close-ups). Scaling the shot\'s lens keeps each genre\'s camera, so a top-down garden stays top-down.',
+			typical: '1.2–1.4 for fast action, 0.7–0.85 for a flatter, telephoto feel.',
 		},
-		brief: 'Vertical field of view {value}°.',
-		tags: [ 'camera', 'lens' ],
+		brief: 'Lens {value}× wider than the default camera (dolly to keep the subject size).',
+		tags: [ 'camera', 'lens', 'fov' ],
 	} ),
 	p( {
 		id: 'lens.bloom.enabled', label: 'Bloom', type: 'bool', default: false, structural: true, cost: { ...MEDIUM, fpe: 2.5 },

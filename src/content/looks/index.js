@@ -65,7 +65,7 @@ export const graffitiRush = look( {
 		'palette.colors': [ '#ff2e88', '#00c8ff', '#ffe600', '#7cff3a', '#ff7a1a', '#3a3f4a', '#c9ccd3' ],
 		'atmosphere.fog.type': 'off',
 		'atmosphere.sky.zenith': '#1e9bff', 'atmosphere.sky.horizon': '#a8ecff', 'atmosphere.sky.ground': '#a8ecff',
-		'lens.fov': 70,
+		'lens.fovScale': 1.25,
 		'lens.bloom.enabled': true, 'lens.bloom.strength': 0.15,
 		'grade.toneMapping': 'neutral', 'grade.contrast': 1.15,
 	},

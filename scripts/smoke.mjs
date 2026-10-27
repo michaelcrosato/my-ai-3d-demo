@@ -27,7 +27,7 @@ const distFile = pathToFileURL( path.join( ROOT, 'dist/style-lab.html' ) ).href;
 const RUNS = [
 	{ name: 'dev  · http · WebGL2', url: ( base ) => `${base}/index.html?backend=webgl`, backend: 'WebGL2' },
 	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2', m1: true },
-	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm1-webgpu.png', panel: true, m1: true, sheet: 'm1-contact.png' },
+	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm2-webgpu.png', panel: true, m1: true, sheet: 'm2-contact.png' },
 	{ name: 'dist · file · WebGL2', url: () => `${distFile}?backend=webgl`, backend: 'WebGL2' },
 	{ name: 'dist · file · auto  ', url: () => distFile, backend: null },
 ].filter( ( r ) => ! value( '--only' ) || r.name.includes( value( '--only' ) ) );
@@ -51,7 +51,7 @@ async function routeCdn( context ) {
 }
 
 /**
- * M1 acceptance checks (design §8 numeric image checks, §9 M1), all numeric:
+ * M1 and M2 acceptance checks (design §8 numeric image checks, §9 M1–M2), all numeric:
  * every scene × look renders and differs from plain, hold compare shows exactly the
  * baseline, the Plain look matches the baseline, strength 0 equals the neutral look,
  * sliders never rebuild, switches rebuild only what they affect, tiers keep the camera.
@@ -95,6 +95,13 @@ async function m1Checks( page, fail, run ) {
 
 			}
 
+			// Determinism (M2): rebuilding the scene gives the same triangles and the same frame.
+			const tris = s.info().triangles;
+			await s.setScene( scene.id, { tier: 1 } );
+			await s.applyLook( 'plain' );
+			const again = await cap();
+			check( `${scene.id}: rebuild is deterministic (triangles, capture hash)`, s.info().triangles === tris && again.hash === styledPlain.hash, [ tris, s.info().triangles, styledPlain.hash, again.hash ] );
+
 		}
 
 		// Strength 0 renders the same as that look's neutral version, applied directly.
@@ -107,7 +114,6 @@ async function m1Checks( page, fail, run ) {
 		const r = s.getResolvedLook();
 		s.setStrength( 1 );
 		const params = { ...r.global };
-		if ( ! [ 'look', 'override' ].includes( r.sources[ 'lens.fov' ] ) ) delete params[ 'lens.fov' ]; // keep the shot's lens
 		await s.applyLook( { schema: 'stylelab.look@1', id: 'neutral-test', name: 'Neutral (test)', params, parts: Object.fromEntries( Object.entries( r.parts ).map( ( [ p, v ] ) => [ p, { params: v } ] ) ) } );
 		const neutral = await cap();
 		check( 'strength 0 equals the neutral look', s.diff( zero.id, neutral.id ).mae < 0.004, s.diff( zero.id, neutral.id ).mae );
@@ -139,6 +145,44 @@ async function m1Checks( page, fail, run ) {
 		const detailed = await cap();
 		check( 'Detailed tier renders', detailed.stats.lumaStd > 0.03, detailed.stats );
 		await s.setTier( 1 );
+
+		// Density (M2): more props at ×2, same camera, back to the same triangles at ×1.
+		await s.setScene( 'garden', { tier: 1 } );
+		const camG = s.app.camera.position.toArray().join();
+		const t1 = s.info().triangles;
+		await s.setDensity( 2 );
+		const t2 = s.info().triangles;
+		await s.setDensity( 1 );
+		check( 'density adds props and keeps the camera', t2 > t1 && s.info().triangles === t1 && s.app.camera.position.toArray().join() === camG, [ t1, t2, s.info().triangles ] );
+
+		// Benefit matrix (M2): a 2×2 PNG.
+		const matrix = await s.benefitMatrix( { cell: [ 160, 90 ] } );
+		check( 'benefit matrix renders', matrix.startsWith( 'data:image/png' ) && matrix.length > 5000, matrix.length );
+
+		// .glb import (M2): export a named test scene in the page, import it, check the guesses, restyle.
+		const THREE = await import( 'three/webgpu' );
+		const { GLTFExporter } = await import( 'three/addons/exporters/GLTFExporter.js' );
+		const test = new THREE.Scene();
+		const add = ( name, geo, color, extra = {}, parent = test ) => { const m = new THREE.Mesh( geo, new THREE.MeshStandardMaterial( { color, ...extra } ) ); m.name = name; parent.add( m ); return m; };
+		add( 'Plane', new THREE.PlaneGeometry( 40, 40 ).rotateX( - Math.PI / 2 ), '#7a9a5a' );
+		add( 'House_Walls', new THREE.BoxGeometry( 4, 3, 4 ), '#e8d8b8' ).position.set( 0, 1.5, 0 );
+		add( 'Oak_Leaves', new THREE.SphereGeometry( 1.5, 16, 12 ), '#4f8f3a' ).position.set( 6, 3, 1 );
+		add( 'Lantern', new THREE.SphereGeometry( 0.3, 12, 8 ), '#ffe0a0', { emissive: '#ffb040', emissiveIntensity: 2 } ).position.set( 2.5, 1.2, 2.5 );
+		const player = new THREE.Group(); player.name = 'Player'; test.add( player );
+		add( 'Mesh', new THREE.CapsuleGeometry( 0.4, 1, 4, 12 ), '#3d7fd6', {}, player ).position.set( - 3, 0.9, 3 );
+		add( 'Crate', new THREE.BoxGeometry( 1, 1, 1 ), '#b0844f' ).position.set( 3, 0.5, - 3 );
+		const glb = await new GLTFExporter().parseAsync( test, { binary: true } );
+		const imp = await s.importModel( glb, 'smoke-test.glb' );
+		const parts = imp.guesses.map( ( g ) => g.part ).join( ',' );
+		check( 'import guesses sensible parts', parts === 'terrain,architecture,foliage,vfx,hero,props', parts );
+		await s.applyLook( 'plain' );
+		const ip = await cap();
+		await s.applyLook( 'graffiti-rush' );
+		const is = await cap();
+		check( 'imported model can be restyled', s.diff( ip.id, is.id ).mae > 0.03 && ip.stats.lumaStd > 0.02, s.diff( ip.id, is.id ).mae );
+		const hit = s.app.actions.pick( 0, 0 );
+		check( 'pick tool finds a part under the cursor', !! hit && !! hit.part, hit && [ hit.name, hit.part ] );
+		await s.setScene( 'harbor', { tier: 1 } );
 		s.freeze( null );
 		return res;
 
@@ -148,7 +192,7 @@ async function m1Checks( page, fail, run ) {
 
 	if ( run.sheet ) {
 
-		const url = await page.evaluate( () => window.__stylelab.contactSheet( { tier: 2 } ) );
+		const url = await page.evaluate( () => window.__stylelab.contactSheet( { tier: 1 } ) );
 		await mkdir( ARTIFACTS, { recursive: true } );
 		await writeFile( path.join( ARTIFACTS, run.sheet ), Buffer.from( url.split( ',' )[ 1 ], 'base64' ) );
 
@@ -205,7 +249,7 @@ async function smoke( browser, run, base ) {
 		if ( run.panel ) {
 
 			await page.click( '#verify-btn' );
-			await page.click( '.check[data-id="M1-01"] [data-status="pass"]' );
+			await page.click( '.check[data-id="M2-02"] [data-status="pass"]' );
 			await page.click( '[data-tab="report"]' );
 			result.report = await page.inputValue( 'textarea.report' );
 			if ( ! result.report.includes( 'Checks: 1 pass' ) ) fail( 'Verify report does not record the clicked check' );

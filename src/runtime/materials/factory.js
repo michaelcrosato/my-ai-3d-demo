@@ -31,6 +31,11 @@ export const objectIdNode = Fn( () => {
 /** Value written to the `ids` attachment: R = part id, G = object id. */
 export const idsNode = ( part ) => vec4( PART_INDEX[ part ] / 255, objectIdNode(), 0, 1 );
 
+const deformKey = ( s ) => s.wave ? `wave:${s.wave.amplitude}/${s.wave.frequency}/${s.wave.falloff ?? 90}` : s.wind ? `wind:${s.wind.strength}/${s.wind.height}` : '';
+
+/** Everything about a kit mesh's style that needs its own material (colors are uniforms but cache by value). */
+const styleKey = ( s ) => [ s.color, s.emissive, s.emissiveIntensity, s.roughness, s.metalness ?? 0, s.opacity ?? 1, deformKey( s ), s.doubleSided, s.map?.uuid ?? '', s.vertexColors ? 'vc' : '' ].join( '|' );
+
 /** Base color after the palette module: remap → tint → saturation/value/hue. */
 export function paletteColor( hex, v ) {
 
@@ -83,24 +88,52 @@ export class StyleMaterials {
 
 	}
 
+	/** Grass and foliage sway: offset grows with height above the mesh origin. */
+	windNode( wind ) {
+
+		const { strength = 0.12, height = 0.5 } = wind;
+		const t = this.time;
+		const h = positionLocal.y.div( height ).clamp( 0, 1.5 ).pow( 2 );
+		const phase = positionLocal.x.mul( 0.35 ).add( positionLocal.z.mul( 0.2 ) );
+		const sway = sin( t.mul( 1.7 ).add( phase ) ).add( sin( t.mul( 3.1 ).add( positionLocal.x.mul( 0.9 ) ) ).mul( 0.3 ) ).mul( strength );
+		return positionLocal.add( vec3( sway, 0, sway.mul( 0.6 ) ).mul( h ) );
+
+	}
+
+	deformNode( style ) {
+
+		return style.wave ? this.waveNode( style.wave ) : style.wind ? this.windNode( style.wind ) : null;
+
+	}
+
+	/** Settings shared by the styled and plain twins of a mesh. */
+	common( material, style ) {
+
+		material.side = style.doubleSided ? THREE.DoubleSide : THREE.FrontSide;
+		if ( style.emissive ) { material.emissive = new THREE.Color( style.emissive ); material.emissiveIntensity = style.emissiveIntensity; }
+		material.positionNode = this.deformNode( style );
+		if ( ( style.opacity ?? 1 ) < 1 ) { material.transparent = true; material.opacity = style.opacity; material.depthWrite = false; }
+		if ( style.map ) material.map = style.map;
+		if ( style.vertexColors ) material.vertexColors = true;
+
+	}
+
 	styledMaterial( style, part ) {
 
 		const pv = this.parts[ part ];
-		const key = [ part, pv.struct, style.color, style.emissive, style.emissiveIntensity, style.roughness, style.wave ? `${style.wave.amplitude}/${style.wave.frequency}` : '', style.doubleSided ].join( '|' );
+		const key = `${part}|${pv.struct}|${styleKey( style )}`;
 		let material = this.styled.get( key );
 		if ( material ) return material;
 
 		const v = pv.values;
 		const surface = { model: v[ 'surface.model' ], bands: v[ 'surface.bands' ], uniforms: pv.surface };
 		material = surface.model === 'pbr'
-			? new StyleStandardMaterial( surface, this.keyDirection, { roughness: style.roughness, metalness: 0 } )
+			? new StyleStandardMaterial( surface, this.keyDirection, { roughness: style.roughness, metalness: style.metalness ?? 0 } )
 			: new StyleSurfaceMaterial( surface );
 
 		material.name = `style:${part}:${surface.model}`;
 		material.flatShading = v[ 'surface.flatNormals' ];
-		material.side = style.doubleSided ? THREE.DoubleSide : THREE.FrontSide;
-		if ( style.emissive ) { material.emissive = new THREE.Color( style.emissive ); material.emissiveIntensity = style.emissiveIntensity; }
-		material.positionNode = this.waveNode( style.wave );
+		this.common( material, style );
 		// `output` keeps the color attachment when the pass has no MRT (MRTNode skips unknown names).
 		material.mrtNode = mrt( { output, ids: idsNode( part ) } );
 		material.userData = { sourceColor: style.color, part, key };
@@ -114,16 +147,15 @@ export class StyleMaterials {
 
 	plainMaterial( style ) {
 
-		const key = [ style.color, style.emissive, style.emissiveIntensity, style.wave ? `${style.wave.amplitude}/${style.wave.frequency}` : '', style.doubleSided ].join( '|' );
+		const key = styleKey( style );
 		let material = this.plain.get( key );
 		if ( material ) return material;
 
-		// The "agent default" baseline (§6.9): standard PBR, roughness 0.8, no fog.
-		material = new THREE.MeshStandardNodeMaterial( { color: new THREE.Color( style.color ), roughness: 0.8, metalness: 0, fog: false } );
+		// The "agent default" baseline (§6.9): standard PBR with the material values the model
+		// specifies (roughness 0.8, metalness 0 when it doesn't), no fog, no styling.
+		material = new THREE.MeshStandardNodeMaterial( { color: new THREE.Color( style.color ), roughness: style.roughness ?? 0.8, metalness: style.metalness ?? 0, fog: false } );
 		material.name = 'plain';
-		material.side = style.doubleSided ? THREE.DoubleSide : THREE.FrontSide;
-		if ( style.emissive ) { material.emissive = new THREE.Color( style.emissive ); material.emissiveIntensity = style.emissiveIntensity; }
-		material.positionNode = this.waveNode( style.wave );
+		this.common( material, style );
 		this.plain.set( key, material );
 		return material;
 
@@ -155,7 +187,9 @@ export class StyleMaterials {
 			mesh.material = this.styledMaterial( style, style.part );
 			mesh.layers.set( LAYER_STYLED );
 
-			const plain = new THREE.Mesh( mesh.geometry, this.plainMaterial( style ) );
+			const plain = mesh.isSkinnedMesh ? new THREE.SkinnedMesh( mesh.geometry, this.plainMaterial( style ) ) : new THREE.Mesh( mesh.geometry, this.plainMaterial( style ) );
+			if ( mesh.isSkinnedMesh ) { plain.bindMode = mesh.bindMode; plain.bind( mesh.skeleton, mesh.bindMatrix ); }
+			plain.frustumCulled = mesh.frustumCulled;
 			plain.name = 'plain twin';
 			plain.layers.set( LAYER_PLAIN );
 			plain.castShadow = mesh.castShadow;
@@ -173,7 +207,9 @@ export class StyleMaterials {
 	updateHull( entry ) {
 
 		const pv = this.parts[ entry.part ];
-		const want = pv.hullEnabled && pv.hullThickness.value > 0.01 && ! entry.style.wave;
+		// Deformed, skinned and see-through meshes get no hull: its extrusion wouldn't follow them.
+		const s = entry.style;
+		const want = pv.hullEnabled && pv.hullThickness.value > 0.01 && ! s.wave && ! s.wind && ! entry.mesh.isSkinnedMesh && ( s.opacity ?? 1 ) >= 1;
 
 		if ( want && ! entry.hull ) {
 
@@ -245,6 +281,19 @@ export class StyleMaterials {
 
 		if ( rebuilt.length ) this.disposeUnused();
 		return rebuilt;
+
+	}
+
+	/** Moves one mesh to another part (pick tool). Returns false if it isn't registered. */
+	setPart( mesh, part ) {
+
+		const entry = this.entries.find( ( e ) => e.mesh === mesh );
+		if ( ! entry || ! this.parts[ part ] ) return false;
+		entry.part = entry.style.part = part;
+		entry.mesh.material = this.styledMaterial( entry.style, part );
+		if ( entry.hull ) { entry.mesh.remove( entry.hull ); entry.hull = null; }
+		this.updateHull( entry );
+		return true;
 
 	}
 

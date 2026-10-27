@@ -25,6 +25,7 @@ export function character( tier, { part = 'characters', shirt = '#3d7fd6', pants
 		head.position.y = 1.55;
 		root.add( body, head );
 		root.userData.animate = ( t ) => { head.rotation.y = Math.sin( t * 0.7 + seed ) * 0.3; body.scale.y = 1 + Math.sin( t * 2 + seed ) * 0.01; };
+		root.userData.rig = { head, torso: body, arms: [], legs: [], part, tier };
 		return root;
 
 	}
@@ -149,6 +150,7 @@ export function character( tier, { part = 'characters', shirt = '#3d7fd6', pants
 
 	};
 
+	root.userData.rig = { head, torso, arms, legs, part, tier };
 	return root;
 
 }

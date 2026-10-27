@@ -3,9 +3,50 @@
 // `actions` name panel handlers; each button is labeled with what it does (panel.js ACTION_LABELS).
 // `setup` is what "Set it up for me" loads: scene, look, tier, shot.
 
-export const CURRENT_MILESTONE = 'M1';
+export const CURRENT_MILESTONE = 'M2';
 
 export const CHECKS = [
+	{
+		id: 'M2-01', milestone: 'M2',
+		title: 'Each scene loads and evokes its inspiration',
+		steps: [ 'Open each scene (Scene tab cards, the top-bar picker, or [ / ]). Try a couple of looks on each.', 'Rate how well the scene evokes the games it is inspired by, and how much you like it (1–5).' ],
+		expected: 'Every scene loads without errors in a second or two, and reads as its genre from its default camera.',
+		ratings: [ 'garden', 'plaza', 'dungeon', 'kart', 'platforms', 'hangar', 'meadow', 'campsite' ],
+	},
+	{
+		id: 'M2-02', milestone: 'M2',
+		title: 'Animations play',
+		steps: [ 'Garden: the goose waddles. Plaza: the skater loops. Kart Circuit: karts race. Sky Platforms: coins spin, the robot hovers.', 'Dungeon: torches flicker. Meadow: grass sways. Campsite: the fire flickers. Hangar: holograms turn.' ],
+		expected: 'Everything moves smoothly, and the styled and plain images stay in sync when you hold compare.',
+		setup: { scene: 'kart', look: 'sea-breeze', tier: 1 },
+	},
+	{
+		id: 'M2-03', milestone: 'M2',
+		title: 'Import one of your own .glb files',
+		steps: [ 'Drop a .glb or .gltf onto the window (or Scene tab → Import .glb…).', 'Turn on Pick parts and click objects: check the guessed part and fix any that are wrong. Then try a few looks.' ],
+		expected: 'The model loads, is framed by the camera, and gets sensible parts (ground → terrain, trees → foliage, people → characters, glowing things → vfx). Note what it guessed wrong.',
+	},
+	{
+		id: 'M2-04', milestone: 'M2',
+		title: 'Density changes props, not the layout',
+		steps: [ 'Scene tab → Prop density: drag from ×0.5 to ×4 on the Garden, the Meadow and the Kart Circuit.' ],
+		expected: 'More or fewer trees, flowers, grass, cones and props; landmarks, characters and the camera stay put. The readouts update.',
+		setup: { scene: 'meadow', look: 'phone-safe-toon', tier: 1 },
+	},
+	{
+		id: 'M2-05', milestone: 'M2',
+		title: 'Benefit matrix',
+		steps: [ 'Pick a look, then Scene tab → Benefit matrix.' ],
+		expected: 'A 2×2 image (plain and styled, Blockout and Detailed) appears after a few seconds, and you can download it. It should show stylization helping the blockout most.',
+		setup: { scene: 'harbor', look: 'sea-breeze', tier: 0 },
+	},
+	{
+		id: 'M2-06', milestone: 'M2',
+		title: 'Shots match each genre\'s camera',
+		steps: [ 'On each scene, cycle the shots (N, R3, or the Shot picker): top-down garden, chase camera on the kart, isometric dungeon, over the shoulder in the hangar.' ],
+		expected: 'Each shot frames the action the way its genre would.',
+		setup: { scene: 'garden', look: 'phone-safe-toon', tier: 1 },
+	},
 	{
 		id: 'M1-01', milestone: 'M1',
 		title: 'Look buttons apply instantly',

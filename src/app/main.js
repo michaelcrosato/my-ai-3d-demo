@@ -106,7 +106,49 @@ async function boot() {
 
 	createTopBar( app );
 	createLookBar( $( 'looks' ), app );
-	const inspector = createInspector( $( 'inspector' ), app );
+	let lastBuildMs = 0;
+	app.on( ( type, d ) => { if ( type === 'scene' ) lastBuildMs = Math.round( d.buildMs ); } );
+	const readouts = () => ( {
+		triangles: app.built?.triangles ?? 0,
+		objects: app.built?.objects ?? 0,
+		calls: renderer.info.render.drawCalls,
+		materials: app.runtime.materials.styled.size + app.runtime.materials.plain.size + app.runtime.materials.hulls.size,
+		geometries: renderer.info.memory.geometries,
+		buildMs: lastBuildMs,
+	} );
+
+	const showImage = ( url, title ) => {
+
+		const modal = $( 'modal' );
+		modal.replaceChildren( h( 'div.modal-box', {},
+			h( 'header', {}, h( 'b', {}, title ), h( 'a', { href: url, download: `${title.replace( /[^a-z0-9]+/gi, '-' ).toLowerCase()}.png` }, 'Download PNG' ), h( 'button', { onclick: () => { modal.hidden = true; } }, '✕' ) ),
+			h( 'img', { src: url, alt: title } ),
+		) );
+		modal.hidden = false;
+
+	};
+
+	const inspector = createInspector( $( 'inspector' ), app, { readouts, benefitMatrix: () => api.benefitMatrix(), showImage, toast } );
+
+	// Drop a .glb anywhere to import it; click in the view to pick parts.
+	window.addEventListener( 'dragover', ( e ) => { e.preventDefault(); } );
+	window.addEventListener( 'drop', ( e ) => {
+
+		e.preventDefault();
+		const file = [ ...( e.dataTransfer?.files || [] ) ].find( ( f ) => /\.(glb|gltf)$/i.test( f.name ) );
+		if ( file ) { inspector.setTab( 'scene' ); inspector.sceneTab.importFile( file ); } else if ( e.dataTransfer?.files?.length ) toast( 'Drop a .glb or .gltf file to import it.' );
+
+	} );
+
+	let down = null;
+	canvas.addEventListener( 'pointerdown', ( e ) => { down = [ e.clientX, e.clientY ]; } );
+	canvas.addEventListener( 'pointerup', ( e ) => {
+
+		if ( ! down || ! inspector.sceneTab.picking || Math.hypot( e.clientX - down[ 0 ], e.clientY - down[ 1 ] ) > 5 ) return;
+		const r = canvas.getBoundingClientRect();
+		app.actions.pick( ( e.clientX - r.left ) / r.width * 2 - 1, - ( ( e.clientY - r.top ) / r.height * 2 - 1 ) );
+
+	} );
 	const compareUI = createCompareUI( app );
 
 	const ui = {
@@ -252,7 +294,7 @@ async function boot() {
 		getPerf: () => ( { ...stats } ),
 		runSpikes: ( onResult ) => runSpikes( null, onResult ),
 		setup,
-		lookNames: Object.fromEntries( LOOKS.map( ( l ) => [ l.id, l.name ] ) ),
+		names: Object.fromEntries( [ ...LOOKS, ...SCENES ].map( ( x ) => [ x.id, x.name ] ) ),
 	} );
 
 	const verifyButton = $( 'verify-btn' );
@@ -273,6 +315,7 @@ async function boot() {
 		scenes: () => SCENES.map( ( s ) => ( { id: s.id, name: s.name, shots: Object.keys( s.shots ) } ) ),
 		looks: () => LOOKS.map( ( l ) => ( { id: l.id, name: l.name } ) ),
 		setScene: async ( id, opts ) => { app.actions.setScene( id, opts ); await nextFrames(); },
+		setDensity: async ( d ) => { app.actions.setDensity( d ); await nextFrames(); },
 		setTier: async ( tier ) => { app.actions.setTier( tier ); await nextFrames(); },
 		applyLook: async ( idOrJson ) => { app.actions.setLook( idOrJson ); await nextFrames(); },
 		setParam: ( id, value ) => app.actions.setParam( id, value ),
@@ -303,13 +346,19 @@ async function boot() {
 
 					app.tick( 0 );
 					await renderToPixels( renderer, width, height, () => app.runtime.render() ); // warm-up: compiles after rebuilds
-					return renderToPixels( renderer, width, height, () => app.runtime.render() );
+					const pixels = await renderToPixels( renderer, width, height, () => app.runtime.render() );
+					// With trackTimestamp on, unresolved queries pile up while the loop is paused.
+					if ( stats.method === 'timestamp' ) await renderer.resolveTimestampsAsync( 'render' );
+					return pixels;
 
 				} );
 				const id = ++ captureId;
 				captures.set( id, px );
 				if ( captures.size > 16 ) captures.delete( captures.keys().next().value );
-				return { id, stats: pixelStats( px ) };
+				// FNV-1a over the pixels: equal hashes mean identical frames (determinism checks).
+				let hash = 0x811c9dc5;
+				for ( let i = 0; i < px.data.length; i ++ ) hash = Math.imul( hash ^ px.data[ i ], 16777619 );
+				return { id, stats: pixelStats( px ), hash: ( hash >>> 0 ).toString( 16 ) };
 
 			} finally {
 
@@ -352,6 +401,40 @@ async function boot() {
 			return sheet.toDataURL( 'image/png' );
 
 		},
+		/** The benefit matrix (§6.2): rows plain / styled, columns Blockout / Detailed, current look. */
+		benefitMatrix: async ( { cell = [ 480, 270 ] } = {} ) => {
+
+			if ( app.scene().imported ) throw new Error( 'the benefit matrix needs a built-in scene (it compares tiers)' );
+			const [ w, hgt ] = cell, pad = 22;
+			const sheet = document.createElement( 'canvas' );
+			sheet.width = w * 2; sheet.height = ( hgt + pad ) * 2;
+			const ctx = sheet.getContext( '2d' );
+			ctx.fillStyle = '#1b1b1c'; ctx.fillRect( 0, 0, sheet.width, sheet.height );
+			ctx.font = '13px system-ui, sans-serif';
+			const tier = app.store.get().tier;
+
+			for ( const [ col, t ] of [ [ 0, 0 ], [ 1, TIERS.length - 1 ] ] ) {
+
+				app.actions.setTier( t );
+				for ( const [ row, plain ] of [ [ 0, true ], [ 1, false ] ] ) {
+
+					app.actions.setHold( plain );
+					const { id } = await api.capture( { width: w, height: hgt } );
+					ctx.putImageData( new ImageData( new Uint8ClampedArray( captures.get( id ).data ), w, hgt ), col * w, row * ( hgt + pad ) + pad );
+					ctx.fillStyle = '#e6e6e6';
+					ctx.fillText( `${plain ? 'Plain' : app.look().name} · ${TIERS[ t ].name}`, col * w + 8, row * ( hgt + pad ) + 15 );
+
+				}
+
+			}
+
+			app.actions.setHold( false );
+			app.actions.setTier( tier );
+			return sheet.toDataURL( 'image/png' );
+
+		},
+		/** Imports a .glb/.gltf from an ArrayBuffer; returns counts and part guesses. */
+		importModel: async ( buffer, name ) => { const r = await app.actions.importModel( buffer, name ); await nextFrames(); return { meshes: r.meshes, warnings: r.warnings, guesses: r.guesses }; },
 		/** Mean absolute difference (0–1) between two captures. */
 		diff: ( a, b ) => {
 

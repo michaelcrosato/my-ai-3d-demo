@@ -2,13 +2,13 @@
 
 **Style Lab** (working title): a hands-on preview tool for choosing a game's art style. Try stylized looks live on sample scenes, mix and tune them, compare against plain, check what they cost on phones, and export the style as a brief and a drop-in runtime for your AI agents.
 
-**Status:** M1 (vertical slice) is done: two scenes at four complexity tiers, five one-tap looks, instant compare against the plain baseline, and a Tune panel with a Learn card for every parameter. See [DESIGN.md](DESIGN.md) for the design and milestones, [docs/spikes.md](docs/spikes.md) for the M0 API spikes, and [CHANGELOG.md](CHANGELOG.md) for what to test.
+**Status:** M2 is done: ten scenes from popular genres at four complexity tiers, five one-tap looks, instant compare against the plain baseline, a Tune panel with a Learn card for every parameter, and import of your own `.glb` with automatic part guessing. See [DESIGN.md](DESIGN.md) for the design and milestones, [docs/spikes.md](docs/spikes.md) for the M0 API spikes, and [CHANGELOG.md](CHANGELOG.md) for what to test.
 
 ## Try it
 
 Open **`dist/style-lab.html`** in a WebGPU-capable browser (recent Chrome or Edge; others fall back to WebGL2). It works from disk or from any static host; the dependencies load from jsDelivr.
 
-Pick a look on the left, hold **Space** to compare with the plain baseline, drag **Complexity** in the top bar, and open **Tune** to change anything. Press **?** for the keys. Press **🧪 Verify** to run the checks and copy a report.
+Pick a look on the left, hold **Space** to compare with the plain baseline, drag **Complexity** in the top bar, and open **Tune** to change anything. Switch scenes in the **Scene** tab, or drop a `.glb` on the window to try looks on your own model. Press **?** for the keys. Press **🧪 Verify** to run the checks and copy a report.
 
 ## Develop
 
@@ -37,7 +37,8 @@ src/runtime/          style engine: no DOM, exported as stylelab-runtime.js
   render/             light rigs for the styled and plain render sets
 src/app/              the tool: app controller, UI, input, Verify panel, diagnostics, spikes
 src/content/looks/    the look library
-src/scenes/           Harbor Isle, Lookdev Stage, and the procedural asset kit
+src/scenes/           ten scenes and the procedural asset kit (kit/)
+src/app/import/       .glb import (part guessing lives in src/runtime/parts/)
 scripts/              build, dev server, smoke test, import-map helpers
 tests/                unit tests
 docs/spikes.md        M0 spike results and decisions

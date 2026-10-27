@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.3.0 — M2: scene library, asset kit, .glb import (2026-10-27)
+
+**What's new**
+- **Ten scenes.** Eight new, each with its genre's camera shots and its own light rig and sky:
+  - *Village Garden*: high, near-orthographic camera, with a goose on the loose.
+  - *Graffiti Plaza*: low wide chase camera, rails, ramps and procedural graffiti.
+  - *Torchlit Dungeon*: isometric, with flickering torches and a lava channel.
+  - *Kart Circuit*: karts racing a stadium track past crowds.
+  - *Sky Platforms*: floating platforms, coins and pipes.
+  - *Sci-fi Hangar*: metal, emissive strips, a dropship and holograms.
+  - *Meadow Shrine*: grass swaying in the wind, a gate and mountains.
+  - *Dusk Campsite*: layered ridges, a campfire and a sunset.
+- **Characters.** The mannequin, plus a goose, a skater, a robot and a knight, each with procedural animation and four detail tiers.
+- **Asset kit** for the new scenes: buildings, fences, hedges, walls, pillars, stairs, ramps, rails, lamps, torches, gates, stands, tents, karts, coins, blocks, chests, a campfire, a ship, holograms, pines, flowers, grass, ridges and ponds.
+- **Scene tab** (in the inspector): scene cards with designer notes, shot buttons, a **prop density** slider (×0.5–×4), and readouts (triangles, draw calls, objects, materials, geometries, build time). It also has the **benefit matrix**: one click renders plain vs. styled at Blockout and Detailed, with a download.
+- **Import your own model.** Drop a `.glb` or `.gltf` on the window, or use Scene tab → Import. Every mesh gets a guessed part (tags, then names, then shape), and it keeps the model's colors, textures, vertex colors and first animation. **Pick parts** lets you click objects to see why each part was chosen and change it.
+- **Baseline change.** The plain baseline now uses the model's own roughness and metalness (0.8 and 0 when unspecified), so the Plain look equals the baseline exactly.
+- **Lens change.** A look's lens now *scales* each shot's own lens (`lens.fovScale`; Graffiti Rush is ×1.25) instead of setting an absolute FOV, and the camera dollies to keep the subject's size. Top-down and isometric cameras keep their character under every look.
+
+**What to test** (open `dist/style-lab.html`, then 🧪 Verify → Checklist; about 20 minutes):
+1. **M2-01** Rate each new scene: does it evoke its inspiration, and do you like it (1–5)?
+2. **M2-02** Animations play: goose, skater, karts, coins, torches, grass, campfire, holograms.
+3. **M2-03** Import one of your own `.glb` files, check the part guesses with Pick parts, and note what's wrong.
+4. **M2-04** Prop density changes props but not the layout or camera.
+5. **M2-05** The benefit matrix renders and downloads.
+6. **M2-06** Each scene's shots match its genre's camera.
+
+Then Report → **Copy report** and paste it back.
+
+**Known**
+- Compressed glTF: Draco and meshopt load decoders from jsDelivr when needed. KTX2 textures and morph targets aren't supported on the styled and plain twins yet.
+- Ink on the Meadow's thousands of grass blades turns to noise under Graffiti Rush. That is exactly what the scene stress-tests (density vs. line noise); distance fade arrives in M3.
+
 ## v0.2.0 — M1: vertical slice, plain vs. styled (2026-10-27)
 
 **What's new**
