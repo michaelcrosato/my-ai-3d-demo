@@ -98,8 +98,12 @@ export async function withRendererSize( renderer, width, height, fn ) {
 
 }
 
-/** Mean and standard deviation of luma, plus clipped fractions, sampled every `step` pixels. */
-export function pixelStats( pixels, step = 2 ) {
+/**
+ * Mean and standard deviation of luma, plus clipped fractions, sampled every `step` pixels.
+ * Every pixel by default: sparser sampling aliases with ordered dither patterns (a 1-bit
+ * frame read as nearly all ink).
+ */
+export function pixelStats( pixels, step = 1 ) {
 
 	let n = 0, sum = 0, sum2 = 0, black = 0, white = 0;
 
