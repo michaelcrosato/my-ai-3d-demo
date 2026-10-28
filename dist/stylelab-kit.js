@@ -1,4 +1,4 @@
-/* Style Lab kit v0.10.0 (2f4cb39): procedural assets, part-tagged, seeded, tiered */
+/* Style Lab kit v1.0.0 (e1ba119): procedural assets, part-tagged, seeded, tiered */
 // src/scenes/kit/core.js
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";

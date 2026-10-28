@@ -1,4 +1,4 @@
-/* Style Lab runtime v0.10.0 (2f4cb39) */
+/* Style Lab runtime v1.0.0 (e1ba119) */
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -7315,7 +7315,7 @@ function mobileSubstitutions(global, parts) {
 }
 
 // src/runtime/index.js
-var RUNTIME_VERSION = "0.10.0";
+var RUNTIME_VERSION = "1.0.0";
 export {
   BRIEF_LENGTHS,
   BRIEF_TARGETS,
