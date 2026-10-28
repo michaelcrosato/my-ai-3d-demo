@@ -1,10 +1,13 @@
-// Verify panel shell (design §6.14): checklist, spikes, environment & errors, report.
+// Verify panel (design §6.14, M9): the guided tour (every check in learning order, each with
+// "Set it up for me" and what it teaches), spikes, environment & errors, and the report.
 
-import { CHECKS, CURRENT_MILESTONE } from './checks.js';
+import { CHECKS, CURRENT_MILESTONE, REPORT_FROM } from './checks.js';
+import { TOUR } from './tour.js';
+import { LESSONS } from '../../content/lessons.js';
 import { formatReport } from './report.js';
 
 const STORE_KEY = 'stylelab.verify.v1';
-const ACTION_LABELS = { runSpikes: '▶ Run all spikes', reloadWebGL: '↻ Reload with WebGL2', effectSheet: '▦ Render the effects sheet', openBrief: '📝 Open the brief', openFiles: '⇩ Open the export files', openShare: '🔗 Open the share link and QR', openAudit: '⚡ Open the audit' };
+const ACTION_LABELS = { runSpikes: '▶ Run all spikes', reloadWebGL: '↻ Reload with WebGL2', effectSheet: '▦ Render the effects sheet', openBrief: '📝 Open the brief', openFiles: '⇩ Open the export files', openShare: '🔗 Open the share link and QR', openAudit: '⚡ Open the audit', showWelcome: '👋 Show the welcome', showKeys: '⌨ Show the key map' };
 const actionLabel = ( a ) => ACTION_LABELS[ a ] || ( a.startsWith( 'lesson:' ) ? `🎓 Start lesson ${a.slice( 7 )}` : a );
 
 function load() {
@@ -42,8 +45,10 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 	const state = store[ key ] || ( store[ key ] = { checks: {}, spikeRuns: {} } );
 	const backend = () => getEnv().backend;
 	const currentSpikes = () => state.spikeRuns[ backend() ] || [];
-	let tab = 'checklist';
+	let tab = 'tour';
 	let running = false;
+	let signoffOnly = false;
+	let openSections = null; // expanded tour sections (first visit: the first unfinished one)
 
 	const persist = () => save( store );
 	const checks = () => CHECKS.map( ( c ) => {
@@ -53,22 +58,24 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 		return { ...c, ...saved, ratingsList };
 
 	} );
-	// The report covers this milestone, plus earlier checks only if you marked them.
-	const reported = () => checks().filter( ( c ) => c.milestone === CURRENT_MILESTONE || c.status );
+	// The report covers every check you marked, plus the sign-off checks still owed (from
+	// REPORT_FROM on), which it lists as not done.
+	const owed = ( c ) => c.signoff !== false && c.milestone >= REPORT_FROM && c.milestone <= CURRENT_MILESTONE;
+	const reported = () => checks().filter( ( c ) => c.status || owed( c ) );
 	const report = () => formatReport( { build, env: getEnv(), checks: reported(), spikeRuns: state.spikeRuns, log: log.entries, perf: getPerf() } );
 
 	const RATING = ( c, r, field ) => `<select data-rate="${r.id}" data-field="${field}"><option value="">–</option>${[ 1, 2, 3, 4, 5 ].map( ( n ) => `<option ${r[ field ] === n ? 'selected' : ''}>${n}</option>` ).join( '' )}</select>`;
 
 	const checkView = ( c ) => `
 				<section class="check" data-id="${c.id}">
-					<h4><span class="cid">${c.id}</span> ${esc( c.title )}${c.signoff === false ? ' <span class="tag">optional tour</span>' : ''}</h4>
+					<h4>${c.signoff === false ? '<span class="tag">optional</span>' : '<span class="tag signoff" title="I need your report on this one">sign-off</span>'} ${esc( c.title )} <span class="cid">${c.id}</span></h4>
+					${c.learn ? `<p class="learn"><b>What you'll learn:</b> ${esc( c.learn )}</p>` : ''}
 					<ol>${c.steps.map( ( s ) => `<li>${esc( s )}</li>` ).join( '' )}</ol>
 					<p class="expected"><b>Expected:</b> ${esc( c.expected )}</p>
-					${c.learn ? `<p class="learn"><b>What you'll learn:</b> ${esc( c.learn )}</p>` : ''}
 					${c.ratingsList ? `<table class="ratings"><tr><th></th><th>Evokes it</th><th>I like it</th><th>Note</th></tr>${c.ratingsList.map( ( r ) => `<tr><td>${esc( r.name )}</td><td>${RATING( c, r, 'evoke' )}</td><td>${RATING( c, r, 'like' )}</td><td><input data-rate="${r.id}" data-field="note" value="${esc( r.note || '' )}" placeholder="optional"></td></tr>` ).join( '' )}</table>` : ''}
 					<div class="row">
 						${[ 'pass', 'fail', 'unsure' ].map( ( s ) => `<button class="status ${c.status === s ? 'on ' + s : ''}" data-status="${s}">${{ pass: '✅ Pass', fail: '❌ Fail', unsure: '⚠️ Unsure' }[ s ]}</button>` ).join( '' )}
-						${c.setup ? '<button data-setup>Set it up for me</button>' : ''}
+						<button class="primary" data-setup>Set it up for me</button>
 						${( c.actions || [] ).map( ( a ) => `<button data-action="${a}" ${a === 'runSpikes' && running ? 'disabled' : ''}>${actionLabel( a )}</button>` ).join( '' )}
 					</div>
 					<textarea placeholder="Notes (what you saw)" data-note>${esc( c.note || '' )}</textarea>
@@ -94,15 +101,33 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 
 	const views = {
 
-		checklist: () => {
+		tour: () => {
 
-			const all = checks();
-			const current = all.filter( ( c ) => c.milestone === CURRENT_MILESTONE );
-			const earlier = all.filter( ( c ) => c.milestone !== CURRENT_MILESTONE );
+			const all = new Map( checks().map( ( c ) => [ c.id, c ] ) );
+			const list = [ ...all.values() ];
+			const signoffs = list.filter( ( c ) => c.signoff !== false );
+			const done = list.filter( ( c ) => c.status ).length;
+			const signed = signoffs.filter( ( c ) => c.status ).length;
+			openSections ||= new Set( [ ( TOUR.find( ( s ) => s.checks.some( ( id ) => ! all.get( id ).status ) ) || TOUR[ 0 ] ).id ] );
 			return `
-			<p class="hint">Work through the ${CURRENT_MILESTONE} checks, then copy the report from the Report tab and paste it back to me. "Set it up for me" loads the right scene, look and camera.</p>
-			${current.map( checkView ).join( '' )}
-			<details class="earlier"><summary>Earlier milestones (${earlier.length} checks, optional)</summary>${earlier.map( checkView ).join( '' )}</details>`;
+			<p class="hint">A guided tour of Style Lab, in learning order. <b>Set it up for me</b> loads the scene, look and camera for each step. <span class="tag signoff">sign-off</span> checks are the ones I need your report on; <span class="tag">optional</span> steps are there to learn the tool. When you're done, copy the report from the Report tab and paste it back to me.</p>
+			<div class="tour-progress" title="${done} of ${list.length} steps done"><i style="width:${( 100 * done / list.length ).toFixed( 1 )}%"></i></div>
+			<p class="hint">${done} of ${list.length} steps done · sign-offs ${signed} of ${signoffs.length} · <label><input type="checkbox" data-signoff-only ${signoffOnly ? 'checked' : ''}> sign-off checks only</label></p>
+			${TOUR.map( ( s, i ) => {
+
+				const items = s.checks.map( ( id ) => all.get( id ) ).filter( ( c ) => c && ( ! signoffOnly || c.signoff !== false ) );
+				if ( ! items.length ) return '';
+				const l = s.lesson && LESSONS.find( ( x ) => x.id === s.lesson );
+				const n = items.filter( ( c ) => c.status ).length;
+				return `
+				<details class="tour-section" data-section="${s.id}" ${openSections.has( s.id ) ? 'open' : ''}>
+					<summary><span class="num">${i + 1}</span> ${esc( s.title )} <span class="hint">${n === items.length ? '✓' : `${n} / ${items.length}`}</span></summary>
+					<p class="intro">${esc( s.intro )}</p>
+					${l ? `<p><button class="link" data-lesson="${l.id}">🎓 Lesson ${l.id.slice( 1 )}: ${esc( l.title )}</button> <span class="hint">${l.minutes} min · goes deeper on this section</span></p>` : ''}
+					${items.map( checkView ).join( '' )}
+				</details>`;
+
+			} ).join( '' )}`;
 
 		},
 
@@ -149,6 +174,7 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 		if ( ! t ) return;
 		if ( t.dataset.close !== undefined ) return toggle( false );
 		if ( t.dataset.tab ) { tab = t.dataset.tab; return render(); }
+		if ( t.dataset.lesson ) { toggle( false ); return startLesson( t.dataset.lesson ); }
 		if ( t.dataset.run !== undefined ) return startSpikes();
 		if ( t.dataset.action?.startsWith( 'lesson:' ) ) { toggle( false ); return startLesson( t.dataset.action.slice( 7 ) ); }
 		if ( t.dataset.action ) return actions[ t.dataset.action ]();
@@ -199,7 +225,20 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 
 	};
 
-	root.addEventListener( 'change', rate );
+	root.addEventListener( 'change', ( e ) => {
+
+		if ( e.target.dataset.signoffOnly !== undefined ) { signoffOnly = e.target.checked; return render(); }
+		rate( e );
+
+	} );
+	// <details> toggles don't bubble: listen in the capture phase to remember open sections.
+	root.addEventListener( 'toggle', ( e ) => {
+
+		const id = e.target.dataset?.section;
+		if ( ! id || ! openSections ) return;
+		if ( e.target.open ) openSections.add( id ); else openSections.delete( id );
+
+	}, true );
 
 	root.addEventListener( 'input', ( e ) => {
 
@@ -229,6 +268,17 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 
 	}
 
-	return { toggle, startSpikes, setSpikes, report, render, get spikes() { return currentSpikes(); } };
+	/** Opens the tour at one check: expands its section and scrolls to it. */
+	function showCheck( id ) {
+
+		const section = TOUR.find( ( x ) => x.checks.includes( id ) );
+		tab = 'tour';
+		if ( section ) ( openSections ||= new Set() ).add( section.id );
+		toggle( true );
+		root.querySelector( `.check[data-id="${id}"]` )?.scrollIntoView( { block: 'start' } );
+
+	}
+
+	return { toggle, startSpikes, setSpikes, report, render, showCheck, get spikes() { return currentSpikes(); } };
 
 }

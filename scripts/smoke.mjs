@@ -2,7 +2,7 @@
 // checks for errors and a non-blank frame, and runs the spikes. CDN requests are
 // served from node_modules (same pinned versions), so it runs offline.
 //
-//   node scripts/smoke.mjs [--only <text>] [--checks m1,m3,m4,m5,m6,m7,m8] [--no-spikes] [--rebuild-iterations N]
+//   node scripts/smoke.mjs [--only <text>] [--checks m1,m3,m4,m5,m6,m7,m8,m9] [--no-spikes] [--rebuild-iterations N]
 //
 // Needs Playwright with Chromium: `npm i -D playwright && npx playwright install chromium`
 // (already present in the cloud container). Headless WebGPU uses SwiftShader.
@@ -26,14 +26,14 @@ const distFile = pathToFileURL( path.join( ROOT, 'dist/style-lab.html' ) ).href;
 
 const RUNS = [
 	{ name: 'dev  · http · WebGL2', url: ( base ) => `${base}/index.html?backend=webgl`, backend: 'WebGL2' },
-	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2', m1: true, m3: true, m4: true, m5: true, m6: true, m7: true, m8: true, sweep: true, gallery: 'm4-gallery.png' },
-	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm8-webgpu.png', panel: true, m1: true, m3: true, m4: true, m5: true, m6: true, m7: true, m8: true, sweep: [ 'lookdev', 'harbor' ], sheet: 'm8-contact.png', effects: 'm3-effects.png' },
+	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2', m1: true, m3: true, m4: true, m5: true, m6: true, m7: true, m8: true, m9: true, sweep: true, gallery: 'm4-gallery.png' },
+	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm9-webgpu.png', panel: true, m1: true, m3: true, m4: true, m5: true, m6: true, m7: true, m8: true, m9: true, sweep: [ 'lookdev', 'harbor' ], sheet: 'm9-contact.png', effects: 'm3-effects.png' },
 	{ name: 'dist · file · WebGL2', url: () => `${distFile}?backend=webgl`, backend: 'WebGL2' },
 	{ name: 'dist · file · auto  ', url: () => distFile, backend: null },
 ].filter( ( r ) => ! value( '--only' ) || r.name.includes( value( '--only' ) ) );
 
 // --checks m4,m5 runs exactly those milestone checks on the selected runs (handy with --only dev).
-if ( value( '--checks' ) ) for ( const r of RUNS ) for ( const m of [ 'm1', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8' ] ) r[ m ] = value( '--checks' ).split( ',' ).includes( m );
+if ( value( '--checks' ) ) for ( const r of RUNS ) for ( const m of [ 'm1', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9' ] ) r[ m ] = value( '--checks' ).split( ',' ).includes( m );
 
 const MIME = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json' };
 
@@ -926,6 +926,137 @@ async function m8Checks( page, fail ) {
 
 }
 
+/**
+ * M9 acceptance checks (design §9 M9): the Verify panel is a guided tour (every check in
+ * one section, each with "Set it up for me" and a learn line, sign-offs marked apart);
+ * the welcome, the key map and the error messages work; the phone layout fits; a first
+ * run (welcome showing) has no errors, on desktop and on a phone-sized screen.
+ */
+async function m9Checks( page, fail, run, base ) {
+
+	const out = await page.evaluate( async () => {
+
+		const s = window.__stylelab;
+		const res = { checks: [] };
+		const check = ( name, pass, value ) => res.checks.push( { name, pass, value } );
+		const wait = ( ms ) => new Promise( ( r ) => setTimeout( r, ms ) );
+
+		// The tour.
+		document.querySelector( '#verify-btn' ).click();
+		await wait( 100 );
+		const panel = document.querySelector( '#verify' );
+		panel.querySelectorAll( 'details.tour-section' ).forEach( ( d ) => { d.open = true; } );
+		const cards = [ ...panel.querySelectorAll( '.check' ) ];
+		const t = s.tour();
+		check( 'the tour shows every check once, in its sections', cards.length === t.checks && new Set( cards.map( ( c ) => c.dataset.id ) ).size === t.checks && panel.querySelectorAll( 'details.tour-section' ).length === t.sections, { cards: cards.length, ...t } );
+		check( 'every check has "Set it up for me" and a learn line', cards.every( ( c ) => c.querySelector( '[data-setup]' ) && c.querySelector( '.learn' ) ), cards.filter( ( c ) => ! c.querySelector( '[data-setup]' ) || ! c.querySelector( '.learn' ) ).map( ( c ) => c.dataset.id ) );
+		check( 'sign-off checks are marked apart from optional steps', panel.querySelectorAll( '.tag.signoff' ).length - 1 === t.signoffs && cards.every( ( c ) => c.querySelector( '.tag' ) ), { tags: panel.querySelectorAll( '.tag.signoff' ).length - 1, signoffs: t.signoffs } );
+		const lessonLinks = [ ...panel.querySelectorAll( '[data-lesson]' ) ].map( ( b ) => b.dataset.lesson );
+		check( 'tour sections link their lessons', lessonLinks.length >= 6 && lessonLinks.every( ( id ) => s.lessons.list().some( ( l ) => l.id === id ) ), lessonLinks );
+		// Set it up for me on a check from each section loads its scene and look.
+		const sample = [ 'M1-02', 'M3-02', 'M5-03', 'M8-02' ];
+		const loaded = [];
+		for ( const id of sample ) {
+
+			panel.querySelector( `.check[data-id="${id}"] [data-setup]` ).click();
+			await wait( 300 );
+			loaded.push( [ id, s.app.store.get().sceneId, s.app.look().id ] );
+
+		}
+
+		check( 'Set it up for me loads each check\'s scene and look', loaded.every( ( [ id, scene, look ] ) => { const c = s.checkSetup( id ); return ( ! c.scene || c.scene === scene ) && ( ! c.look || c.look === look ); } ), loaded );
+		if ( s.app.walking ) await s.setWalk( false );
+		document.querySelector( '#verify .close' ).click();
+
+		// The welcome and the key map.
+		await s.showWelcome();
+		const welcome = document.querySelector( '#welcome-modal' );
+		check( 'the welcome shows three ways in', ! welcome.hidden && welcome.querySelectorAll( '.welcome-options button' ).length === 3, welcome.innerText.slice( 0, 120 ) );
+		welcome.querySelector( '.welcome-options button:last-child' ).click();
+		check( 'closing the welcome remembers it', welcome.hidden && s.app.store.get().tips.seen.includes( 'welcome' ), null );
+		document.dispatchEvent( new KeyboardEvent( 'keydown', { key: '?', bubbles: true } ) );
+		await wait( 50 );
+		const keys = document.querySelector( '#keys-modal' );
+		const rows = keys.querySelectorAll( 'table.keys tr' ).length;
+		check( '? opens the keyboard and gamepad map', ! keys.hidden && rows >= 30, rows );
+		document.dispatchEvent( new KeyboardEvent( 'keydown', { key: 'Escape', bubbles: true } ) );
+		await wait( 50 );
+		check( 'Esc closes the map', keys.hidden, null );
+
+		// Error messages: a file that is not a model, and a cut-off share link.
+		const dt = new DataTransfer();
+		dt.items.add( new File( [ 'hello' ], 'notes.txt', { type: 'text/plain' } ) );
+		window.dispatchEvent( new DragEvent( 'drop', { dataTransfer: dt, bubbles: true, cancelable: true } ) );
+		await wait( 50 );
+		const toast1 = document.querySelector( '#toast' ).textContent;
+		check( 'dropping a file that is not a model explains what to drop', /\.glb/.test( toast1 ), toast1 );
+		const errors0 = s.errors().filter( ( e ) => e.level === 'error' ).length;
+		const hash = await s.shareHash();
+		const cut = await s.openShareLink( hash.slice( 0, hash.length - 12 ) );
+		check( 'a cut-off share link says so and keeps the tool working', /cut off|could not be read/.test( cut.toast ) && s.errors().filter( ( e ) => e.level === 'error' ).length === errors0 && !! s.app.look(), cut );
+		return res;
+
+	} );
+
+	// A first visit on a phone-sized screen: the welcome shows, nothing overflows, no errors.
+	for ( const [ label, viewport ] of [ [ 'desktop', { width: 1280, height: 720 } ], [ 'phone', { width: 390, height: 844 } ] ] ) try {
+
+		const context = await page.context().browser().newContext( { viewport, hasTouch: label === 'phone', isMobile: label === 'phone' } );
+		await routeCdn( context );
+		const first = await context.newPage();
+		const errors = [];
+		first.on( 'pageerror', ( e ) => errors.push( String( e ) ) );
+		await first.goto( run.url( base ) + ( run.url( base ).includes( '?' ) ? '&' : '?' ) + 'welcome=1', { waitUntil: 'commit' } );
+		await first.waitForFunction( () => window.__stylelab && window.__stylelab.ready, null, { timeout: 180000 } );
+		await first.waitForTimeout( 500 );
+		const r = await first.evaluate( () => ( {
+			welcome: ! document.querySelector( '#welcome-modal' ).hidden,
+			overflow: document.documentElement.scrollWidth - window.innerWidth,
+			errors: window.__stylelab.errors().filter( ( e ) => e.level === 'error' ).map( ( e ) => e.message.slice( 0, 160 ) ),
+		} ) );
+		if ( label === 'phone' ) {
+
+			await mkdir( ARTIFACTS, { recursive: true } );
+			await first.screenshot( { path: path.join( ARTIFACTS, 'm9-phone-welcome.png' ) } );
+			await first.click( '#welcome-modal .welcome-options button:last-child' );
+			await first.click( '#inspector-btn' );
+			await first.waitForTimeout( 300 );
+			r.inspector = await first.evaluate( () => document.querySelector( '#inspector' ).getBoundingClientRect().height > 200 );
+			await first.screenshot( { path: path.join( ARTIFACTS, 'm9-phone-inspector.png' ) } );
+			r.overflowAfter = await first.evaluate( () => document.documentElement.scrollWidth - window.innerWidth );
+
+		}
+
+		out.checks.push( { name: `a first visit on ${label} shows the welcome, fits the screen and has no errors`, pass: r.welcome && r.overflow <= 0 && ( r.overflowAfter ?? 0 ) <= 0 && ( r.inspector ?? true ) && ! r.errors.length && ! errors.length, value: { ...r, pageErrors: errors } } );
+		await context.close();
+
+	} catch ( e ) {
+
+		out.checks.push( { name: `a first visit on ${label} loads`, pass: false, value: String( e.message || e ).split( '\n' )[ 0 ] } );
+
+	}
+
+	// A boot failure shows a friendly message with what to try and a copy button.
+	try {
+
+		const failing = await page.context().newPage();
+		await failing.goto( run.url( base ) + ( run.url( base ).includes( '?' ) ? '&' : '?' ) + 'simulate=boot-error', { waitUntil: 'commit' } );
+		await failing.waitForFunction( () => document.querySelector( '#fatal' ) && ! document.querySelector( '#fatal' ).hidden, null, { timeout: 120000 } );
+		const f = await failing.evaluate( () => { const el = document.querySelector( '#fatal' ); return { shown: ! el.hidden, text: el.innerText.slice( 0, 300 ), copy: !! el.querySelector( 'button' ), retry: !! el.querySelector( 'a' ) }; } );
+		out.checks.push( { name: 'a boot failure explains what to try, with copy and retry', pass: f.shown && f.copy && f.retry && /try/i.test( f.text ), value: f } );
+		await failing.close();
+
+	} catch ( e ) {
+
+		out.checks.push( { name: 'a boot failure explains what to try, with copy and retry', pass: false, value: String( e.message || e ).split( '\n' )[ 0 ] } );
+
+	}
+
+	for ( const c of out.checks ) if ( ! c.pass ) fail( `M9: ${c.name} (${JSON.stringify( c.value )})` );
+	return out;
+
+}
+
 async function smoke( browser, run, base ) {
 
 	const context = await browser.newContext( { viewport: { width: 1280, height: 720 } } );
@@ -969,6 +1100,7 @@ async function smoke( browser, run, base ) {
 		if ( run.m6 && ! flag( '--no-m6' ) ) result.m6 = await m6Checks( page, fail, run, base );
 		if ( run.m7 && ! flag( '--no-m7' ) ) result.m7 = await m7Checks( page, fail, run );
 		if ( run.m8 && ! flag( '--no-m8' ) ) result.m8 = await m8Checks( page, fail, run );
+		if ( run.m9 && ! flag( '--no-m9' ) ) result.m9 = await m9Checks( page, fail, run, base );
 
 		if ( ! flag( '--no-spikes' ) ) {
 
@@ -982,7 +1114,7 @@ async function smoke( browser, run, base ) {
 		if ( run.panel ) {
 
 			await page.click( '#verify-btn' );
-			await page.click( '.check[data-id="M8-01"] [data-status="pass"]' );
+			await page.click( '.check[data-id="M9-01"] [data-status="pass"]' );
 			await page.click( '[data-tab="report"]' );
 			result.report = await page.inputValue( 'textarea.report' );
 			if ( ! result.report.includes( 'Checks: 1 pass' ) ) fail( 'Verify report does not record the clicked check' );

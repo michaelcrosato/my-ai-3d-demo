@@ -8,6 +8,10 @@ import { createRenderer, collectCaps, backendName } from './boot/renderer.js';
 import { renderToPixels, withRendererSize, pixelStats, stepNodeFrame } from './gpu/readback.js';
 import { runSpikes as runSpikeSuite, SPIKES } from './spikes/index.js';
 import { createVerifyPanel } from './verify/panel.js';
+import { createOnboarding } from './ui/onboarding.js';
+import { CHECKS } from './verify/checks.js';
+import { TOUR } from './verify/tour.js';
+import { createKeysOverlay } from './ui/keys.js';
 import { createApp } from './app.js';
 import { createTopBar } from './ui/topbar.js';
 import { createGallery } from './ui/gallery.js';
@@ -22,7 +26,7 @@ import { runAudit, AUDIT_TARGETS } from './perf/audit.js';
 import { createInspector } from './ui/inspector.js';
 import { createCompareUI } from './ui/compare.js';
 import { $, h, toast } from './ui/dom.js';
-import { bindKeyboard, KEYS } from './input/keyboard.js';
+import { bindKeyboard } from './input/keyboard.js';
 import { createGamepad } from './input/gamepad.js';
 import { LOOKS } from '../content/looks/index.js';
 import { EFFECT_DEMOS, cellId } from '../content/effects.js';
@@ -50,7 +54,19 @@ boot().catch( ( e ) => {
 	log.add( 'error', [ 'Boot failed:', e ] );
 	const fatal = $( 'fatal' );
 	fatal.hidden = false;
-	fatal.textContent = `Style Lab could not start: ${e && e.message ? e.message : e}`;
+	const webgl = new URLSearchParams( location.search ).get( 'backend' ) === 'webgl';
+	fatal.replaceChildren(
+		h( 'b', {}, 'Style Lab could not start.' ),
+		h( 'p', {}, `${e && e.message ? e.message : e}` ),
+		h( 'p', {}, 'Things to try: an up-to-date Chrome, Edge, Safari or Firefox; turn on hardware acceleration in the browser settings; update the graphics driver.' ),
+		h( 'p', {}, webgl ? h( 'a', { href: location.pathname }, 'Try WebGPU again' ) : h( 'a', { href: `${location.pathname}?backend=webgl` }, 'Retry with WebGL2' ), ' · The 🧪 Verify drawer can\'t open, so please copy this message and paste it back.' ),
+		h( 'button', { onclick: async ( ev ) => {
+
+			const text = `Style Lab ${BUILD.version} (${BUILD.commit}) could not start: ${e && e.message ? e.message : e}\n${navigator.userAgent}\n${location.href}`;
+			try { await navigator.clipboard.writeText( text ); ev.target.textContent = 'Copied'; } catch { ev.target.textContent = 'Select the text above and copy it'; }
+
+		} }, 'Copy the message' ),
+	);
 	markReady( false );
 
 } );
@@ -93,7 +109,7 @@ function createCoach( app ) {
 
 	} );
 
-	show( 'start', 'This is what a typical agent-made scene looks like. Pick a look on the left (or press 2).' );
+	show( 'start', 'This is what a typical agent-made scene looks like. Pick a look in the gallery (or press 2).' );
 
 }
 
@@ -120,6 +136,7 @@ function pixelDiff( p, q, { shift = [ 0, 0 ], rect = [ 0, 0, 1, 1 ] } = {} ) {
 
 async function boot() {
 
+	if ( new URLSearchParams( location.search ).get( 'simulate' ) === 'boot-error' ) throw new Error( 'Simulated start-up failure (?simulate=boot-error).' );
 	const canvas = $( 'view' );
 	const renderer = await createRenderer( { canvas, backend: params.backend, dprCap: params.dprCap } );
 	if ( renderer.backend.isWebGPUBackend ) log.attachDevice( renderer.backend.device );
@@ -281,14 +298,23 @@ async function boot() {
 
 	};
 
+	// Help (M9): the shortcut overlay (?) and the first-run welcome.
+	const keysRoot = h( 'div.modal', { id: 'keys-modal', hidden: true } );
+	const welcomeRoot = h( 'div.modal', { id: 'welcome-modal', hidden: true } );
+	document.body.append( keysRoot, welcomeRoot );
+	const keys = createKeysOverlay( keysRoot );
+	let onboarding = null;
+	$( 'help-btn' ).addEventListener( 'click', () => keys.toggle() );
+
 	const ui = {
 		cycleDesignerView: () => { const view = app.actions.cycleView(); toast( view ? `${view.label}: ${view.learn}` : 'Designer view off' ); },
 		openBrief: () => briefModal.open( 'brief' ),
 		openAudit: () => auditModal.open(),
+		openTour: () => panel.toggle( true ),
 		inspector,
 		toggleHidden: () => appRoot.classList.toggle( 'ui-hidden' ),
-		showKeys: () => toast( KEYS.map( ( [ k, v ] ) => `${k}: ${v}` ).join( ' · ' ), 9000 ),
-		closePanels: () => { $( 'verify' ).hidden = true; briefModal.close(); auditModal.close(); appRoot.classList.remove( 'inspector-open', 'ui-hidden' ); },
+		showKeys: () => keys.toggle(),
+		closePanels: () => { $( 'verify' ).hidden = true; briefModal.close(); auditModal.close(); keys.close(); onboarding?.close(); appRoot.classList.remove( 'inspector-open', 'ui-hidden' ); },
 		toast,
 	};
 
@@ -492,6 +518,8 @@ async function boot() {
 			openFiles: async () => { $( 'verify' ).hidden = true; briefModal.open( 'files' ); },
 			openShare: async () => { $( 'verify' ).hidden = true; briefModal.open( 'share' ); },
 			openAudit: async () => { $( 'verify' ).hidden = true; auditModal.open(); },
+			showWelcome: async () => { $( 'verify' ).hidden = true; onboarding.show(); },
+			showKeys: async () => { $( 'verify' ).hidden = true; keys.show(); },
 			effectSheet: async () => {
 
 				toast( `Rendering ${EFFECT_DEMOS.length} effect cells…`, 60000 );
@@ -502,6 +530,12 @@ async function boot() {
 
 			},
 		},
+	} );
+
+	onboarding = createOnboarding( welcomeRoot, app, {
+		openTour: () => panel.toggle( true ),
+		startLesson: ( id ) => lessonPlayer.start( id ),
+		showKeys: () => keys.show(),
 	} );
 
 	const verifyButton = $( 'verify-btn' );
@@ -559,6 +593,13 @@ async function boot() {
 		// M7: performance audit
 		/** Runs the audit: { target: 'small' | 'desktop' | …, rounds, frames, warmup } → the report. */
 		audit: ( opts ) => runAuditNow( opts ),
+		// M9: the tour, onboarding and error messages
+		/** Counts for the Verify tour: { checks, sections, signoffs }. */
+		tour: () => ( { checks: CHECKS.length, sections: TOUR.length, signoffs: CHECKS.filter( ( c ) => c.signoff !== false ).length } ),
+		checkSetup: ( id ) => CHECKS.find( ( c ) => c.id === id )?.setup || null,
+		showWelcome: async () => { onboarding.show(); await nextFrames(); },
+		/** Opens a share hash as if pasted into the address bar; returns the message shown. */
+		openShareLink: async ( hash ) => ( { toast: await openSharedHash( hash ) } ),
 		// M8: education
 		setView: async ( id ) => { app.actions.setView( id ); await nextFrames(); },
 		/** The critic on the current frame: { tips, stats }. */
@@ -856,33 +897,42 @@ async function boot() {
 	};
 
 	// Share links (§6.12): `#state=` or `#look=` opens that state, then the hash is cleared
-	// (the state autosaves like any other).
-	const shared = parseShareHash( location.hash );
-	if ( shared ) {
+	// (the state autosaves like any other). Pasting a link into this tab works too.
+	const openSharedHash = async ( hash ) => {
 
+		const shared = parseShareHash( hash );
+		if ( ! shared ) return null;
+		let message;
 		try {
 
 			await app.actions.openShare( shared.kind, shared.text );
-			toast( shared.kind === 'look' ? 'Opened the shared look.' : 'Opened the shared state: scene, recipe, parts and tweaks.' );
+			message = shared.kind === 'look' ? 'Opened the shared look.' : 'Opened the shared state: scene, recipe, parts and tweaks.';
+			toast( message );
 
 		} catch ( e ) {
 
 			log.add( 'warn', [ 'Share link could not be read:', e ] );
-			toast( 'This share link could not be read; it may be cut off. Showing your last state instead.', 7000 );
+			message = 'This share link could not be read; it may be cut off. Showing your last state instead.';
+			toast( message, 7000 );
 
 		}
 
 		history.replaceState( null, '', location.pathname + location.search );
+		return message;
 
-	}
+	};
+	const shared = await openSharedHash( location.hash );
+	window.addEventListener( 'hashchange', () => openSharedHash( location.hash ) );
 
 	// ?audit=<target>: opened from the "Open on phone" QR code: run the audit here.
 	const auditTarget = new URLSearchParams( location.search ).get( 'audit' );
 	if ( auditTarget && AUDIT_TARGETS[ auditTarget ] ) setTimeout( () => auditModal.open( { target: auditTarget, run: true } ), 1500 );
 
-	// First presented frame, then ready.
+	// First presented frame, then ready. A first visit gets the welcome (not when a share
+	// link, the phone audit or an automated browser opened the page).
 	await nextFrames();
 	markReady( true );
+	onboarding.maybeShow( { skip: !! shared || !! auditTarget || navigator.webdriver, force: new URLSearchParams( location.search ).get( 'welcome' ) === '1' } );
 
 	if ( params.spikes ) {
 

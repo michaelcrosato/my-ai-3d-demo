@@ -5,9 +5,37 @@
 // (M4) a `recipe`, `parts` and the inspector `tab` to open, (M5) `walk: true`.
 // `learn` is what the check teaches; `signoff: false` marks optional tour steps.
 
-export const CURRENT_MILESTONE = 'M8';
+export const CURRENT_MILESTONE = 'M9';
+// Sign-off checks from this milestone on are listed in the report until you mark them
+// (M0–M2 were reported; M3 on are owed).
+export const REPORT_FROM = 'M3';
 
 export const CHECKS = [
+	{
+		id: 'M9-01', milestone: 'M9',
+		title: 'First visit: the welcome, the tour and the key map',
+		steps: [ 'Press "Show the welcome" below (it is what a first visit sees; a private window shows it too).', 'Read it and pick "Take the guided tour". Then press ? for the keyboard and gamepad map, and Esc.' ],
+		expected: 'The welcome says what the tool is for in a few lines and each of its three choices works. The map lists every key and gamepad button.',
+		learn: 'Where help lives: the welcome, the ? map, this tour, and the Learn tab.',
+		setup: { scene: 'harbor', look: 'sea-breeze', tier: 1 },
+		actions: [ 'showWelcome', 'showKeys' ],
+	},
+	{
+		id: 'M9-02', milestone: 'M9',
+		title: 'Phone and tablet layout',
+		steps: [ 'Open the page on a phone or tablet (from GitHub Pages once you enable it, or over your local network). Or narrow this window below 720 px.', 'Open the looks drawer and the inspector, apply a look, hold compare, open the brief.' ],
+		expected: 'Everything stays usable: the gallery and inspector become drawers over the view, buttons are big enough to tap, nothing runs off the screen.',
+		learn: 'One tool from a desktop monitor down to a phone, and why the view always keeps most of the screen.',
+		setup: { scene: 'plaza', look: 'comic-ink', tier: 1 },
+	},
+	{
+		id: 'M9-03', milestone: 'M9', signoff: false,
+		title: 'Problems explain themselves',
+		steps: [ 'Drop a file that is not a model (a .txt or an image) onto the window.', 'Open a share link with its end cut off (delete the last few characters of the URL).' ],
+		expected: 'Each time a clear message says what went wrong and what to do, and the tool keeps working.',
+		learn: 'Graceful failure: a tool you trust tells you what happened instead of going blank.',
+		setup: { scene: 'lookdev', look: 'sea-breeze', tier: 1 },
+	},
 	{
 		id: 'M8-01', milestone: 'M8',
 		title: 'Take two lessons start to finish',
@@ -82,6 +110,7 @@ export const CHECKS = [
 		steps: [ 'Pick a look you like (mix it if you want), then press "Open the brief" below (or 📝 Brief in the top bar, or B).', 'Choose who it is for (three.js + runtime is the default) and Standard length. Copy it.', 'In a new agent session, paste the brief and ask for something small, e.g. "a small harbor with a lighthouse, a dock and two characters, as one HTML file". If the agent can take files, give it stylelab-runtime.js, stylelab-kit.js and the look.json from the Files tab too.' ],
 		expected: 'The agent\'s scene follows the pillars (shading, shadow color, where the lines go) and builds its assets in code like the kit: part-tagged meshes, seeded variety, detail as geometry rather than textures. Report how close it got, what it missed, and paste a screenshot if you can.',
 		learn: 'How to hand an art direction to an AI agent: rules with reasons, exact values, and a working runtime, so the result looks like your choice instead of the agent\'s default.',
+		setup: { scene: 'harbor', look: 'sea-breeze', tier: 1 },
 		actions: [ 'openBrief' ],
 	},
 	{
@@ -90,6 +119,7 @@ export const CHECKS = [
 		steps: [ 'Brief → Files: download starter.html, stylelab-runtime.js and stylelab-kit.js into one folder.', 'Serve that folder (for example `npx serve` or `python -m http.server` inside it) and open starter.html. Opening the file directly from disk is blocked by browsers for modules.', 'Move the capsule with WASD and switch looks with 1–9. Compare with the same look in the tool.' ],
 		expected: 'The starter shows a small scene in the same look as the tool: the same shading, lines, fog and grade. (The automated check renders a tool scene inside the starter and gets the identical image.)',
 		learn: 'What "drop-in runtime" means: the same engine that renders the tool renders your game.',
+		setup: { scene: 'lookdev', look: 'sea-breeze', tier: 1 },
 		actions: [ 'openFiles' ],
 	},
 	{
@@ -98,6 +128,7 @@ export const CHECKS = [
 		steps: [ 'Take a small three.js game an agent made for you (one that uses MeshStandardMaterial).', 'Add the import map from starter.html, then after building the scene: `const style = await createStyle( { renderer, scene, camera, looks: [ LOOK ] } );` and render with `style.render()` instead of `renderer.render( scene, camera )`.', 'Brief → Runtime has a copyable example.' ],
 		expected: 'The game takes on the look in one change: colors kept, parts guessed from names (ground, walls, trees, player), lines and grade applied. Report what was guessed wrong or what broke.',
 		learn: 'Retrofitting a style: why tagging meshes by part (terrain, architecture, characters…) is what lets one look style any game.',
+		setup: { scene: 'plaza', look: 'graffiti-rush', tier: 1 },
 		actions: [ 'openFiles' ],
 	},
 	{
@@ -106,6 +137,7 @@ export const CHECKS = [
 		steps: [ 'In the brief, switch "For" between three.js + runtime, three.js without the runtime, and Engine-agnostic. Try Short, Standard and Full.' ],
 		expected: 'The runtime brief has code; the no-runtime brief names the three.js building blocks per effect; the engine brief has no code and points to grade.cube and the palette. Short fits in a system prompt (under 300 words).',
 		learn: 'An art bible in miniature: pillars, palette by role, lighting, materials, lines, atmosphere, post chain, modeling rules, a checklist.',
+		setup: { scene: 'garden', look: 'golden-hour', tier: 1 },
 		actions: [ 'openBrief' ],
 	},
 	{
@@ -114,6 +146,7 @@ export const CHECKS = [
 		steps: [ 'Brief → Files: download grade.cube and palette.gpl.', 'Load grade.cube as a LUT in Photoshop (Color Lookup), DaVinci Resolve, Godot (a 3D texture for a color correction) or Unity/Unreal; load palette.gpl in GIMP, Krita or Aseprite.' ],
 		expected: 'A screenshot graded with the LUT looks like the tool\'s grade (tone mapping and exposure aren\'t in the LUT; it covers the display-space grade).',
 		learn: 'LUTs: how a whole color grade becomes one small file any tool can apply.',
+		setup: { scene: 'harbor', look: 'golden-hour', tier: 1 },
 		actions: [ 'openFiles' ],
 	},
 	{
@@ -122,6 +155,7 @@ export const CHECKS = [
 		steps: [ 'Brief → Share: copy the link, or scan the QR code with a phone that can reach the same file or site.' ],
 		expected: 'The phone opens the same scene, look and tweaks.',
 		learn: 'Sharing state without a server: everything lives in the link.',
+		setup: { scene: 'plaza', look: 'comic-ink', tier: 1 },
 		actions: [ 'openShare' ],
 	},
 	{
@@ -210,6 +244,7 @@ export const CHECKS = [
 		steps: [ 'Set up something of your own: a look, a mix, a part look, a few Tune tweaks.', 'Look tab → 🔗 Copy share link. Open it in another browser or on your phone.' ],
 		expected: 'The other browser shows the same scene, look, mix, parts and tweaks. Note: the link holds the whole state (no server); very long links can be cut by some chat apps.',
 		learn: 'Share links: the whole state compressed into the URL, so a style can be sent to a teammate or an agent without a server.',
+		setup: { scene: 'garden', look: 'comic-ink', tier: 1, tab: 'look' },
 	},
 	{
 		id: 'M4-05', milestone: 'M4',
@@ -258,6 +293,7 @@ export const CHECKS = [
 		steps: [ 'Press "Render the effects sheet" below. It renders all 62 new effects, each on a scene where it shows (a few seconds on a desktop GPU).', 'Look at each cell and its label. Note any cell that is black, blank, garbled, or doesn\'t look like its label.' ],
 		expected: 'Every cell shows its effect clearly. Report problems by cell id, for example "E14 looks wrong". Some demos use bigger dots and lines than the defaults, so they still show at thumbnail size.',
 		learn: 'What each new effect does at a glance, and the names (bloom, LUT, dither, CRT…) the Tune panel uses.',
+		setup: { scene: 'lookdev', look: 'plain', tier: 1 },
 		actions: [ 'effectSheet' ],
 	},
 	{
@@ -362,6 +398,8 @@ export const CHECKS = [
 		steps: [ 'Open each scene (Scene tab cards, the top-bar picker, or [ / ]). Try a couple of looks on each.', 'Rate how well the scene evokes the games it is inspired by, and how much you like it (1–5).' ],
 		expected: 'Every scene loads without errors in a second or two, and reads as its genre from its default camera.',
 		ratings: [ 'garden', 'plaza', 'dungeon', 'kart', 'platforms', 'hangar', 'meadow', 'campsite' ],
+		learn: 'Genre conventions: a scene\'s camera, scale and props say "this kind of game" before any style is applied.',
+		setup: { scene: 'garden', look: 'sea-breeze', tier: 1, tab: 'scene' },
 	},
 	{
 		id: 'M2-02', milestone: 'M2',
@@ -369,12 +407,15 @@ export const CHECKS = [
 		steps: [ 'Garden: the goose waddles. Plaza: the skater loops. Kart Circuit: karts race. Sky Platforms: coins spin, the robot hovers.', 'Dungeon: torches flicker. Meadow: grass sways. Campsite: the fire flickers. Hangar: holograms turn.' ],
 		expected: 'Everything moves smoothly, and the styled and plain images stay in sync when you hold compare.',
 		setup: { scene: 'kart', look: 'sea-breeze', tier: 1 },
+		learn: 'Procedural animation: everything moves from code, so the styled and plain renders stay in step.',
 	},
 	{
 		id: 'M2-03', milestone: 'M2',
 		title: 'Import one of your own .glb files',
 		steps: [ 'Drop a .glb or .gltf onto the window (or Scene tab → Import .glb…).', 'Turn on Pick parts and click objects: check the guessed part and fix any that are wrong. Then try a few looks.' ],
 		expected: 'The model loads, is framed by the camera, and gets sensible parts (ground → terrain, trees → foliage, people → characters, glowing things → vfx). Note what it guessed wrong.',
+		learn: 'Part tagging: how meshes are sorted into terrain, foliage, characters and so on from their names and shapes, and why parts matter for styling.',
+		setup: { scene: 'lookdev', look: 'sea-breeze', tier: 1, tab: 'scene' },
 	},
 	{
 		id: 'M2-04', milestone: 'M2',
@@ -382,6 +423,7 @@ export const CHECKS = [
 		steps: [ 'Scene tab → Prop density: drag from ×0.5 to ×4 on the Garden, the Meadow and the Kart Circuit.' ],
 		expected: 'More or fewer trees, flowers, grass, cones and props; landmarks, characters and the camera stay put. The readouts update.',
 		setup: { scene: 'meadow', look: 'phone-safe-toon', tier: 1 },
+		learn: 'Density and layout: props are scattered from a seed, so more of them never moves a landmark.',
 	},
 	{
 		id: 'M2-05', milestone: 'M2',
@@ -389,6 +431,7 @@ export const CHECKS = [
 		steps: [ 'Pick a look, then Scene tab → Benefit matrix.' ],
 		expected: 'A 2×2 image (plain and styled, Blockout and Detailed) appears after a few seconds, and you can download it. It should show stylization helping the blockout most.',
 		setup: { scene: 'harbor', look: 'sea-breeze', tier: 0 },
+		learn: 'Where style helps most: it lifts blockout geometry far more than detailed geometry.',
 	},
 	{
 		id: 'M2-06', milestone: 'M2',
@@ -396,6 +439,7 @@ export const CHECKS = [
 		steps: [ 'On each scene, cycle the shots (N, R3, or the Shot picker): top-down garden, chase camera on the kart, isometric dungeon, over the shoulder in the hangar.' ],
 		expected: 'Each shot frames the action the way its genre would.',
 		setup: { scene: 'garden', look: 'phone-safe-toon', tier: 1 },
+		learn: 'Genre cameras: top-down, chase, isometric and over-the-shoulder framing.',
 	},
 	{
 		id: 'M1-01', milestone: 'M1',
@@ -403,6 +447,7 @@ export const CHECKS = [
 		steps: [ 'Click each look in the left column (or press 1–5, Q / E, or LB / RB on a gamepad).', 'Do it on both scenes.' ],
 		expected: 'The image changes right away. The first time a look loads, the status bar may say "compiled in … ms"; after that, switching is instant.',
 		setup: { scene: 'harbor', look: 'plain', tier: 1 },
+		learn: 'A look is a set of values on top of one shared scene: switching changes values, never the scene.',
 	},
 	{
 		id: 'M1-02', milestone: 'M1',
@@ -410,6 +455,7 @@ export const CHECKS = [
 		steps: [ 'Pick a look, then hold Space (or the Hold to compare button).', 'If you have a gamepad, hold X / □.' ],
 		expected: 'The plain baseline appears on the very next frame with a PLAIN badge, and the look comes back the moment you let go.',
 		setup: { scene: 'harbor', look: 'sea-breeze', tier: 1 },
+		learn: 'The plain baseline: comparing against what an agent makes by default is how you see what a style adds.',
 	},
 	{
 		id: 'M1-03', milestone: 'M1',
@@ -417,6 +463,7 @@ export const CHECKS = [
 		steps: [ 'Press C (or Split), then drag the white handle across the view.', 'With a gamepad, pull LT: the trigger sets the divider position.' ],
 		expected: 'Plain on the left, styled on the right; the divider follows without lag.',
 		setup: { scene: 'lookdev', look: 'graffiti-rush', tier: 2 },
+		learn: 'Split and flicker comparisons: the two ways artists spot small differences.',
 	},
 	{
 		id: 'M1-04', milestone: 'M1',
@@ -424,6 +471,7 @@ export const CHECKS = [
 		steps: [ 'Orbit slowly around the boat, the dock and the houses (drag, or the right stick).', 'Then try Sea Breeze Toon (hull lines on characters only).' ],
 		expected: 'No shimmering, gaps or cracks at hard edges (box corners, roof edges, masts). Thin ropes may break up when far away; note it if it bothers you.',
 		setup: { scene: 'harbor', look: 'graffiti-rush', tier: 3 },
+		learn: 'Two outline techniques: hull outlines (an inflated back-facing shell) and screen-space ink found from depth and normals.',
 	},
 	{
 		id: 'M1-05', milestone: 'M1',
@@ -431,6 +479,7 @@ export const CHECKS = [
 		steps: [ 'Look at the sphere, cylinder and mannequin.', 'Raise Surface → Light bands to 3, then 4 in the Tune tab.' ],
 		expected: 'Hard, clean steps between tones without stair-stepping. Cast shadows land on the same tone as the shadowed side of each object, not darker.',
 		setup: { scene: 'lookdev', look: 'sea-breeze', tier: 2, shot: 'close' },
+		learn: 'Cel shading: light quantized into a few bands, and why cast shadows must share the dark band.',
 	},
 	{
 		id: 'M1-06', milestone: 'M1',
@@ -438,6 +487,7 @@ export const CHECKS = [
 		steps: [ 'Drag Complexity through all four tiers (or press - / =), on both scenes.' ],
 		expected: 'Objects stay where they are and the camera doesn\'t move. Only the detail changes: Blockout → Low-poly → Crafted → Detailed.',
 		setup: { scene: 'harbor', look: 'phone-safe-toon', tier: 0 },
+		learn: 'Complexity tiers: one layout from blockout to detailed, so you can see how much a style lifts simple geometry.',
 	},
 	{
 		id: 'M1-07', milestone: 'M1',
@@ -445,6 +495,8 @@ export const CHECKS = [
 		steps: [ 'Apply each look on both scenes. Rate how well it evokes its inspiration, and how much you like it (1–5).' ],
 		expected: 'Honest ratings, plus a note on anything that feels off ("needs more purple"). These tune the recipes.',
 		ratings: [ 'sea-breeze', 'graffiti-rush', 'golden-hour', 'phone-safe-toon' ],
+		learn: 'Judging a style: "does it evoke the reference?" and "do I like it?" are separate questions.',
+		setup: { scene: 'harbor', look: 'sea-breeze', tier: 1 },
 	},
 	{
 		id: 'M1-08', milestone: 'M1',
@@ -452,30 +504,39 @@ export const CHECKS = [
 		steps: [ 'In the Tune tab, drag a few sliders (fog density, band softness, contrast).', 'Flip a switch with a 🟡 badge (Bloom, Screen-space ink).' ],
 		expected: 'Sliders update every frame with no hitch. Switches rebuild once; the status bar shows the compile time.',
 		setup: { scene: 'lookdev', look: 'sea-breeze', tier: 1 },
+		learn: 'Uniforms and shader switches: why sliders are free and switches recompile.',
 	},
 	{
 		id: 'M0-01', milestone: 'M0',
 		title: 'Backend badge shows WebGPU',
 		steps: [ 'Open the page normally (no ?backend= in the URL).', 'Look at the badge next to the title.' ],
 		expected: 'It reads "WebGPU". If it reads "WebGL2", note your browser and version.',
+		learn: 'WebGPU and WebGL2: the two ways a browser drives the GPU, and why Style Lab runs on both.',
+		setup: { scene: 'harbor', look: 'sea-breeze', tier: 1 },
 	},
 	{
 		id: 'M0-02', milestone: 'M0',
 		title: 'Works when opened from disk',
 		steps: [ 'Download dist/style-lab.html from the repo.', 'Double-click it (opens as file://).' ],
 		expected: 'The same scene renders and the Environment tab shows protocol "file:".',
+		learn: 'Why one self-contained HTML file is handy: it runs from disk, a USB stick or any static host, with no server and no install.',
+		setup: { scene: 'harbor', look: 'sea-breeze', tier: 1 },
 	},
 	{
 		id: 'M0-03', milestone: 'M0',
 		title: 'No errors while orbiting',
 		steps: [ 'Drag to orbit and scroll to zoom for about 10 seconds.', 'Open the Environment tab.' ],
 		expected: 'Errors (0). Warnings are fine; paste them anyway.',
+		learn: 'Where to look when something breaks: the Environment tab collects every error and warning, ready to paste.',
+		setup: { scene: 'harbor', look: 'graffiti-rush', tier: 2 },
 	},
 	{
 		id: 'M0-04', milestone: 'M0',
 		title: 'Spikes pass on your GPU',
 		steps: [ 'Press "Run all spikes" below (takes a few seconds). The Spikes tab shows the details.' ],
 		expected: 'Every spike is "go" or "go-fallback". Any "no-go" or "error" is exactly what I need to see.',
+		learn: 'The GPU features the effects depend on (render targets, depth, multisampling, timers), each tested on its own.',
+		setup: { scene: 'lookdev', look: 'plain', tier: 1 },
 		actions: [ 'runSpikes' ],
 	},
 	{
@@ -483,6 +544,8 @@ export const CHECKS = [
 		title: 'Forced WebGL2 also works',
 		steps: [ 'Press "Reload with WebGL2" below (adds ?backend=webgl to the URL).', 'Press "Run all spikes" again. The report keeps the results from both backends.' ],
 		expected: 'Badge reads "WebGL2", the scene renders, spikes are go or go-fallback.',
+		learn: 'The fallback path: older browsers get WebGL2, and the looks should not change.',
+		setup: { scene: 'lookdev', look: 'plain', tier: 1 },
 		actions: [ 'reloadWebGL', 'runSpikes' ],
 	},
 	{
@@ -490,5 +553,7 @@ export const CHECKS = [
 		title: 'Resize and zoom stay sharp',
 		steps: [ 'Resize the window, and try browser zoom (Ctrl/⌘ + and -).' ],
 		expected: 'No stretching or blur; shapes stay crisp and correctly proportioned.',
+		learn: 'Pixel ratio: the image renders at your screen\'s real resolution (capped on high-density phones to save power).',
+		setup: { scene: 'lookdev', look: 'graffiti-rush', tier: 2 },
 	},
 ];

@@ -51,6 +51,8 @@ export function formatReport( { build, env, checks, spikeRuns = {}, log = [], pe
 	const done = checks.filter( ( c ) => c.status );
 	const count = ( s ) => done.filter( ( c ) => c.status === s ).length;
 	lines.push( `Checks: ${count( 'pass' )} pass · ${count( 'fail' )} fail · ${count( 'unsure' )} unsure · ${checks.length - done.length} not done` );
+	const owed = checks.filter( ( c ) => ! c.status && c.signoff !== false );
+	if ( owed.length ) lines.push( `Still owed: ${owed.map( ( c ) => c.id ).join( ', ' )}` );
 
 	for ( const c of checks ) {
 

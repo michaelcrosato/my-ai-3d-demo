@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.0.0 — M9: the guided tour, onboarding and release (2026-10-28)
+
+**What's new**
+- **The Verify panel is a guided tour.** Every check, in learning order, in eleven sections: Welcome; Does it run on your machine?; Looks and the plain baseline; Shapes, lines and light; Scenes, shots and your own models; Effects; Make it yours; Play it; Train your eye; Budgets; Hand it to an agent; On other screens. Every check has **Set it up for me** and a **What you'll learn** line. **Sign-off** checks (the reports I need) are marked apart from **optional** steps, and *sign-off checks only* hides the rest. Each section links the lesson that goes deeper, and a progress bar counts what you've done. No check was removed.
+- **The report lists what's still owed:** every sign-off check from M3 on that you haven't marked.
+- **Welcome:** a first visit offers the tour, Lesson 1, or just exploring. It doesn't show when a share link or the phone audit opens the page.
+- **Keyboard and gamepad map:** press **?** (or the ? button) for every key and button; Esc closes it.
+- **Friendlier failures:** if Style Lab can't start, the message says what to try, links a WebGL2 retry and has a copy button. Share links pasted into the address bar of an open tab now open too.
+- **Phone layout:** inspector tabs wrap, wording no longer assumes a keyboard or a left-hand gallery, and touch screens get bigger buttons.
+- **User guide** (`docs/user-guide.md`) and a **GitHub Pages workflow** (`.github/workflows/pages.yml`) that publishes `dist/` from `main` once you enable Pages (Settings → Pages → Source: GitHub Actions). Nothing is published until then.
+
+**What to test** (🧪 Verify → Tour):
+1. **M9-01** First visit: the welcome, the tour and the key map.
+2. **M9-02** Phone and tablet layout (needs the page hosted, or your local network).
+3. Optional: **M9-03** Problems explain themselves.
+4. Every sign-off check from M3 on that you haven't reported yet. Tick *sign-off checks only*, work through them, then Report → **Copy report** and paste it back.
+
+**Known**
+- Every effect, look and check is verified automatically on SwiftShader (software WebGPU and WebGL2). Real GPUs, phones, gamepads and your eye are what the sign-off checks are for.
+- The phone budgets are estimates until your M7-02 reports replace them.
+
 ## v0.10.0 — M8: education layer (2026-10-28)
 
 **What's new**

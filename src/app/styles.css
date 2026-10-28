@@ -62,7 +62,7 @@ select { font: inherit; color: var(--text); background: var(--panel-2); border: 
 .look-card.on { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
 
 .inspector { border-left: 1px solid var(--line); display: flex; flex-direction: column; }
-.inspector .tabs { display: flex; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); z-index: 1; }
+.inspector .tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); z-index: 1; }
 .inspector .tabs button.on { border-color: var(--accent); color: var(--accent); }
 .tab-pane { padding: 10px; }
 .tab-pane[hidden] { display: none; }
@@ -278,3 +278,38 @@ input.search { width: 100%; font: inherit; color: var(--text); background: var(-
 dl.glossary { margin: 0; max-height: 320px; overflow: auto; }
 dl.glossary dt { font-weight: 600; margin-top: 6px; }
 dl.glossary dd { margin: 0 0 2px; color: var(--text); }
+/* Onboarding, shortcut overlay and the Verify tour (M9). */
+.welcome { width: min(560px, 100%); padding: 18px 20px; }
+.welcome h2 { margin: 0 0 6px; }
+.welcome-options { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.welcome-options button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 10px 12px; }
+.welcome-options button span { color: var(--muted); font-size: 12px; }
+.keys-box { width: min(760px, 100%); }
+.keys-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+table.keys { border-collapse: collapse; width: 100%; }
+table.keys th { text-align: left; color: var(--muted); font-weight: 500; padding: 2px 0 6px; }
+table.keys td { padding: 2px 6px 2px 0; vertical-align: top; }
+@media (max-width: 700px) { .keys-grid { grid-template-columns: 1fr; } }
+.tour-progress { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; margin: 6px 0 2px; }
+.tour-progress i { display: block; height: 100%; background: var(--ok); }
+.tour-section { border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; background: var(--panel-2); }
+.tour-section > summary { cursor: pointer; padding: 8px 10px; font-weight: 600; display: flex; gap: 8px; align-items: center; }
+.tour-section > summary .hint { margin-left: auto; font-weight: 400; }
+.tour-section > summary .num { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--bg); color: var(--muted); font-size: 11px; }
+.tour-section[open] > summary { border-bottom: 1px solid var(--line); }
+.tour-section .intro { margin: 8px 10px 0; color: var(--muted); }
+.tour-section > p { margin-left: 10px; margin-right: 10px; }
+.tour-section .check { margin: 8px; }
+.tag.signoff { border-color: var(--accent); color: var(--accent); }
+#help-btn { width: 28px; padding: 4px 0; border-radius: 50%; }
+#fatal p { color: var(--text); margin: 8px 0 0; }
+#fatal a { color: var(--accent); }
+/* Touch screens: bigger targets. Phones: a compact top bar. */
+@media (pointer: coarse) { button, select { min-height: 34px; } }
+@media (max-width: 560px) {
+	.brand, #turntable-btn, .field.tier, #backend-badge { display: none; }
+	.field { font-size: 0; gap: 0; }
+	.field select { font-size: 13px; max-width: 128px; }
+	.drawer .body { padding: 10px; }
+	.bar-row { grid-template-columns: 110px 1fr 70px; }
+}
