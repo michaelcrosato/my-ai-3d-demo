@@ -2,7 +2,7 @@
 // checks for errors and a non-blank frame, and runs the spikes. CDN requests are
 // served from node_modules (same pinned versions), so it runs offline.
 //
-//   node scripts/smoke.mjs [--only <text>] [--checks m1,m3,m4,m5,m6,m7] [--no-spikes] [--rebuild-iterations N]
+//   node scripts/smoke.mjs [--only <text>] [--checks m1,m3,m4,m5,m6,m7,m8] [--no-spikes] [--rebuild-iterations N]
 //
 // Needs Playwright with Chromium: `npm i -D playwright && npx playwright install chromium`
 // (already present in the cloud container). Headless WebGPU uses SwiftShader.
@@ -26,14 +26,14 @@ const distFile = pathToFileURL( path.join( ROOT, 'dist/style-lab.html' ) ).href;
 
 const RUNS = [
 	{ name: 'dev  · http · WebGL2', url: ( base ) => `${base}/index.html?backend=webgl`, backend: 'WebGL2' },
-	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2', m1: true, m3: true, m4: true, m5: true, m6: true, m7: true, sweep: true, gallery: 'm4-gallery.png' },
-	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm7-webgpu.png', panel: true, m1: true, m3: true, m4: true, m5: true, m6: true, m7: true, sweep: [ 'lookdev', 'harbor' ], sheet: 'm7-contact.png', effects: 'm3-effects.png' },
+	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2', m1: true, m3: true, m4: true, m5: true, m6: true, m7: true, m8: true, sweep: true, gallery: 'm4-gallery.png' },
+	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm8-webgpu.png', panel: true, m1: true, m3: true, m4: true, m5: true, m6: true, m7: true, m8: true, sweep: [ 'lookdev', 'harbor' ], sheet: 'm8-contact.png', effects: 'm3-effects.png' },
 	{ name: 'dist · file · WebGL2', url: () => `${distFile}?backend=webgl`, backend: 'WebGL2' },
 	{ name: 'dist · file · auto  ', url: () => distFile, backend: null },
 ].filter( ( r ) => ! value( '--only' ) || r.name.includes( value( '--only' ) ) );
 
 // --checks m4,m5 runs exactly those milestone checks on the selected runs (handy with --only dev).
-if ( value( '--checks' ) ) for ( const r of RUNS ) for ( const m of [ 'm1', 'm3', 'm4', 'm5', 'm6', 'm7' ] ) r[ m ] = value( '--checks' ).split( ',' ).includes( m );
+if ( value( '--checks' ) ) for ( const r of RUNS ) for ( const m of [ 'm1', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8' ] ) r[ m ] = value( '--checks' ).split( ',' ).includes( m );
 
 const MIME = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json' };
 
@@ -814,12 +814,126 @@ async function m7Checks( page, fail ) {
 
 }
 
+/**
+ * M8 acceptance checks (design §9 M8): every lesson completes start to finish driven by the
+ * test API; the critic fires on purpose-built bad looks and stays quiet on the built-in
+ * looks (or the rule is part of that look's style: STYLE_EXCEPTIONS); every designer view
+ * renders, changes the image and restores it exactly.
+ */
+
+async function m8Checks( page, fail ) {
+
+	const out = await page.evaluate( async () => {
+
+		const s = window.__stylelab, app = s.app;
+		const res = { checks: [], critic: {} };
+		const check = ( name, pass, value ) => res.checks.push( { name, pass, value } );
+		const t0 = performance.now();
+		const progress = ( text ) => console.log( `[progress] M8 ${text} (${( ( performance.now() - t0 ) / 1000 ).toFixed( 0 )} s)` );
+		s.freeze( 1 );
+
+		// Lessons, start to finish.
+		const leftovers = [];
+		for ( const l of s.lessons.list() ) {
+
+			const o0 = JSON.parse( JSON.stringify( app.store.get().overrides ) );
+
+			const errors0 = s.errors().filter( ( e ) => e.level === 'error' ).length;
+			let st = await s.lessons.start( l.id ), solved = true, steps = 0;
+			while ( st ) {
+
+				steps ++;
+				if ( st.task && ! st.task.done ) { progress( `${l.id} step ${steps}: solving the task` ); solved = ( await s.lessons.solve() ) && solved; }
+				st = await s.lessons.next();
+
+			}
+
+			const done = app.store.get().lessons.done.includes( l.id );
+			const errors = s.errors().filter( ( e ) => e.level === 'error' ).length - errors0;
+			check( `lesson ${l.id} completes start to finish`, done && solved && steps === l.steps && errors === 0, { steps, solved, done, errors } );
+			const o1 = app.store.get().overrides;
+			for ( const b of new Set( [ ...Object.keys( o0 ), ...Object.keys( o1 ) ] ) ) if ( b !== app.store.get().recipe.base && JSON.stringify( o0[ b ] || {} ) !== JSON.stringify( o1[ b ] || {} ) ) leftovers.push( [ l.id, b, o1[ b ] ] );
+			progress( `lesson ${l.id}` );
+			document.querySelector( '#brief-modal .close' )?.click();
+			document.querySelector( '#audit-modal .close' )?.click();
+
+		}
+
+		// Lessons leave no Tune values on the looks they moved past (L8 turns on depth of field
+		// on Retro 16-bit for one step); the look on screen keeps the lesson's values.
+		check( 'lessons leave no Tune values on the looks they moved past', leftovers.length === 0, leftovers );
+
+		// Designer views: each renders, changes the image, and switching off restores it.
+		await s.setWalk( false );
+		s.app.actions.setTurntable( false );
+		s.freeze( 1 );
+		await s.setScene( 'lookdev', { tier: 1 } );
+		await s.applyLook( 'sea-breeze' );
+		await s.setView( null );
+		const base = await s.capture( { width: 240, height: 135 } );
+		const views = [];
+		for ( const id of [ 'value', 'squint', 'silhouette', 'thumbnail', 'saturation', 'busyness', 'protan', 'deutan', 'tritan', 'thirds', 'golden', 'center', 'buffer-depth', 'buffer-normal', 'buffer-ids' ] ) {
+
+			await s.setView( id );
+			const c = await s.capture( { width: 240, height: 135 } );
+			views.push( [ id, +s.diff( base.id, c.id ).mae.toFixed( 4 ) ] );
+
+		}
+
+		await s.setView( null );
+		const back = await s.capture( { width: 240, height: 135 } );
+		check( 'every designer view renders and changes the image', views.every( ( [ , d ] ) => d > 0.002 ), views );
+		check( 'switching the view off restores the frame exactly', back.hash === base.hash, [ base.hash, back.hash ] );
+		progress( 'designer views' );
+
+		// Critic: quiet on the built-in looks (or the rule is part of the style), firing on purpose-built bad ones.
+		const noisy = [];
+		for ( const look of s.looks().filter( ( l ) => ! l.id.includes( 'custom' ) && ! l.id.includes( 'mobile' ) && ! l.id.includes( 'high-contrast' ) ) ) {
+
+			app.actions.setOverrides( look.id, {} ); // the look as shipped
+			await s.applyLook( look.id );
+			const r = await s.critique();
+			const ids = r.tips.filter( ( t ) => ! t.intended ).map( ( t ) => t.id );
+			res.critic[ look.id ] = r.tips.map( ( t ) => t.id );
+			progress( `critic on ${look.id}` );
+			if ( ids.length ) noisy.push( [ look.id, ids ] );
+
+		}
+
+		check( 'the critic stays quiet on the built-in looks (or the rule is part of the style)', noisy.length === 0, noisy );
+		const bad = { 'flat-values': { 'grade.contrast': 0.5 }, clipping: { 'grade.toneMapping': 'none', 'grade.exposure': 2 }, 'fog-wall': { 'atmosphere.fog.type': 'exp2', 'atmosphere.fog.density': 0.15, 'atmosphere.fog.skyTint': 0 } };
+		for ( const [ rule, params ] of Object.entries( bad ) ) {
+
+			await s.applyLook( 'sea-breeze' );
+			for ( const [ k, v ] of Object.entries( params ) ) s.setParam( k, v );
+			const r = await s.critique();
+			const tip = r.tips.find( ( t ) => t.id === rule );
+			if ( tip ) app.actions.applyOverrides( tip.fix );
+			const after = await s.critique();
+			check( `critic: ${rule} fires on a purpose-built bad look`, !! tip, r.tips.map( ( t ) => t.id ) );
+			check( `critic: the ${rule} fix helps`, !! tip && ( ! after.tips.some( ( t ) => t.id === rule ) || JSON.stringify( after.stats ) !== JSON.stringify( r.stats ) ), after.tips.map( ( t ) => t.id ) );
+			app.actions.resetParams();
+
+		}
+
+		s.freeze( null );
+		return res;
+
+	} );
+
+	for ( const c of out.checks ) if ( ! c.pass ) fail( `M8: ${c.name} (${JSON.stringify( c.value )})` );
+	return out;
+
+}
+
 async function smoke( browser, run, base ) {
 
 	const context = await browser.newContext( { viewport: { width: 1280, height: 720 } } );
 	await routeCdn( context );
 	if ( run.m5 ) await context.addInitScript( fakeGamepad );
 	const page = await context.newPage();
+	// Long checks report progress so a slow run can be told from a stuck one.
+	page.on( 'console', ( m ) => { if ( m.text().startsWith( '[progress]' ) ) console.log( `       ${m.text().slice( 11 )}` ); } );
 	const consoleErrors = [];
 	page.on( 'pageerror', ( e ) => consoleErrors.push( String( e ) ) );
 
@@ -854,6 +968,7 @@ async function smoke( browser, run, base ) {
 		if ( run.m5 && ! flag( '--no-m5' ) ) result.m5 = await m5Checks( page, fail, run );
 		if ( run.m6 && ! flag( '--no-m6' ) ) result.m6 = await m6Checks( page, fail, run, base );
 		if ( run.m7 && ! flag( '--no-m7' ) ) result.m7 = await m7Checks( page, fail, run );
+		if ( run.m8 && ! flag( '--no-m8' ) ) result.m8 = await m8Checks( page, fail, run );
 
 		if ( ! flag( '--no-spikes' ) ) {
 
@@ -867,7 +982,7 @@ async function smoke( browser, run, base ) {
 		if ( run.panel ) {
 
 			await page.click( '#verify-btn' );
-			await page.click( '.check[data-id="M7-01"] [data-status="pass"]' );
+			await page.click( '.check[data-id="M8-01"] [data-status="pass"]' );
 			await page.click( '[data-tab="report"]' );
 			result.report = await page.inputValue( 'textarea.report' );
 			if ( ! result.report.includes( 'Checks: 1 pass' ) ) fail( 'Verify report does not record the clicked check' );

@@ -14,6 +14,7 @@ import { GRADE, createGradeLists, applyGradeLists } from './stage-grade.js';
 import { MEDIUM } from './stage-medium.js';
 import { DISPLAY, createDisplayLists, applyDisplayLists } from './stage-display.js';
 import { whiteBalanceGains, hexToRgb } from '../color/color.js';
+import { designerView, viewById } from './views.js';
 
 export { TONE_MAPPING };
 export { setDisplayColor } from './params.js';
@@ -140,6 +141,7 @@ export function passRequirements( v ) {
 	}
 
 	if ( v[ '@isolate' ] ) out.add( 'ids' );
+	for ( const b of viewById.get( v[ '@view' ] )?.requires || [] ) out.add( b );
 	return out;
 
 }
@@ -155,7 +157,7 @@ export function activeEffects( v ) {
 export function graphKey( v, passKey ) {
 
 	const ctx = { samples: passKey.startsWith( '0|' ) ? 0 : 4 };
-	return [ passKey, v[ '@isolate' ] ? 'isolate' : '', ...EFFECTS.filter( ( e ) => e.enabled( v, ctx ) ).map( ( e ) => `${e.id}${e.key ? ':' + e.key( v ) : ''}${e.mask && v[ `@partial:${e.mask}` ] ? '@mask' : ''}` ) ].join( '|' );
+	return [ passKey, v[ '@isolate' ] ? 'isolate' : '', v[ '@view' ] ? `view:${v[ '@view' ]}` : '', ...EFFECTS.filter( ( e ) => e.enabled( v, ctx ) ).map( ( e ) => `${e.id}${e.key ? ':' + e.key( v ) : ''}${e.mask && v[ `@partial:${e.mask}` ] ? '@mask' : ''}` ) ].join( '|' );
 
 }
 
@@ -222,6 +224,9 @@ export function buildGraph( { styledPass, plainPass, values, P, U, lists, atmos,
 
 	// Effects that must see the finished image and must not be sampled again (TRAA).
 	for ( const e of finals ) c = e.build( c, ctx );
+
+	// Designer views (Analyze tab): analysis overlays on the finished image.
+	if ( values[ '@view' ] && viewById.has( values[ '@view' ] ) ) c = designerView( values[ '@view' ], c, ctx );
 
 	// Isolate (Parts tab): every other part dims and grays, and the part's mask is outlined.
 	if ( values[ '@isolate' ] ) {

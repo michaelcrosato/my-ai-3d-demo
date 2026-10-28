@@ -15,6 +15,7 @@ import { StylePassNode, pixelGrid } from './render/passes.js';
 import { Rigs } from './render/rigs.js';
 import { PARTS, PART_INDEX } from './registry/index.js';
 import { resolveLook } from './look/resolve.js';
+import { viewById } from './post/views.js';
 
 const layers = ( n ) => { const l = new THREE.Layers(); l.set( n ); return l; };
 const _size = new THREE.Vector2();
@@ -76,6 +77,7 @@ export class StyleRuntime {
 		this.snapshotIndex = 0;
 		this.U.snapshot = texture( this.snapshots[ 0 ].texture );
 		this.isolate = null; // part name dimmed-around in the Parts tab
+		this.view = null; // designer view id (Analyze tab)
 
 		this.apply( resolveLook( { look: { baseline: true, params: {} } } ) );
 
@@ -177,6 +179,7 @@ export class StyleRuntime {
 		// Masked post effects (§7.11): a switch is on if any part has it, plus a bit mask.
 		const v = this.values = withPartMasks( resolved.global, resolved.parts );
 		v[ '@isolate' ] = this.isolate !== null;
+		v[ '@view' ] = this.view;
 		const before = this.materials.built;
 
 		const parts = this.materials.apply( resolved.parts, v );
@@ -314,6 +317,16 @@ export class StyleRuntime {
 		if ( mode !== undefined ) this.U.transitionMode.value = mode === 'wipe' ? 2 : mode === 'crossfade' ? 1 : 0;
 		if ( mode === null ) this.U.transitionProgress.value = 1;
 		if ( progress !== undefined ) this.U.transitionProgress.value = Math.min( 1, Math.max( 0, progress ) );
+
+	}
+
+	/** A designer view (value, squint, silhouette, … see post/views.js), or null for the look. */
+	setView( id ) {
+
+		const next = id && viewById.has( id ) ? id : null;
+		if ( next === this.view ) return;
+		this.view = next;
+		if ( this.resolved ) this.apply( this.resolved );
 
 	}
 

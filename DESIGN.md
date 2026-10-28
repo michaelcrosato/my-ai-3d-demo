@@ -765,10 +765,10 @@ Related:           other parameters, lesson link
 
 | Rule | Example tip |
 |---|---|
-| Value range < 50% of the available range | "Mostly midtones. Deepen shadows or raise contrast for punch." |
+| Value range < 40% of the available range (2nd to 98th percentile) | "Mostly midtones. Deepen shadows or raise contrast for punch." |
 | > 2% of pixels clipped | "Highlights are burning out. Lower exposure or bloom." |
-| > 6 dominant hues | "Too many hues compete. Try palette remap or lower saturation in the background." |
-| Focus contrast ≤ periphery contrast | "Your subject doesn't stand out. Add rim light or a vignette, or desaturate the background." |
+| > 7 dominant hues | "Too many hues compete. Try palette remap or lower saturation in the background." |
+| Focus contrast < 0.7 × periphery contrast (focus: a third of the frame around the scene's subject) | "Your subject doesn't stand out. Add rim light or a vignette, or desaturate the background." |
 | Busyness high at T3 with lines on | "Line noise. Fade lines with distance." |
 | Fog flattens > 60% of the frame | "Fog is hiding the scene. Start it further away." |
 | Color-blind view loses the hero/background separation | "Separate them by value, not hue alone." |
@@ -1467,6 +1467,13 @@ Each milestone ends with: `npm test` and `npm run smoke` green, a rebuilt `dist/
 - **Verify checks:** run the audit and judge whether the numbers are plausible · **run it on your phone via the QR code and paste the report** · confirm the mobile variants still look like their parents.
 
 ### M8 — Education layer
+- **Status:** done (v0.10.0). Content: `content/learn.js` (cards for every parameter: what, why, use, avoid, typical values from the library's ranges, cost, seen in, and a Try this experiment; 79 group texts), `content/lessons.js` (L1–L10 plus the bonus L11, each step a cumulative setup, a caption and an optional task with done/solve), `content/glossary.js` (34 terms). Runtime: designer views as a post-graph stage (`post/views.js`, 15 views, `@view` in the graph key so switching rebuilds only the post graph). App: the Analyze tab (views, critic, palette wheel, histogram, pipeline strip with buffers), the lesson player (a caption bar over the view), the Learn tab (lessons, Build it from scratch, glossary, cards), V / gamepad Y to cycle views. Unit tests: every card complete, every lesson valid against the registry and the library, glossary links resolve, critic rules fire on synthetic frames and the palette extractor finds known clusters. Smoke checks: every lesson completes start to finish through the test API with no errors; every designer view renders, changes the image and switching it off restores the frame exactly; the critic is quiet on every built-in look (or the rule is whitelisted for that look) and fires on purpose-built bad looks, and its fix helps. Decisions made while building it:
+  - **Lessons drive the app through the same actions as the UI** (setLook, setParam, setView, open the brief, run a quick audit), so a lesson can never show something the tool can't do. Steps are cumulative: Back and jumping to a step replay the setups from the start, so every step looks the same however you reach it.
+  - **The critic reads a 160 × 90 frame of the look itself** (never a designer view), every couple of seconds while the Analyze tab is open. Its rules use luminance percentiles, hue clusters in OKLab, a center-weighted contrast map, edge density, depth-weighted contrast and color-blind simulation (Machado matrices), and each comes with a one-click fix as overrides.
+  - **Thresholds tuned on the library**, measured for every look on the lookdev and harbor scenes and on purpose-built bad looks: value range under 40% (the table's 50% flagged soft styles that read fine), more than 7 dominant hues (lookdev's color chart alone has 6), focus contrast under 0.7× the periphery's, with the focus region centered on the scene's subject (its focus point, projected; the walking hero in walk mode) rather than the center third, and letterbox bars cropped before any statistic. Painterly and Layered Wilderness got more contrast where the critic was right about them.
+  - **Style exceptions instead of special cases:** where a rule describes a style rather than a mistake (Noir's crushed blacks, the CRT's black mask, Golden Hour's backlit silhouettes), `STYLE_EXCEPTIONS` in `analysis/critic.js` names the rule and the reason. The Analyze tab still shows the tip, marked as part of the look's style with that reason, and the smoke test reads the same list.
+  - **Still captures have no motion blur** (the shutter is zero for a frozen frame without `advance`): renders outside the animation loop read stale velocity, which smeared thumbnails and made captures depend on what rendered before.
+  - **Typical values come from the library**, as the range the built-in looks use (or the registry's soft range when fewer than two looks set it), so the cards stay true when looks change.
 - **Scope:**
   - Effect cards complete for all parameters, with "Show me" and "Try this"
   - Look breakdown with the build-up replay

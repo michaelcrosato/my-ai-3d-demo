@@ -43,6 +43,7 @@ export function createBriefModal( root, app, { share, toast } ) {
 			h( 'div.brief-body', { html: '<p class="hint">Preparing…</p>' } ),
 		) );
 		root.hidden = false;
+		app.emit( 'brief-tab', tab ); // lessons wait on the tab a step names
 		const body = root.querySelector( '.brief-body' );
 
 		if ( tab === 'brief' ) {

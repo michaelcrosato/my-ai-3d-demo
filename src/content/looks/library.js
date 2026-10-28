@@ -83,10 +83,10 @@ export const painterly = look( {
 		'media.kuwahara.enabled': true, 'media.kuwahara.radius': 5, 'media.kuwahara.sharpness': 8,
 		'media.paper.enabled': true, 'media.paper.type': 'canvas', 'media.paper.strength': 0.25,
 		'media.grain.amount': 0.02,
-		'atmosphere.fog.type': 'exp', 'atmosphere.fog.density': 0.01, 'atmosphere.fog.skyTint': 1, 'atmosphere.sky.exponent': 0.6,
+		'atmosphere.fog.type': 'exp', 'atmosphere.fog.density': 0.006, 'atmosphere.fog.skyTint': 1, 'atmosphere.sky.exponent': 0.6,
 		'lens.bloom.enabled': true, 'lens.bloom.strength': 0.25, 'lens.bloom.radius': 0.7,
 		'lens.vignette.amount': 0.15,
-		'grade.toneMapping': 'agx', 'grade.saturation': 1.08, 'grade.contrast': 0.95,
+		'grade.toneMapping': 'agx', 'grade.saturation': 1.08, 'grade.contrast': 1.25,
 	},
 	tiers: { mobile: { params: { 'media.kuwahara.radius': 2, 'quality.resolution': 0.5, 'lens.bloom.enabled': false } } },
 } );
@@ -439,6 +439,6 @@ export const layeredWilderness = look( {
 		'atmosphere.heightFog.density': 0.03,
 		'atmosphere.sky.zenith': '#3a2d5c', 'atmosphere.sky.horizon': '#ff9a6a', 'atmosphere.sky.ground': '#ff9a6a', 'atmosphere.sky.exponent': 0.7,
 		'atmosphere.sky.sunSize': 6, 'atmosphere.sky.sunSoftness': 0.4,
-		'grade.toneMapping': 'neutral',
+		'grade.toneMapping': 'neutral', 'grade.contrast': 1.15,
 	},
 } );

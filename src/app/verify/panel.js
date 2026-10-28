@@ -5,6 +5,7 @@ import { formatReport } from './report.js';
 
 const STORE_KEY = 'stylelab.verify.v1';
 const ACTION_LABELS = { runSpikes: '▶ Run all spikes', reloadWebGL: '↻ Reload with WebGL2', effectSheet: '▦ Render the effects sheet', openBrief: '📝 Open the brief', openFiles: '⇩ Open the export files', openShare: '🔗 Open the share link and QR', openAudit: '⚡ Open the audit' };
+const actionLabel = ( a ) => ACTION_LABELS[ a ] || ( a.startsWith( 'lesson:' ) ? `🎓 Start lesson ${a.slice( 7 )}` : a );
 
 function load() {
 
@@ -31,8 +32,9 @@ const esc = ( s ) => String( s ).replace( /[&<>"]/g, ( c ) => ( { '&': '&amp;', 
  * @param {(setup: object) => void} [o.setup] - loads a check's scene, look, tier and shot
  * @param {object} [o.names] - { id: name } for looks and scenes in ratings forms
  * @param {object} [o.extraActions] - { name: async () => {} } more check buttons (labels in ACTION_LABELS)
+ * @param {(id: string) => void} [o.startLesson] - "lesson:<id>" actions open a lesson
  */
-export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpikes, setup = () => {}, names = {}, extraActions = {} } ) {
+export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpikes, setup = () => {}, names = {}, extraActions = {}, startLesson = () => {} } ) {
 
 	const store = load();
 	const key = `${build.version}+${build.commit}`;
@@ -67,7 +69,7 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 					<div class="row">
 						${[ 'pass', 'fail', 'unsure' ].map( ( s ) => `<button class="status ${c.status === s ? 'on ' + s : ''}" data-status="${s}">${{ pass: '✅ Pass', fail: '❌ Fail', unsure: '⚠️ Unsure' }[ s ]}</button>` ).join( '' )}
 						${c.setup ? '<button data-setup>Set it up for me</button>' : ''}
-						${( c.actions || [] ).map( ( a ) => `<button data-action="${a}" ${a === 'runSpikes' && running ? 'disabled' : ''}>${ACTION_LABELS[ a ] || a}</button>` ).join( '' )}
+						${( c.actions || [] ).map( ( a ) => `<button data-action="${a}" ${a === 'runSpikes' && running ? 'disabled' : ''}>${actionLabel( a )}</button>` ).join( '' )}
 					</div>
 					<textarea placeholder="Notes (what you saw)" data-note>${esc( c.note || '' )}</textarea>
 				</section>`;
@@ -148,6 +150,7 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 		if ( t.dataset.close !== undefined ) return toggle( false );
 		if ( t.dataset.tab ) { tab = t.dataset.tab; return render(); }
 		if ( t.dataset.run !== undefined ) return startSpikes();
+		if ( t.dataset.action?.startsWith( 'lesson:' ) ) { toggle( false ); return startLesson( t.dataset.action.slice( 7 ) ); }
 		if ( t.dataset.action ) return actions[ t.dataset.action ]();
 		if ( t.dataset.setup !== undefined ) return setup( CHECKS.find( ( c ) => c.id === t.closest( '.check' ).dataset.id ).setup );
 

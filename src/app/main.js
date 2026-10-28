@@ -15,6 +15,9 @@ import { createBriefModal } from './ui/brief.js';
 import { exportFiles, briefText, looksJson } from './export/exports.js';
 import { bakeGradeLut } from './export/grade.js';
 import { createAuditModal } from './ui/audit.js';
+import { createLessonPlayer } from './ui/lessons.js';
+import { critique, STYLE_EXCEPTIONS } from './analysis/critic.js';
+import { LESSONS } from '../content/lessons.js';
 import { runAudit, AUDIT_TARGETS } from './perf/audit.js';
 import { createInspector } from './ui/inspector.js';
 import { createCompareUI } from './ui/compare.js';
@@ -158,7 +161,9 @@ async function boot() {
 	};
 
 	const shareURL = async () => `${location.origin}${location.pathname}${location.search}${await app.actions.shareHash()}`;
-	const inspector = createInspector( $( 'inspector' ), app, { readouts, benefitMatrix: () => api.benefitMatrix(), showImage, toast, share: shareURL } );
+	// Lessons and the Analyze tab (M8) are wired after the modals they drive exist.
+	let lessonPlayer = null, analyzeFrame = null;
+	const inspector = createInspector( $( 'inspector' ), app, { readouts, benefitMatrix: () => api.benefitMatrix(), showImage, toast, share: shareURL, startLesson: ( l ) => lessonPlayer.start( l ), analyze: () => analyzeFrame() } );
 
 	// Drop a .glb anywhere to import it; click in the view to pick parts.
 	window.addEventListener( 'dragover', ( e ) => { e.preventDefault(); } );
@@ -242,7 +247,42 @@ async function boot() {
 	const auditModal = createAuditModal( auditRoot, app, { run: runAuditNow, phoneUrl, env: () => ( { adapter: api.caps?.adapter ? `${api.caps.adapter.vendor || ''} ${api.caps.adapter.architecture || ''}`.trim() : '', backend: api.backend, userAgent: navigator.userAgent } ), toast } );
 	$( 'audit-btn' ).addEventListener( 'click', () => auditModal.open() );
 
+	// Lesson player (§6.13): a caption bar over the viewport.
+	const lessonRoot = h( 'div.lesson-bar', { hidden: true } );
+	$( 'viewport' ).append( lessonRoot );
+	lessonPlayer = createLessonPlayer( lessonRoot, app, {
+		setView: ( id ) => app.actions.setView( id ),
+		openBrief: ( tab ) => briefModal.open( tab ),
+		runQuickAudit: () => runAuditNow( { target: 'small', rounds: 1, frames: 4, warmup: 2 } ),
+		setTab: ( tab ) => { inspector.setTab( tab ); appRoot.classList.add( 'inspector-open' ); },
+		toast,
+	} );
+	// The critic reads a 160 × 90 frame of the look itself (not a designer view).
+	analyzeFrame = async () => {
+
+		if ( app.store.get().view ) return { tips: [], stats: null, pixels: new Uint8Array( 160 * 90 * 4 ), viewActive: true };
+		const c = await api.capture( { width: 160, height: 90 } );
+		const px = captures.get( c.id );
+		// The subject: the walking hero, else the scene's focus point, projected into the frame.
+		const at = app.walking ? app.walk.position().map( ( v, i ) => ( i === 1 ? v + 0.9 : v ) ) : app.scene().focus;
+		let focus = null;
+		if ( at ) {
+
+			const cam = app.camera.clone();
+			cam.aspect = 160 / 90;
+			cam.updateProjectionMatrix();
+			cam.updateMatrixWorld();
+			const p = new THREE.Vector3( ...at ).project( cam );
+			if ( Math.abs( p.x ) <= 1 && Math.abs( p.y ) <= 1 && p.z < 1 ) focus = [ ( p.x + 1 ) / 2 * 160, ( 1 - p.y ) / 2 * 90 ];
+
+		}
+
+		return { ...critique( px.data, app.target.global, { tier: app.store.get().tier, focus, lookId: app.store.get().recipe.base } ), pixels: px.data };
+
+	};
+
 	const ui = {
+		cycleDesignerView: () => { const view = app.actions.cycleView(); toast( view ? `${view.label}: ${view.learn}` : 'Designer view off' ); },
 		openBrief: () => briefModal.open( 'brief' ),
 		openAudit: () => auditModal.open(),
 		inspector,
@@ -446,6 +486,7 @@ async function boot() {
 		runSpikes: ( onResult ) => runSpikes( null, onResult ),
 		setup,
 		names: Object.fromEntries( [ ...LOOKS, ...SCENES ].map( ( x ) => [ x.id, x.name ] ) ),
+		startLesson: ( id ) => lessonPlayer.start( id ),
 		extraActions: {
 			openBrief: async () => { $( 'verify' ).hidden = true; briefModal.open( 'brief' ); },
 			openFiles: async () => { $( 'verify' ).hidden = true; briefModal.open( 'files' ); },
@@ -518,6 +559,21 @@ async function boot() {
 		// M7: performance audit
 		/** Runs the audit: { target: 'small' | 'desktop' | …, rounds, frames, warmup } → the report. */
 		audit: ( opts ) => runAuditNow( opts ),
+		// M8: education
+		setView: async ( id ) => { app.actions.setView( id ); await nextFrames(); },
+		/** The critic on the current frame: { tips, stats }. */
+		critique: async () => { const r = await analyzeFrame(); return { tips: r.tips, stats: r.stats }; },
+		/** The built-in looks where a critic rule is part of the style (see analysis/critic.js). */
+		styleExceptions: () => STYLE_EXCEPTIONS,
+		lessons: {
+			list: () => LESSONS.map( ( l ) => ( { id: l.id, title: l.title, steps: l.steps.length } ) ),
+			start: async ( id ) => { lessonPlayer.start( id ); await nextFrames(); return lessonPlayer.state(); },
+			next: async () => { lessonPlayer.next(); await nextFrames(); return lessonPlayer.state(); },
+			back: async () => { lessonPlayer.back(); await nextFrames(); return lessonPlayer.state(); },
+			solve: async () => { const ok = await lessonPlayer.solve(); await nextFrames(); return ok; },
+			state: () => lessonPlayer.state(),
+			stop: () => lessonPlayer.stop(),
+		},
 		phoneUrl: ( target ) => phoneUrl( target ),
 		// M5: walk mode, physics, zones, plans, modes
 		setWalk: async ( on ) => { const r = await app.actions.setWalk( on ); await nextFrames(); return r; },

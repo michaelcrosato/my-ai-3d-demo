@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.10.0 — M8: education layer (2026-10-28)
+
+**What's new**
+- **Lessons** (Learn tab): eleven guided tours that drive the app, each step with a caption and a small task you can do yourself or press Show me for. L1 Blockout to beautiful, L2 Silhouettes and lines, L3 Light shapes, L4 Color, L5 Depth, L6 Focus and composition, L7 Texture and imperfection, L8 Coherence, L9 Motion, L10 Budgets, and a bonus L11 Directing agents. Back, Next and ✕ (which leaves the scene as it is); finished lessons get a tick.
+- **Build it from scratch:** replays the current look one module at a time from neutral, with a caption for each. It works on your own looks too.
+- **Analyze tab:** fifteen designer views (value, squint, silhouette, thumbnail, saturation heatmap, busyness, protan / deutan / tritan simulations, thirds, golden ratio, center cross, and the depth, normal and part-id buffers), the **critic**, the extracted palette on a hue wheel, a luminance histogram, and the pipeline strip with the buffers each effect reads. **V** (or **Y** on a gamepad) cycles the eye-training views.
+- **The critic** reads a small frame every couple of seconds and flags flat values, clipping, too many hues, a weak focal point, noisy lines, a fog wall, and colors that merge for color-blind players. Each tip says why it matters and has a one-click fix.
+- **Learn cards** are complete for every parameter: what it does, why it works, when to use and avoid it, typical values (from the library), cost, where it is seen, and a **🧪 Try this** experiment next to **▶ Show me**.
+- **Glossary:** 34 terms (cel, LUT, dither, FPE…), searchable, linked to the parameters and lessons.
+
+**What to test** (🧪 Verify → Checklist; about 25 minutes):
+1. **M8-01** Take two lessons start to finish (Set it up for me → Start lesson L1).
+2. **M8-02** Designer views help you judge a look.
+3. **M8-03** The critic's tips are sensible.
+4. Optional: **M8-04** Learn cards (Show me, Try this, the glossary), **M8-05** Build a look from scratch.
+
+Then Report → **Copy report** and paste it back.
+
+**Also in this version**
+- Painterly and Layered Wilderness have more value contrast (the critic was right: Painterly's values spanned only a third of the range).
+- The four dark looks that list the dungeon as a best scene (PS1, Game Boy, 1-Bit, Noir) read on it now: the dungeon's base light is brighter, the palette looks light in neutral white, and far isometric and top-down cameras count fog from part of the way to the focus.
+- The runtime applies the look's lens width (`lens.fovScale`) to your camera, as the tool does: the FOV widens or narrows and the camera dollies so the subject keeps its size. Set `style.baseFov` when your game changes its FOV, or pass `lens: false` to `createStyle` to leave the camera alone. starter.html now matches the tool on looks with a lens (Graffiti Rush on the plaza was off).
+- Still images (thumbnails, contact sheets, the effects sheet, exports) no longer show motion blur on a frozen frame; renders outside the animation loop read stale velocity, which smeared looks like Cinematic.
+- Exports from the dev page (index.html) put the look into starter.html; only the built file did before.
+- Offscreen work (captures, the audit, spikes, gallery previews) runs one job at a time. The Analyze tab's critic, capturing during an audit, used to stall it. Each offscreen render also advances three's node frame, so a capture right after an audit is exact and audit timings no longer skip effect passes.
+- A lesson gives the looks it moves past their own Tune values back (Lesson 8 used to leave depth of field on Retro 16-bit).
+- The starter parity check pauses the tool's loop while starter.html renders (both share one GPU process).
+
+**Known**
+- The critic's thresholds are tuned on the built-in looks, on two scenes. Where a rule describes a style rather than a mistake (Noir's crushed blacks, Golden Hour's backlit silhouettes), the tip still shows, marked as part of that look's style with the reason. Tell me when a tip seems wrong.
+- "What changed" summaries (P2) are not in this version.
+
 ## v0.9.0 — M7: performance audit (2026-10-28)
 
 **What's new**

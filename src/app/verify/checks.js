@@ -5,9 +5,50 @@
 // (M4) a `recipe`, `parts` and the inspector `tab` to open, (M5) `walk: true`.
 // `learn` is what the check teaches; `signoff: false` marks optional tour steps.
 
-export const CURRENT_MILESTONE = 'M7';
+export const CURRENT_MILESTONE = 'M8';
 
 export const CHECKS = [
+	{
+		id: 'M8-01', milestone: 'M8',
+		title: 'Take two lessons start to finish',
+		steps: [ 'Press "Set it up for me", then "Start lesson L1" (or Learn → Lessons).', 'Follow the captions. Do each task yourself, or press Show me.', 'Then take one more lesson of your choice.' ],
+		expected: 'Every caption explains what changed and why, the tasks are doable, and Back, Next and ✕ behave. Note any step that confused you.',
+		learn: 'The levers of a style (shape, line, light, color, depth, focus, texture, motion) in the order artists reach for them.',
+		setup: { scene: 'harbor', look: 'plain', tier: 0 },
+		actions: [ 'lesson:L1' ],
+	},
+	{
+		id: 'M8-02', milestone: 'M8',
+		title: 'Designer views help you judge a look',
+		steps: [ 'Press V (or Y on a gamepad) to cycle the views, or pick them in the Analyze tab: value, squint, silhouette, thumbnail, saturation, busyness, the color-blind simulations, the composition guides.', 'Try them on Golden Hour, then on Comic Ink.' ],
+		expected: 'Each view appears at once and shows what its caption says. Value and squint make weak contrast obvious; switching the view off brings the look back exactly.',
+		learn: 'How artists check their own work: squint, look at values only, check silhouettes and tiny thumbnails.',
+		setup: { scene: 'plaza', look: 'golden-hour', tier: 1, tab: 'analyze' },
+	},
+	{
+		id: 'M8-03', milestone: 'M8',
+		title: 'The critic\'s tips are sensible',
+		steps: [ 'In the Analyze tab, read the critic on three looks you like.', 'Then break one: drag Grade → Contrast to the minimum, or Exposure far up, and read it again. Press a tip\'s fix button.' ],
+		expected: 'Built-in looks get few or no tips; the broken one gets a clear tip, and its fix helps. Note any tip that seems wrong to you.',
+		learn: 'Common art-direction mistakes (flat values, clipping, too many hues, weak focus, fog walls) and how to spot them.',
+		setup: { scene: 'garden', look: 'sea-breeze', tier: 1, tab: 'analyze' },
+	},
+	{
+		id: 'M8-04', milestone: 'M8', signoff: false,
+		title: 'Learn cards: Show me and Try this',
+		steps: [ 'In the Tune tab, click a parameter name (Fog density, Light bands, Halftone…) to open its Learn card.', 'Press ▶ Show me, then 🧪 Try this. Search the glossary for a term you don\'t know.' ],
+		expected: 'The card covers what it does, why, typical values, cost and where it is seen. Show me animates the value; Try this steps through an experiment and then puts the value back.',
+		learn: 'Every parameter, explained with its cost and the games it shows up in.',
+		setup: { scene: 'lookdev', look: 'sea-breeze', tier: 1, tab: 'tune' },
+	},
+	{
+		id: 'M8-05', milestone: 'M8', signoff: false,
+		title: 'Build a look from scratch',
+		steps: [ 'With this setup (Comic Ink), open Learn → Why Comic Ink works → ▶ Build it from scratch.', 'Try it on Painterly too.' ],
+		expected: 'The look builds up one module at a time from neutral, with a caption for each, and ends exactly on the look.',
+		learn: 'How a look breaks down into modules, and which modules carry it.',
+		setup: { scene: 'plaza', look: 'comic-ink', tier: 1, tab: 'learn' },
+	},
 	{
 		id: 'M7-01', milestone: 'M7',
 		title: 'Run the audit and judge whether the numbers are plausible',

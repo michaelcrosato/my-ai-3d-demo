@@ -22,6 +22,8 @@ const initial = () => ( {
 	modes: [], // player-selectable visual modes: [{ name, look }]
 	mode: - 1,
 	deadzone: 0.15, // gamepad sticks (radial)
+	view: null, // designer view (Analyze tab)
+	lessons: { done: [] },
 	compare: { mode: 'off', splitPos: 0.5 },
 	ui: { tab: 'look', learn: null, hidden: false, inspectorOpen: false, scope: null },
 	tips: { seen: [] },
@@ -37,7 +39,7 @@ function load() {
 		// v0.5 and earlier stored one look id; it becomes the recipe's base.
 		const recipe = saved.recipe || ( saved.lookId ? { base: saved.lookId, modules: {}, morph: null } : base.recipe );
 		delete saved.lookId;
-		return { ...base, ...saved, recipe, isolate: null, plan: { ...base.plan, ...saved.plan }, compare: { ...base.compare, ...saved.compare, mode: 'off' }, ui: { ...base.ui, ...saved.ui, scope: null }, tips: { ...base.tips, ...saved.tips } };
+		return { ...base, ...saved, recipe, isolate: null, view: null, lessons: { ...base.lessons, ...saved.lessons }, plan: { ...base.plan, ...saved.plan }, compare: { ...base.compare, ...saved.compare, mode: 'off' }, ui: { ...base.ui, ...saved.ui, scope: null }, tips: { ...base.tips, ...saved.tips } };
 
 	} catch {
 

@@ -11,6 +11,7 @@ import { checkCoherence } from '../runtime/look/coherence.js';
 import { encodeShare, decodeShare } from '../runtime/look/share.js';
 import { zoneWeights, blendZones } from '../runtime/look/zones.js';
 import { rubric, mobileSubstitutions } from '../runtime/perf/cost-model.js';
+import { VIEWS } from '../runtime/post/views.js';
 import { byId, PARTS } from '../runtime/registry/index.js';
 import { LOOKS, lookById } from '../content/looks/index.js';
 import { SCENES, sceneById, buildScene, TIERS, DENSITY } from '../scenes/index.js';
@@ -772,6 +773,26 @@ export function createApp( { renderer, canvas, persist = true } ) {
 
 		},
 		setDeadzone( d ) { store.set( { deadzone: Math.max( 0.02, Math.min( 0.5, d ) ) } ); },
+
+		// Designer views (§6.13)
+		/** A designer view (value, squint, silhouette…) or null for the look. Rebuilds only the post graph. */
+		setView( id ) {
+
+			const next = id && VIEWS.some( ( v ) => v.id === id ) ? id : null;
+			store.set( { view: next } );
+			runtime.setView( next );
+			emit( 'view', next );
+
+		},
+		/** V / Y: Off → each eye-training view → Off. */
+		cycleView() {
+
+			const list = [ null, ...VIEWS.filter( ( v ) => ! v.buffer ).map( ( v ) => v.id ) ];
+			const next = list[ ( list.indexOf( state().view ) + 1 ) % list.length ];
+			actions.setView( next );
+			return next ? VIEWS.find( ( v ) => v.id === next ) : null;
+
+		},
 
 		// Performance (§6.11)
 		/**

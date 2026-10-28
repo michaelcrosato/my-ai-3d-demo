@@ -85,6 +85,7 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); cur
 .tune-pane .global-only { opacity: 0.55; }
 .tag { font-size: 11px; font-weight: normal; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; padding: 0 6px; margin-left: 4px; }
 .warning { border-left: 3px solid var(--warn); padding: 2px 0 4px 8px; margin: 6px 0; }
+.intended { border-left: 3px solid var(--line); padding: 2px 0 4px 8px; margin: 6px 0; color: var(--muted); }
 .warning p { margin: 2px 0; }
 .warning details { color: var(--muted); }
 .hint.ok { color: var(--ok); }
@@ -256,3 +257,24 @@ pre.code { background: var(--bg); border: 1px solid var(--line); border-radius: 
 	.statusbar { flex-wrap: wrap; }
 	.statusbar .compare { order: -1; width: 100%; justify-content: center; }
 }
+/* Education (M8): lesson bar, Analyze and Learn tabs. */
+.lesson-bar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(620px, calc(100% - 24px)); padding: 10px 14px; border-radius: 10px; background: rgb(20 20 22 / 0.92); border: 1px solid var(--accent); z-index: 4; }
+.lesson-bar[hidden] { display: none; }
+.lesson-head { display: flex; gap: 10px; align-items: center; }
+.lesson-head .close { margin-left: auto; }
+.lesson-caption { margin: 6px 0; font-size: 13.5px; }
+.lesson-task { margin: 4px 0; color: var(--warn); }
+.lesson-task.done { color: var(--ok); }
+.views button { font-size: 11.5px; }
+.wheel-row { align-items: flex-start; gap: 12px; }
+.swatch-list { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.swatch-list i { display: inline-block; width: 18px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: middle; border: 1px solid rgb(255 255 255 / 0.15); }
+.histogram { display: block; background: var(--bg); border-radius: 4px; }
+ol.strip { padding-left: 20px; margin: 4px 0; }
+ol.lessons { padding-left: 22px; }
+ol.lessons li { margin: 5px 0; }
+ol.lessons li.done > button { color: var(--ok); }
+input.search { width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; margin: 4px 0 6px; }
+dl.glossary { margin: 0; max-height: 320px; overflow: auto; }
+dl.glossary dt { font-weight: 600; margin-top: 6px; }
+dl.glossary dd { margin: 0 0 2px; color: var(--text); }

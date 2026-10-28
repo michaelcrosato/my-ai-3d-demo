@@ -14,6 +14,7 @@ export const KEYS = [
 	[ 'N', 'Next camera shot' ],
 	[ 'T', 'Turntable' ],
 	[ 'H', 'Hide UI' ],
+	[ 'V', 'Cycle designer views' ],
 	[ 'B', 'Brief and export' ],
 	[ 'P', 'Performance audit' ],
 	[ 'L', 'Learn tab' ],
@@ -73,6 +74,7 @@ export function bindKeyboard( app, ui ) {
 			l: () => ui.inspector.setTab( 'learn' ),
 			b: () => ui.openBrief?.(),
 			p: () => ui.openAudit?.(),
+			v: () => { const view = a.cycleView(); ui.toast?.( view ? `${view.label}: ${view.learn}` : 'Designer view off' ); },
 			'?': () => ui.showKeys(),
 			Escape: () => ui.closePanels(),
 		};
