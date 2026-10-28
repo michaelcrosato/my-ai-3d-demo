@@ -6,14 +6,14 @@
 // Counters in `info` let tests assert that sliders never rebuild anything.
 
 import * as THREE from 'three/webgpu';
-import { mrt, output, normalView, directionToColor, vec4, velocity, emissive } from 'three/tsl';
+import { mrt, output, normalView, directionToColor, vec4, velocity, emissive, texture } from 'three/tsl';
 import { StyleMaterials, LAYER_STYLED, LAYER_PLAIN, idsNode } from './materials/factory.js';
 import { createAtmosphereUniforms, createFogNode, createSkyDomes, FOG_TYPES } from './atmosphere/atmosphere.js';
-import { createPostUniforms, createPostLists, applyPostValues, buildGraph, disposeOwned, graphKey, passRequirements, activeEffects } from './post/graph.js';
+import { createPostUniforms, createPostLists, applyPostValues, buildGraph, disposeOwned, graphKey, passRequirements, activeEffects, withPartMasks } from './post/graph.js';
 import { ParamUniforms } from './post/params.js';
 import { StylePassNode, pixelGrid } from './render/passes.js';
 import { Rigs } from './render/rigs.js';
-import { PARTS } from './registry/index.js';
+import { PARTS, PART_INDEX } from './registry/index.js';
 import { resolveLook } from './look/resolve.js';
 
 const layers = ( n ) => { const l = new THREE.Layers(); l.set( n ); return l; };
@@ -65,6 +65,13 @@ export class StyleRuntime {
 		this.values = null;
 		this.info = { materialBuilds: 0, graphBuilds: 0, passBuilds: 0, lastRebuild: null, lastCompileMs: null };
 		this.pendingCompile = null;
+
+		// Transitions (§6.10): crossfade and wipe blend from a still of the outgoing look.
+		// Two targets ping-pong, so the graph never samples the target it renders into.
+		this.snapshots = [ new THREE.RenderTarget( 1, 1 ), new THREE.RenderTarget( 1, 1 ) ];
+		this.snapshotIndex = 0;
+		this.U.snapshot = texture( this.snapshots[ 0 ].texture );
+		this.isolate = null; // part name dimmed-around in the Parts tab
 
 		this.apply( resolveLook( { look: { baseline: true, params: {} } } ) );
 
@@ -139,7 +146,9 @@ export class StyleRuntime {
 	apply( resolved ) {
 
 		this.resolved = resolved;
-		const v = this.values = resolved.global;
+		// Masked post effects (§7.11): a switch is on if any part has it, plus a bit mask.
+		const v = this.values = withPartMasks( resolved.global, resolved.parts );
+		v[ '@isolate' ] = this.isolate !== null;
 		const before = this.materials.built;
 
 		const parts = this.materials.apply( resolved.parts, v );
@@ -174,7 +183,8 @@ export class StyleRuntime {
 		a.cloudColor.value.set( v[ 'atmosphere.clouds.color' ] );
 		a.cloudShade.value.set( v[ 'atmosphere.clouds.shade' ] );
 
-		applyPostValues( this.U, this.P, this.lists, v );
+		applyPostValues( this.U, this.P, this.lists, v, resolved.parts );
+		this.U.isolate.value = this.isolate === null ? - 1 : PART_INDEX[ this.isolate ];
 
 		// Styled scene pass: MSAA unless it writes extra buffers (MSAA would blend ids, M0 spike 2).
 		const cfg = this.passConfig( v, resolved.parts );
@@ -245,6 +255,47 @@ export class StyleRuntime {
 	markCompile( reason ) {
 
 		this.pendingCompile = reason;
+
+	}
+
+	/**
+	 * Captures the current styled frame for a crossfade or wipe. Call before applying the
+	 * incoming look; then drive setTransition() from 0 to 1.
+	 */
+	snapshot() {
+
+		const r = this.renderer;
+		r.getDrawingBufferSize( _size );
+		this.snapshotIndex = 1 - this.snapshotIndex;
+		const rt = this.snapshots[ this.snapshotIndex ];
+		rt.setSize( Math.max( 1, _size.x ), Math.max( 1, _size.y ) );
+		const previous = r.getRenderTarget();
+		r.setRenderTarget( rt );
+		this.post.render();
+		r.setRenderTarget( previous );
+		this.U.snapshot.value = rt.texture;
+
+	}
+
+	/**
+	 * Transition composite: mode null (off), 'crossfade' or 'wipe'; progress 0 shows the
+	 * snapshot, 1 the live frame. Omitted fields keep their value. Uniforms only.
+	 */
+	setTransition( { mode, progress } = {} ) {
+
+		if ( mode !== undefined ) this.U.transitionMode.value = mode === 'wipe' ? 2 : mode === 'crossfade' ? 1 : 0;
+		if ( mode === null ) this.U.transitionProgress.value = 1;
+		if ( progress !== undefined ) this.U.transitionProgress.value = Math.min( 1, Math.max( 0, progress ) );
+
+	}
+
+	/** Isolates one part (dims and grays the rest, outlines it), or null. Needs the ids buffer. */
+	setIsolate( part ) {
+
+		const next = part && PARTS.includes( part ) ? part : null;
+		if ( next === this.isolate ) return;
+		this.isolate = next;
+		if ( this.resolved ) this.apply( this.resolved );
 
 	}
 
@@ -369,6 +420,7 @@ export class StyleRuntime {
 		if ( this.graph ) disposeOwned( this.graph.owned );
 		this.styledPass?.dispose();
 		this.plainPass.dispose();
+		for ( const rt of this.snapshots ) rt.dispose();
 		this.post.dispose();
 		this.rigs.dispose();
 

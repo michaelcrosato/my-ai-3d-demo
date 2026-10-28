@@ -51,7 +51,7 @@ test( 'resolution order: registry → scene → look → overrides → part over
 	assert.equal( r.parts.hero[ 'lines.hull.enabled' ], true, 'hero inherits characters' );
 	assert.equal( r.parts.characters[ 'lines.hull.thickness' ], 2, 'a global override beats the look\'s part value' );
 	assert.equal( r.parts.hero[ 'lines.hull.thickness' ], 3, 'part override beats everything' );
-	assert.equal( r.parts.water[ 'palette.tintAmount' ], 0.55 );
+	assert.equal( r.parts.water[ 'surface.model' ], 'toonWater' );
 	assert.ok( ! ( 'grade.contrast' in r.parts.terrain ), 'part maps hold only part-scoped params' );
 
 } );
@@ -74,7 +74,7 @@ test( 'strength 0 moves continuous params to neutral and keeps switches', () => 
 
 		for ( const e of REGISTRY ) {
 
-			const expected = e.structural || e.mix === 'step' ? full.global[ e.id ] : e.neutral;
+			const expected = e.structural || e.mix === 'step' || e.mix === 'palette' ? full.global[ e.id ] : e.neutral;
 			assert.deepEqual( zero.global[ e.id ], expected, `${look.id} ${e.id}` );
 
 		}

@@ -26,8 +26,8 @@ const distFile = pathToFileURL( path.join( ROOT, 'dist/style-lab.html' ) ).href;
 
 const RUNS = [
 	{ name: 'dev  · http · WebGL2', url: ( base ) => `${base}/index.html?backend=webgl`, backend: 'WebGL2' },
-	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2', m1: true, m3: true },
-	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm3-webgpu.png', panel: true, m1: true, m3: true, sheet: 'm3-contact.png', effects: 'm3-effects.png' },
+	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2', m1: true, m3: true, m4: true, sweep: true, gallery: 'm4-gallery.png' },
+	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm4-webgpu.png', panel: true, m1: true, m3: true, m4: true, sweep: [ 'lookdev', 'harbor' ], sheet: 'm4-contact.png', effects: 'm3-effects.png' },
 	{ name: 'dist · file · WebGL2', url: () => `${distFile}?backend=webgl`, backend: 'WebGL2' },
 	{ name: 'dist · file · auto  ', url: () => distFile, backend: null },
 ].filter( ( r ) => ! value( '--only' ) || r.name.includes( value( '--only' ) ) );
@@ -50,15 +50,19 @@ async function routeCdn( context ) {
 
 }
 
+// The detailed M1 checks (hold, determinism) run on the M1 looks; every library look is
+// covered by the M4 sweep.
+const M1_LOOKS = [ 'sea-breeze', 'graffiti-rush', 'golden-hour', 'phone-safe-toon' ];
+
 /**
  * M1 and M2 acceptance checks (design §8 numeric image checks, §9 M1–M2), all numeric:
- * every scene × look renders and differs from plain, hold compare shows exactly the
+ * every scene × M1 look renders and differs from plain, hold compare shows exactly the
  * baseline, the Plain look matches the baseline, strength 0 equals the neutral look,
  * sliders never rebuild, switches rebuild only what they affect, tiers keep the camera.
  */
 async function m1Checks( page, fail, run ) {
 
-	const out = await page.evaluate( async () => {
+	const out = await page.evaluate( async ( m1Looks ) => {
 
 		const s = window.__stylelab;
 		const res = { cells: [], checks: [] };
@@ -78,7 +82,7 @@ async function m1Checks( page, fail, run ) {
 			const baseCam = camAt();
 			check( `${scene.id}: Plain look matches the baseline set`, s.diff( styledPlain.id, baseline.id ).mae < 0.02, s.diff( styledPlain.id, baseline.id ).mae );
 
-			for ( const look of s.looks().filter( ( l ) => l.id !== 'plain' ) ) {
+			for ( const look of s.looks().filter( ( l ) => m1Looks.includes( l.id ) ) ) {
 
 				await s.applyLook( look.id );
 				const a = await cap();
@@ -120,7 +124,6 @@ async function m1Checks( page, fail, run ) {
 
 		// Sliders are uniforms; switches rebuild only what they affect.
 		await s.applyLook( 'sea-breeze' );
-		const i0 = s.info();
 		for ( const [ id, v ] of [ [ 'atmosphere.fog.density', 0.02 ], [ 'surface.softness', 0.2 ], [ 'grade.contrast', 1.3 ], [ 'lines.hull.thickness', 3 ], [ 'lighting.key.elevation', 20 ], [ 'palette.saturation', 0.5 ] ] ) s.setParam( id, v );
 		const i1 = s.info();
 		check( 'sliders never rebuild', i1.materialBuilds === i0.materialBuilds && i1.graphBuilds === i0.graphBuilds && i1.passBuilds === i0.passBuilds, [ i0, i1 ].map( ( i ) => [ i.materialBuilds, i.graphBuilds, i.passBuilds ] ) );
@@ -186,13 +189,13 @@ async function m1Checks( page, fail, run ) {
 		s.freeze( null );
 		return res;
 
-	} );
+	}, M1_LOOKS );
 
 	for ( const c of out.checks ) if ( ! c.pass ) fail( `M1: ${c.name} (${JSON.stringify( c.value )})` );
 
 	if ( run.sheet ) {
 
-		const url = await page.evaluate( () => window.__stylelab.contactSheet( { tier: 1 } ) );
+		const url = await page.evaluate( ( looks ) => window.__stylelab.contactSheet( { tier: 1, looks } ), [ 'plain', ...M1_LOOKS ] );
 		await mkdir( ARTIFACTS, { recursive: true } );
 		await writeFile( path.join( ARTIFACTS, run.sheet ), Buffer.from( url.split( ',' )[ 1 ], 'base64' ) );
 
@@ -241,7 +244,6 @@ async function m3Checks( page, fail, run ) {
 		// New M3 sliders are uniforms.
 		await s.applyLook( 'golden-hour' );
 		for ( const [ k, v ] of Object.entries( { 'lens.dof.enabled': true, 'grade.lut.enabled': true, 'retro.crt.enabled': true, 'lighting.ao.enabled': true, 'media.kuwahara.enabled': true, 'lines.screen.enabled': true, 'surface.variation.enabled': true, 'media.paper.enabled': true } ) ) s.setParam( k, v );
-		const i0 = s.info();
 		for ( const [ k, v ] of Object.entries( {
 			'lens.dof.range': 4, 'lens.dof.blur': 2, 'grade.lut.amount': 0.5, 'grade.lut.preset': 'bleach', 'retro.crt.scanlines': 0.8, 'lighting.ao.radius': 1.5, 'grade.lift': 0.05, 'grade.hue': 30, 'lighting.tod.hour': 18, 'lens.letterbox.amount': 0.5, 'retro.dither.amount': 0.3,
 			'media.kuwahara.radius': 3, 'lines.screen.wobble': 2, 'motion.boil.fps': 8, 'lines.screen.texture': 'pencil', 'surface.variation.amount': 0.2, 'media.paper.type': 'kraft', 'atmosphere.clouds.amount': 0.8, 'atmosphere.heightFog.density': 0.05, 'surface.wind.strength': 2, 'surface.water.depth': 6,
@@ -265,6 +267,169 @@ async function m3Checks( page, fail, run ) {
 		await mkdir( ARTIFACTS, { recursive: true } );
 		await writeFile( path.join( ARTIFACTS, run.effects ), Buffer.from( out.sheet.split( ',' )[ 1 ], 'base64' ) );
 		delete out.sheet;
+
+	}
+
+	return out;
+
+}
+
+/**
+ * M4 acceptance checks (design §9 M4): the library sweep (every scene × look renders and
+ * differs from plain), transitions land exactly on the target, a painterly terrain with
+ * inked characters and a plain sky renders with masks that stay in their parts, isolate,
+ * share links reproduce the state, coherence fixes, undo, and gallery previews.
+ */
+async function m4Checks( page, fail, run ) {
+
+	const out = await page.evaluate( async ( sweepScenes ) => {
+
+		const s = window.__stylelab;
+		const res = { checks: [], sweep: [] };
+		const check = ( name, pass, value ) => res.checks.push( { name, pass, value } );
+		const cap = ( w = 320, h = 180 ) => s.capture( { width: w, height: h } );
+		s.freeze( 1 );
+
+		const looks = s.looks();
+		check( 'library has 20+ looks', looks.length >= 20, looks.length );
+
+		// Sweep: every look on every scene (or the scenes given) renders and differs from plain.
+		for ( const scene of s.scenes().filter( ( x ) => ! sweepScenes || sweepScenes.includes( x.id ) ) ) {
+
+			await s.setScene( scene.id, { tier: 1 } );
+			await s.applyLook( 'plain' );
+			const plain = await cap( 192, 108 );
+			for ( const look of looks.filter( ( l ) => l.id !== 'plain' ) ) {
+
+				await s.applyLook( look.id );
+				const a = await cap( 192, 108 );
+				const differs = s.diff( plain.id, a.id ).mae;
+				res.sweep.push( { scene: scene.id, look: look.id, luma: +a.stats.meanLuma.toFixed( 3 ), std: +a.stats.lumaStd.toFixed( 3 ), differs: +differs.toFixed( 4 ) } );
+				check( `${scene.id} × ${look.id}: renders (not blank) and differs from plain`, a.stats.lumaStd > 0.025 && a.stats.meanLuma > 0.04 && a.stats.meanLuma < 0.96 && differs > 0.02, { stats: a.stats, differs } );
+
+			}
+
+		}
+
+		// Transitions land exactly on the target (frozen clock; tick drives them).
+		await s.setScene( 'lookdev', { tier: 1 } );
+		await s.applyLook( 'noir' );
+		const target = await cap();
+		await s.applyLook( 'sea-breeze' );
+		const from = await cap();
+		for ( const type of [ 'morph', 'crossfade', 'wipe' ] ) {
+
+			s.setTransition( { type, duration: 1 } );
+			await s.applyLook( 'sea-breeze' );
+			await s.applyLook( 'noir', { transition: true } );
+			s.tick( 0.5 );
+			const mid = await cap();
+			const midFrom = s.diff( from.id, mid.id ).mae, midTo = s.diff( target.id, mid.id ).mae;
+			check( `${type}: mid-way differs from both ends`, midFrom > 0.005 && midTo > 0.005, [ midFrom, midTo ] );
+			s.tick( 0.6 );
+			const end = await cap();
+			const err = s.diff( target.id, end.id ).mae;
+			check( `${type}: lands exactly on the target`, err < 0.001 && ! s.app.transition, err );
+
+		}
+
+		s.setTransition( { type: 'morph', duration: 0.6 } );
+
+		// Per-part: painterly terrain, inked characters, plain sky (design §9 M4 acceptance).
+		await s.setScene( 'garden', { tier: 1 } );
+		await s.applyLook( 'comic-ink' );
+		const global = await cap();
+		await s.setParts( { terrain: { look: 'painterly', modules: [ 'surface', 'palette', 'media', 'lines' ] }, sky: { look: 'plain', modules: [ 'surface', 'palette', 'media', 'lines' ] } } );
+		const mixed = await cap();
+		const effects = s.app.runtime.activeEffects();
+		check( 'parts: painterly terrain + inked characters + plain sky renders', mixed.stats.lumaStd > 0.03 && s.diff( global.id, mixed.id ).mae > 0.01, { stats: mixed.stats, diff: s.diff( global.id, mixed.id ).mae } );
+		check( 'parts: kuwahara runs, masked to the terrain', effects.includes( 'media.kuwahara' ) && s.app.runtime.graphKey.includes( 'media.kuwahara@mask' ), [ effects, s.app.runtime.graphKey ] );
+		const p0 = s.info();
+		s.app.actions.setParam( 'lines.screen.thickness', 3, { part: 'characters' } );
+		s.app.actions.setParam( 'surface.bands', 4, { part: 'terrain' } );
+		s.app.actions.setParam( 'palette.saturation', 0.6, { part: 'foliage' } );
+		const p1 = s.info();
+		check( 'parts: part sliders never rebuild', p1.graphBuilds === p0.graphBuilds && p1.passBuilds === p0.passBuilds && p1.materialBuilds === p0.materialBuilds, [ p0, p1 ].map( ( i ) => [ i.materialBuilds, i.graphBuilds, i.passBuilds ] ) );
+		const thick = await cap();
+		check( 'parts: per-part line weight changes the image', s.diff( mixed.id, thick.id ).mae > 0.002, s.diff( mixed.id, thick.id ).mae );
+		await s.setParts( {} );
+		const back = await cap();
+		check( 'parts: clearing the parts returns to the global look exactly', s.diff( global.id, back.id ).mae < 0.001, s.diff( global.id, back.id ).mae );
+
+		// Masks stay in their parts: kuwahara on the sky only leaves the lower frame alone.
+		await s.setScene( 'lookdev', { tier: 1 } );
+		await s.applyLook( 'sea-breeze' );
+		const plainSky = await cap();
+		s.app.actions.setParam( 'media.kuwahara.enabled', true, { part: 'sky' } );
+		s.app.actions.setParam( 'media.kuwahara.radius', 8, { part: 'sky' } );
+		const skyOnly = await cap();
+		await s.setParts( {} );
+		s.app.actions.setParam( 'media.kuwahara.enabled', true );
+		s.app.actions.setParam( 'media.kuwahara.radius', 8 );
+		const everywhere = await cap();
+		s.app.actions.resetParams();
+		const low = { rect: [ 0.1, 0.75, 0.9, 1 ] };
+		const leak = s.diff( plainSky.id, skyOnly.id, low ).mae, full = s.diff( plainSky.id, everywhere.id, low ).mae;
+		check( 'parts: a sky-only effect stays off the ground', leak < full * 0.2 && full > 0.004, { leak, full } );
+
+		// Isolate dims every other part; ending it restores the frame exactly.
+		const iso0 = await cap();
+		s.app.actions.setIsolate( 'characters' );
+		const iso = await cap();
+		s.app.actions.setIsolate( null );
+		const iso1 = await cap();
+		check( 'isolate dims the rest and restores exactly', s.diff( iso0.id, iso.id ).mae > 0.05 && s.diff( iso0.id, iso1.id ).mae < 0.001, [ s.diff( iso0.id, iso.id ).mae, s.diff( iso0.id, iso1.id ).mae ] );
+
+		// Share links reproduce the whole state: recipe, parts, tweaks, scene.
+		await s.setScene( 'plaza', { tier: 1 } );
+		await s.setRecipe( { base: 'golden-hour', modules: { lines: { from: 'comic-ink' }, grade: { blend: { with: 'noir', t: 0.4 } } } } );
+		await s.setParts( { foliage: { look: 'watercolor', modules: [ 'surface', 'palette' ] } } );
+		s.setParam( 'grade.contrast', 1.2 );
+		const shared = await cap();
+		const sharedHash = s.resolvedHash();
+		const link = await s.shareHash();
+		await s.setScene( 'harbor', { tier: 0 } );
+		await s.setParts( {} );
+		await s.applyLook( 'plain' );
+		await s.openShare( link );
+		const opened = await cap();
+		check( 'share link reproduces the state', s.resolvedHash() === sharedHash && s.diff( shared.id, opened.id ).mae < 0.001 && s.app.store.get().sceneId === 'plaza', { hash: [ sharedHash, s.resolvedHash() ], diff: s.diff( shared.id, opened.id ).mae, length: link.length } );
+
+		// Coherence: two media fire a warning with a working one-click fix.
+		await s.setParts( {} );
+		await s.applyLook( 'painterly' );
+		s.setParam( 'media.halftone.enabled', true );
+		s.setParam( 'media.halftone.amount', 1 );
+		const warn = s.coherence().find( ( w ) => w.id === 'two-media' );
+		if ( warn ) s.app.actions.applyOverrides( warn.fix );
+		check( 'coherence flags two media and fixes it in one click', !! warn && ! s.coherence().some( ( w ) => w.id === 'two-media' ), warn && warn.fix );
+		s.app.actions.resetParams();
+
+		// Undo / redo walk the recipe history.
+		await s.applyLook( 'noir' );
+		await s.applyLook( 'synthwave' );
+		s.undo();
+		const undone = s.app.store.get().recipe.base;
+		s.redo();
+		check( 'undo and redo restore looks', undone === 'noir' && s.app.store.get().recipe.base === 'synthwave', [ undone, s.app.store.get().recipe.base ] );
+
+		s.freeze( null );
+		return res;
+
+	}, run.sweep === true ? null : run.sweep );
+
+	for ( const c of out.checks ) if ( ! c.pass ) fail( `M4: ${c.name} (${JSON.stringify( c.value )})` );
+
+	// Gallery previews: one thumbnail per family, rendered through the real button.
+	if ( run.gallery ) {
+
+		await page.click( '.gallery-foot button' );
+		await page.waitForFunction( () => ! document.querySelector( '.gallery-foot button' ).disabled, null, { timeout: 600000 } );
+		const g = await page.evaluate( () => ( { thumbs: document.querySelectorAll( '.look-card img.thumb' ).length, cards: document.querySelectorAll( '.look-card' ).length } ) );
+		if ( ! ( g.thumbs === g.cards && g.cards >= 15 ) ) fail( `M4: gallery previews (${JSON.stringify( g )})` );
+		out.gallery = g;
+		await mkdir( ARTIFACTS, { recursive: true } );
+		await page.screenshot( { path: path.join( ARTIFACTS, run.gallery ) } );
 
 	}
 
@@ -307,6 +472,7 @@ async function smoke( browser, run, base ) {
 
 		if ( run.m1 && ! flag( '--no-m1' ) ) result.m1 = await m1Checks( page, fail, run );
 		if ( run.m3 && ! flag( '--no-m3' ) ) result.m3 = await m3Checks( page, fail, run );
+		if ( run.m4 && ! flag( '--no-m4' ) ) result.m4 = await m4Checks( page, fail, run );
 
 		if ( ! flag( '--no-spikes' ) ) {
 
@@ -320,7 +486,7 @@ async function smoke( browser, run, base ) {
 		if ( run.panel ) {
 
 			await page.click( '#verify-btn' );
-			await page.click( '.check[data-id="M3-02"] [data-status="pass"]' );
+			await page.click( '.check[data-id="M4-01"] [data-status="pass"]' );
 			await page.click( '[data-tab="report"]' );
 			result.report = await page.inputValue( 'textarea.report' );
 			if ( ! result.report.includes( 'Checks: 1 pass' ) ) fail( 'Verify report does not record the clicked check' );

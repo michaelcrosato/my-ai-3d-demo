@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.6.0 — M4: look library, mixing and per-part styling (2026-10-28)
+
+**What's new**
+- **20 looks.** The 15 new ones: Garden Prank, Comic Ink, Painterly, Retro Console (PS1, 16-bit, Game Boy and CRT Arcade variants), Cinematic, Ligne Claire, Miniature Diorama, 1-Bit Dither, Synthwave Neon, Noir, Ink Wash, Anime Cel, Watercolor, Sketchbook and Layered Wilderness, plus a halftone variant of Graffiti Rush. The M1 looks gained toon clouds and water, haze, god rays and blob shadows.
+- **Look gallery** on the left: one card per look family with variant buttons, filter chips (Toon, Ink, Paint, Retro, Lighting, Film, Phone-safe, My looks) and **🖼 Previews**, which renders every look on the current scene. 1–9 pick the first nine families.
+- **Look tab: mixing.** Recipe slots take each module (lighting, surface, lines, grade…) from the base look or another look, or blend two looks with a slider; M mutes a module and S solos it. **Morph with** blends everything with one look. Drag a gallery card onto a slot row. Mixing follows per-value rules (colors and palettes mix in OKLab, angles take the short way round, switches turn on while blending and land exactly at the end).
+- **Transitions:** Morph, Crossfade or Wipe, with a duration; every one lands exactly on the new look.
+- **Coherence checker:** warnings when effects contradict each other (two media, two eras, busy lines, bloom clipping, oversaturation, a fog seam, grain on dither), each with a "why" and a one-click fix.
+- **Parts tab:** give the terrain, water, foliage, buildings, props, characters, hero, VFX or sky its own look, and choose which modules it takes from it. ✎ Edit overrides points the Tune tab at one part. ◐ Isolate dims everything else. ★ Focus hierarchy makes the hero pop. Screen effects (brush strokes, ink lines, halftone, hatching, paper, AO) are masked to their parts; ink lines take each part's weight and color.
+- **Undo / redo** (Ctrl+Z, Ctrl+Shift+Z; a slider drag is one step), **Save as look** (My looks), **Export / Import JSON** (or drop a look `.json` on the window) and **🔗 Copy share link**: the whole state (scene, recipe, parts, tweaks) compressed into the URL, no server.
+- **Fixed:** TRAA rendered black when an effect after it sampled neighbors (chromatic aberration, distortion, painterly, watercolor). TRAA now resolves the finished image.
+
+**What to test** (🧪 Verify → Checklist; about 25 minutes):
+1. **M4-01** Mix two looks you like.
+2. **M4-02** Style the ground differently from the buildings and characters.
+3. **M4-03** Transitions feel smooth.
+4. **M4-04** A share link opens the same state in another browser.
+5. **M4-05** Rate the new looks (evokes / likes, 1–5, with notes).
+6. Optional tour: **M4-06** the gallery, **M4-07** the coherence checker, **M4-08** undo, save and export, **M4-09** focus hierarchy.
+7. Earlier checks you haven't done yet: M3-01, M3-02, M3-03, M3-10, M3-11.
+
+Then Report → **Copy report** and paste it back.
+
+**Known**
+- Gallery previews render on demand (🖼 Previews), not automatically: each look compiles its own shaders, which takes a few seconds per look on first use.
+- Crossfade and wipe blend from a still of the outgoing frame, not a live render of the old look, so animation in the old look pauses during the blend.
+- Screen effects limited to some parts are masked by the part buffer, so their edges at part borders are approximate (a few pixels).
+- With TRAA, animated grain is softened by the history blend.
+
 ## v0.5.0 — M3b: media, lines, water and anti-aliasing (2026-10-28)
 
 **What's new** (Tune tab; every new effect has its own switch)

@@ -9,11 +9,16 @@ const initial = () => ( {
 	density: 1,
 	shot: null, // null = the scene's default shot
 	turntable: false,
-	lookId: 'plain',
+	// The recipe (§6.6): a base look, per-module sources and blends, an optional morph.
+	recipe: { base: 'plain', modules: {}, morph: null },
+	parts: {}, // { part: { look, modules, overrides, inherit } } (§6.7)
 	strength: 1,
-	overrides: {}, // { lookId: { paramId: value } }, so tweaks survive switching looks
+	overrides: {}, // { baseLookId: { paramId: value } }, so tweaks survive switching looks
+	userLooks: [], // My looks
+	transition: { type: 'morph', duration: 0.6 },
+	isolate: null,
 	compare: { mode: 'off', splitPos: 0.5 },
-	ui: { tab: 'look', learn: null, hidden: false, inspectorOpen: false },
+	ui: { tab: 'look', learn: null, hidden: false, inspectorOpen: false, scope: null },
 	tips: { seen: [] },
 } );
 
@@ -24,7 +29,10 @@ function load() {
 		const saved = JSON.parse( localStorage.getItem( KEY ) );
 		if ( ! saved ) return initial();
 		const base = initial();
-		return { ...base, ...saved, compare: { ...base.compare, ...saved.compare, mode: 'off' }, ui: { ...base.ui, ...saved.ui }, tips: { ...base.tips, ...saved.tips } };
+		// v0.5 and earlier stored one look id; it becomes the recipe's base.
+		const recipe = saved.recipe || ( saved.lookId ? { base: saved.lookId, modules: {}, morph: null } : base.recipe );
+		delete saved.lookId;
+		return { ...base, ...saved, recipe, isolate: null, compare: { ...base.compare, ...saved.compare, mode: 'off' }, ui: { ...base.ui, ...saved.ui, scope: null }, tips: { ...base.tips, ...saved.tips } };
 
 	} catch {
 
@@ -50,12 +58,16 @@ export function createStore( { persist = true } = {} ) {
 
 	return {
 		get: () => state,
-		/** Shallow-merges `patch` (one level deep for plain objects) and notifies with the changed keys. */
-		set( patch ) {
+		/**
+		 * Shallow-merges `patch` (one level deep for plain objects) and notifies with the
+		 * changed keys. With `replace`, the patch's values replace the old ones outright
+		 * (removing a key from `parts`, undo, share links).
+		 */
+		set( patch, { replace = false } = {} ) {
 
 			const changed = Object.keys( patch );
 			const next = { ...state };
-			for ( const k of changed ) next[ k ] = patch[ k ] && typeof patch[ k ] === 'object' && ! Array.isArray( patch[ k ] ) && state[ k ] && typeof state[ k ] === 'object' ? { ...state[ k ], ...patch[ k ] } : patch[ k ];
+			for ( const k of changed ) next[ k ] = ! replace && patch[ k ] && typeof patch[ k ] === 'object' && ! Array.isArray( patch[ k ] ) && state[ k ] && typeof state[ k ] === 'object' ? { ...state[ k ], ...patch[ k ] } : patch[ k ];
 			state = next;
 			save();
 			for ( const fn of listeners ) fn( state, changed );

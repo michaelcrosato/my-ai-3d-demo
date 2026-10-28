@@ -174,7 +174,7 @@ export default [
 		tags: [ 'shadow' ],
 	} ),
 	p( {
-		id: 'lighting.ao.enabled', label: 'Ambient occlusion', type: 'bool', default: false, structural: true, requires: [ 'depth', 'normal' ], cost: HEAVY,
+		id: 'lighting.ao.enabled', scope: 'mask', label: 'Ambient occlusion', type: 'bool', default: false, structural: true, requires: [ 'depth', 'normal' ], cost: HEAVY,
 		learn: {
 			what: 'Darkens creases, corners and the ground around objects, where surrounding geometry blocks the sky light (screen-space GTAO).',
 			why: 'Occlusion is the strongest depth cue after shadows: it glues objects to the ground and to each other, so a scene stops looking like floating primitives.',
@@ -208,7 +208,7 @@ export default [
 		tags: [ 'ao', 'ink', 'comic' ],
 	} ),
 	p( {
-		id: 'lighting.contact.enabled', label: 'Contact shadows', type: 'bool', default: false, structural: true, requires: [ 'depth', 'normal' ], cost: MEDIUM,
+		id: 'lighting.contact.enabled', scope: 'mask', label: 'Contact shadows', type: 'bool', default: false, structural: true, requires: [ 'depth', 'normal' ], cost: MEDIUM,
 		learn: {
 			what: 'Short, sharp shadows traced in screen space from the sun, filling in where the shadow map is too coarse: under feet, where objects touch the ground.',
 			why: 'The shadow map can\'t resolve tiny gaps, so objects look like they hover. Contact shadows pin them down.',

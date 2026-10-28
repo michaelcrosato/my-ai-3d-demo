@@ -1,6 +1,8 @@
 // Tune panel (design §6.8), generated from the parameter registry: one Tweakpane
 // folder per module in pipeline order. Every control has a tooltip, a cost badge on
 // effect switches, a "modified" dot (click to reset) and opens its Learn card on click.
+// In part scope (Parts tab → Edit overrides) it shows and edits that part's values;
+// camera-wide settings stay global and are dimmed.
 
 import { Pane } from 'tweakpane';
 import { REGISTRY, MODULES } from '../../runtime/registry/index.js';
@@ -26,9 +28,10 @@ function bindingOptions( e ) {
  */
 export function createTune( root, app, openLearn ) {
 
+	const chip = h( 'span.scope-chip', {}, 'Editing: global look' );
 	const header = h( 'div.tune-head', {},
-		h( 'span.scope-chip', {}, 'Editing: global look' ),
-		h( 'button', { onclick: () => app.actions.resetParams(), title: 'Clear every tweak for this look' }, 'Reset all tweaks' ),
+		chip,
+		h( 'button', { onclick: () => app.actions.resetParams(), title: 'Clear every tweak in this scope' }, 'Reset all tweaks' ),
 	);
 	const host = h( 'div.tune-pane' );
 	root.append( header, host );
@@ -72,16 +75,24 @@ export function createTune( root, app, openLearn ) {
 
 	function sync() {
 
-		const resolved = app.resolved;
+		// Panels show where the state lands (`target`), not a transition's in-between frame.
+		const resolved = app.target || app.resolved;
 		if ( ! resolved ) return;
+		const scope = app.store.get().ui.scope;
+		const src = scope ? resolved.parts[ scope ] : resolved.global;
+		chip.textContent = scope ? `Editing: ${scope} only` : 'Editing: global look';
+		chip.classList.toggle( 'part', !! scope );
+		chip.title = scope ? 'Edits go to this part. Dimmed controls are camera-wide (grade, lens, atmosphere, display) and still change the whole frame. Stop in the Parts tab.' : 'Edits go to the whole look. Parts tab → Edit overrides scopes them to one part.';
 		syncing = true;
 		for ( const [ id, b ] of bindings ) {
 
 			const e = app.param( id );
-			const v = resolved.global[ id ];
+			const own = scope && e.scope !== 'global';
+			const v = own ? src[ id ] : resolved.global[ id ];
 			values[ id ] = typeof v === 'number' && e.type !== 'int' ? Math.round( v / e.step ) * e.step : v;
 			b.element.classList.toggle( 'modified', app.isModified( id ) );
-			if ( e.enabledBy ) b.disabled = ! resolved.global[ e.enabledBy ];
+			b.element.classList.toggle( 'global-only', !! scope && ! own );
+			if ( e.enabledBy ) b.disabled = ! ( own ? src : resolved.global )[ e.enabledBy ];
 
 		}
 
@@ -90,7 +101,7 @@ export function createTune( root, app, openLearn ) {
 
 	}
 
-	app.on( ( type ) => { if ( type === 'resolved' ) sync(); } );
+	app.on( ( type ) => { if ( type === 'resolved' || type === 'scope' ) sync(); } );
 	sync();
 	return { pane, sync };
 

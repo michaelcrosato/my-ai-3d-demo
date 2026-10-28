@@ -1,13 +1,12 @@
 // Keyboard map (design §5.3, Appendix D).
 
-import { LOOKS } from '../../content/looks/index.js';
-
 export const KEYS = [
 	[ 'Space (hold)', 'Compare with plain' ],
 	[ 'C', 'Split wipe' ],
 	[ 'F', 'Flicker compare' ],
 	[ 'Q / E', 'Previous / next look' ],
-	[ '1–5', 'Pick a look' ],
+	[ '1–9', 'Pick a look (gallery order)' ],
+	[ 'Ctrl+Z / Ctrl+Shift+Z', 'Undo / redo' ],
 	[ '[ / ]', 'Previous / next scene' ],
 	[ '- / =', 'Complexity down / up' ],
 	[ 'N', 'Next camera shot' ],
@@ -24,8 +23,11 @@ export function bindKeyboard( app, ui ) {
 
 	window.addEventListener( 'keydown', ( e ) => {
 
-		if ( typing( e.target ) || e.ctrlKey || e.metaKey || e.altKey ) return;
+		if ( typing( e.target ) ) return;
 		const k = e.key;
+		if ( ( e.ctrlKey || e.metaKey ) && ! e.altKey && k.toLowerCase() === 'z' ) { e.preventDefault(); if ( e.shiftKey ) app.actions.redo(); else app.actions.undo(); return; }
+		if ( ( e.ctrlKey || e.metaKey ) && ! e.altKey && k.toLowerCase() === 'y' ) { e.preventDefault(); app.actions.redo(); return; }
+		if ( e.ctrlKey || e.metaKey || e.altKey ) return;
 
 		if ( k === ' ' ) { e.preventDefault(); if ( ! e.repeat ) app.actions.setHold( true ); return; }
 		if ( e.repeat ) return;
@@ -49,7 +51,8 @@ export function bindKeyboard( app, ui ) {
 			Escape: () => ui.closePanels(),
 		};
 
-		const fn = map[ k.length === 1 ? k.toLowerCase() : k ] ?? ( /^[1-9]$/.test( k ) && LOOKS[ Number( k ) - 1 ] ? () => a.setLook( LOOKS[ Number( k ) - 1 ].id ) : null );
+		const family = /^[1-9]$/.test( k ) ? app.lookFamilies()[ Number( k ) - 1 ] : null;
+		const fn = map[ k.length === 1 ? k.toLowerCase() : k ] ?? ( family ? () => a.setLook( family[ 0 ].id ) : null );
 		if ( fn ) { e.preventDefault(); fn(); }
 
 	} );

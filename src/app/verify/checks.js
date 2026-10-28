@@ -1,12 +1,85 @@
 // Human checks for each milestone (design §6.14). The panel shows the current
 // milestone first; earlier milestones stay available under a fold.
 // `actions` name panel handlers; each button is labeled with what it does (panel.js ACTION_LABELS).
-// `setup` is what "Set it up for me" loads: scene, look, tier, shot, and Tune `params`.
+// `setup` is what "Set it up for me" loads: scene, look, tier, shot, Tune `params`, and
+// (M4) a `recipe`, `parts` and the inspector `tab` to open.
 // `learn` is what the check teaches; `signoff: false` marks optional tour steps.
 
-export const CURRENT_MILESTONE = 'M3';
+export const CURRENT_MILESTONE = 'M4';
 
 export const CHECKS = [
+	{
+		id: 'M4-01', milestone: 'M4',
+		title: 'Mix two looks you like',
+		steps: [ 'Look tab → Recipe slots: this setup takes Lines from Comic Ink on top of Golden Hour. Try another row: set "from" or "with" to a second look and move its slider.', 'Or use Morph with: blend everything with one look, and drag the slider from 0 to 1.', 'Drag a card from the gallery onto a recipe row to take that module from it.' ],
+		expected: 'The mix looks intentional, not broken: each module comes from where you set it, sliders blend smoothly with no pops, and 0 and 1 look exactly like the two looks. If two choices contradict, a coherence warning appears with a working Fix.',
+		learn: 'A look is a stack of modules (lighting, surface, lines, palette, grade…). Mixing takes modules from different looks, which is how art directors talk about style: "Golden Hour light with comic ink".',
+		setup: { scene: 'plaza', look: 'golden-hour', tier: 1, recipe: { base: 'golden-hour', modules: { lines: { from: 'comic-ink' } } }, tab: 'look' },
+	},
+	{
+		id: 'M4-02', milestone: 'M4',
+		title: 'Style the ground differently from the buildings and characters',
+		steps: [ 'Parts tab: this setup gives the terrain the Painterly look. Change Characters to Comic Ink and keep only Lines checked.', 'Press ◐ Isolate on a part to see exactly what it covers; press it again to stop.', 'Press ✎ Edit overrides on Terrain and change a few Tune values: they apply to the terrain only.' ],
+		expected: 'The ground is painterly while buildings keep the global look and characters get ink. Material effects are exact per part; screen effects (brush strokes, lines, paper) stay inside their parts, with soft edges at the borders.',
+		learn: 'Per-part styling and focus: background, midground and characters can be treated differently so the eye goes where you want it.',
+		setup: { scene: 'garden', look: 'sea-breeze', tier: 1, parts: { terrain: { look: 'painterly', modules: [ 'surface', 'palette', 'media', 'lines' ] } }, tab: 'parts' },
+	},
+	{
+		id: 'M4-03', milestone: 'M4',
+		title: 'Transitions feel smooth',
+		steps: [ 'Look tab → Transition: try Morph, Crossfade and Wipe, at 0.6 s and at 2 s.', 'Switch looks with the gallery, Q / E, or LB / RB on a gamepad.' ],
+		expected: 'Morph slides every value; crossfade dissolves; wipe sweeps left to right with a ragged edge. Each ends exactly on the new look. A short compile pause on the first switch to a look is expected (the chip at the bottom shows it); after that, no stutter.',
+		learn: 'How a game changes style mid-play (entering a dream, a flashback, a new zone): morph the values, or blend two images.',
+		setup: { scene: 'harbor', look: 'sea-breeze', tier: 1, tab: 'look' },
+	},
+	{
+		id: 'M4-04', milestone: 'M4',
+		title: 'A share link opens the same state in another browser',
+		steps: [ 'Set up something of your own: a look, a mix, a part look, a few Tune tweaks.', 'Look tab → 🔗 Copy share link. Open it in another browser or on your phone.' ],
+		expected: 'The other browser shows the same scene, look, mix, parts and tweaks. Note: the link holds the whole state (no server); very long links can be cut by some chat apps.',
+		learn: 'Share links: the whole state compressed into the URL, so a style can be sent to a teammate or an agent without a server.',
+	},
+	{
+		id: 'M4-05', milestone: 'M4',
+		title: 'Rate the new looks',
+		steps: [ 'Pick each look below in the gallery (Previews renders all of them on this scene). Try two or three scenes.', 'Rate how well it evokes its inspiration (the gallery card says what it is inspired by) and how much you like it.' ],
+		expected: 'Honest ratings, plus a note on anything that feels off ("too dark", "lines too thick"). These tune the recipes.',
+		learn: 'The visual language of 15 more styles, from Ligne Claire to Layered Wilderness, and what each one is built from.',
+		setup: { scene: 'plaza', look: 'comic-ink', tier: 2 },
+		ratings: [ 'garden-prank', 'comic-ink', 'painterly', 'retro-ps1', 'retro-16bit', 'retro-gameboy', 'retro-crt', 'cinematic', 'ligne-claire', 'miniature', 'one-bit', 'synthwave', 'noir', 'ink-wash', 'anime-cel', 'watercolor', 'sketchbook', 'layered-wilderness', 'graffiti-rush-dots' ],
+	},
+	{
+		id: 'M4-06', milestone: 'M4', signoff: false,
+		title: 'The look gallery',
+		steps: [ 'Press 🖼 Previews under the gallery: every look renders on the current scene.', 'Try the filter chips (Toon, Ink, Retro…), the variant buttons on Retro Console and Graffiti Rush, and hover a card for its pillars.' ],
+		expected: 'Each card shows the current scene in that look; filters narrow the list; variants switch within a family.',
+		learn: 'Browsing styles by family and by what they are made of.',
+		setup: { scene: 'garden', look: 'sea-breeze', tier: 1 },
+	},
+	{
+		id: 'M4-07', milestone: 'M4', signoff: false,
+		title: 'The coherence checker',
+		steps: [ 'This setup turns on Halftone on top of Painterly. Look tab → Coherence shows a warning.', 'Open "Why", then press the fix.' ],
+		expected: 'A clear warning ("Pick one medium; two media read as noise"), an explanation, and a one-click fix that removes the clash.',
+		learn: 'Style coherence: effects that each look fine can contradict each other (two media, two eras, bloom without tone mapping).',
+		setup: { scene: 'lookdev', look: 'painterly', tier: 1, params: { 'media.halftone.enabled': true, 'media.halftone.amount': 1 }, tab: 'look' },
+	},
+	{
+		id: 'M4-08', milestone: 'M4', signoff: false,
+		title: 'Undo, save and export your look',
+		steps: [ 'Change a few things, then press Ctrl+Z (Cmd+Z) a few times and Ctrl+Shift+Z to redo.', 'Look tab → 💾 Save as look; find it under the My looks chip. Export JSON, then Import it back (or drop the .json on the window).' ],
+		expected: 'Undo and redo step through your edits (a slider drag is one step). Saved looks appear in My looks and survive a reload.',
+		learn: 'Looks are small JSON files: sparse values on top of the registry defaults, easy to save, share and version.',
+		setup: { scene: 'harbor', look: 'anime-cel', tier: 1, tab: 'look' },
+	},
+	{
+		id: 'M4-09', milestone: 'M4', signoff: false,
+		title: 'Focus hierarchy',
+		steps: [ 'Parts tab → ★ Focus hierarchy preset. Hold Space to compare with plain, then toggle the preset off with Ctrl+Z.' ],
+		expected: 'The hero pops: a bit more saturated, with a rim and a thicker outline, while the background calms down.',
+		learn: 'Visual hierarchy: the player character should be the highest-contrast thing on screen.',
+		setup: { scene: 'platforms', look: 'sea-breeze', tier: 1, tab: 'parts' },
+	},
 	{
 		id: 'M3-01', milestone: 'M3',
 		title: 'Effects contact sheet: report bad cells',

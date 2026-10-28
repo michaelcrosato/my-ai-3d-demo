@@ -22,8 +22,8 @@ test( 'every entry is complete (design §7.5)', () => {
 		assert.ok( e.learn?.what && e.learn?.why, `${where}: learn.what and learn.why` );
 		assert.ok( e.brief, `${where}: brief` );
 		assert.ok( [ 'cheap', 'medium', 'heavy' ].includes( e.cost?.class ) && e.cost.fpe > 0, `${where}: cost` );
-		assert.ok( [ 'global', 'part', 'both' ].includes( e.scope ), `${where}: scope` );
-		assert.ok( [ 'lerp', 'oklab', 'step', 'angle' ].includes( e.mix ), `${where}: mix` );
+		assert.ok( [ 'global', 'part', 'both', 'mask' ].includes( e.scope ), `${where}: scope` );
+		assert.ok( [ 'lerp', 'oklab', 'step', 'angle', 'palette' ].includes( e.mix ), `${where}: mix` );
 		assert.ok( 'default' in e && 'neutral' in e, `${where}: default and neutral` );
 
 		if ( [ 'float', 'int', 'angle' ].includes( e.type ) ) assert.ok( e.min < e.max && e.step > 0, `${where}: range` );

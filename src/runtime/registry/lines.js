@@ -34,7 +34,7 @@ export default [
 		tags: [ 'outline', 'color' ],
 	} ),
 	p( {
-		id: 'lines.screen.enabled', label: 'Screen-space ink', type: 'bool', default: false, structural: true, requires: [ 'depth', 'normal', 'ids' ], cost: MEDIUM,
+		id: 'lines.screen.enabled', scope: 'mask', label: 'Screen-space ink', type: 'bool', default: false, structural: true, requires: [ 'depth', 'normal', 'ids' ], cost: MEDIUM,
 		learn: {
 			what: 'Lines found after rendering, by comparing depth, normals and object ids between neighboring pixels.',
 			why: 'They catch inner creases and overlaps that hulls can\'t, so every shape is inked like a comic panel.',
@@ -44,7 +44,7 @@ export default [
 		tags: [ 'outline', 'ink', 'lines', 'edges' ],
 	} ),
 	p( {
-		id: 'lines.screen.thickness', label: 'Ink thickness', type: 'float', min: 0, max: 6, step: 0.1, unit: 'px@1080p', default: 1.5, neutral: 0, enabledBy: 'lines.screen.enabled',
+		id: 'lines.screen.thickness', scope: 'mask', label: 'Ink thickness', type: 'float', min: 0, max: 6, step: 0.1, unit: 'px@1080p', default: 1.5, neutral: 0, enabledBy: 'lines.screen.enabled',
 		learn: {
 			what: 'Width of the screen-space lines in pixels at 1080p.',
 			why: 'Thick ink is the signature of graffiti and comic styles; thin ink suits clean illustration.',
@@ -54,7 +54,7 @@ export default [
 		tags: [ 'lines' ],
 	} ),
 	p( {
-		id: 'lines.screen.color', label: 'Ink color', type: 'color', default: '#0e0e12', enabledBy: 'lines.screen.enabled',
+		id: 'lines.screen.color', scope: 'mask', label: 'Ink color', type: 'color', default: '#0e0e12', enabledBy: 'lines.screen.enabled',
 		learn: {
 			what: 'The color of the screen-space lines.',
 			why: 'Near-black reads as ink. Colored lines feel softer and more modern.',

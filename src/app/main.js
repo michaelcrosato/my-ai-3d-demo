@@ -10,7 +10,7 @@ import { runSpikes as runSpikeSuite, SPIKES } from './spikes/index.js';
 import { createVerifyPanel } from './verify/panel.js';
 import { createApp } from './app.js';
 import { createTopBar } from './ui/topbar.js';
-import { createLookBar } from './ui/lookbar.js';
+import { createGallery } from './ui/gallery.js';
 import { createInspector } from './ui/inspector.js';
 import { createCompareUI } from './ui/compare.js';
 import { $, h, toast } from './ui/dom.js';
@@ -20,6 +20,8 @@ import { LOOKS } from '../content/looks/index.js';
 import { EFFECT_DEMOS, cellId } from '../content/effects.js';
 import { SCENES, TIERS } from '../scenes/index.js';
 import { timestampsSupported } from '../runtime/index.js';
+import { parseShareHash } from '../runtime/look/share.js';
+import { resolvedHash } from '../runtime/look/resolve.js';
 
 const log = installErrorCapture();
 
@@ -88,20 +90,22 @@ function createCoach( app ) {
 
 /**
  * Mean absolute difference (0–1) between two pixel buffers. With `shift: [dx, dy]`, pixel
- * (x, y) of `q` is compared with (x + dx, y + dy) of `p` over the overlap.
+ * (x, y) of `q` is compared with (x + dx, y + dy) of `p` over the overlap. `rect` limits
+ * it to a region, in fractions of the image: [x0, y0, x1, y1].
  */
-function pixelDiff( p, q, { shift = [ 0, 0 ] } = {} ) {
+function pixelDiff( p, q, { shift = [ 0, 0 ], rect = [ 0, 0, 1, 1 ] } = {} ) {
 
 	const [ dx, dy ] = shift, W = p.width, H = p.height;
+	const [ x0, y0, x1, y1 ] = [ rect[ 0 ] * W, rect[ 1 ] * H, rect[ 2 ] * W, rect[ 3 ] * H ].map( Math.round );
 	let sum = 0, n = 0;
-	for ( let y = Math.max( 0, - dy ); y < Math.min( H, H - dy ); y ++ ) for ( let x = Math.max( 0, - dx ); x < Math.min( W, W - dx ); x ++ ) {
+	for ( let y = Math.max( y0, - dy ); y < Math.min( y1, H - dy ); y ++ ) for ( let x = Math.max( x0, - dx ); x < Math.min( x1, W - dx ); x ++ ) {
 
 		const i = ( y * W + x ) * 4, j = ( ( y + dy ) * W + x + dx ) * 4;
 		sum += Math.abs( q.data[ i ] - p.data[ j ] ) + Math.abs( q.data[ i + 1 ] - p.data[ j + 1 ] ) + Math.abs( q.data[ i + 2 ] - p.data[ j + 2 ] ); n += 3;
 
 	}
 
-	return { mae: sum / n / 255 };
+	return { mae: n ? sum / n / 255 : 0 };
 
 }
 
@@ -125,7 +129,6 @@ async function boot() {
 	const appRoot = $( 'app' );
 
 	createTopBar( app );
-	createLookBar( $( 'looks' ), app );
 	let lastBuildMs = 0;
 	app.on( ( type, d ) => { if ( type === 'scene' ) lastBuildMs = Math.round( d.buildMs ); } );
 	const readouts = () => ( {
@@ -148,7 +151,8 @@ async function boot() {
 
 	};
 
-	const inspector = createInspector( $( 'inspector' ), app, { readouts, benefitMatrix: () => api.benefitMatrix(), showImage, toast } );
+	const shareURL = async () => `${location.origin}${location.pathname}${location.search}${await app.actions.shareHash()}`;
+	const inspector = createInspector( $( 'inspector' ), app, { readouts, benefitMatrix: () => api.benefitMatrix(), showImage, toast, share: shareURL } );
 
 	// Drop a .glb anywhere to import it; click in the view to pick parts.
 	window.addEventListener( 'dragover', ( e ) => { e.preventDefault(); } );
@@ -156,7 +160,12 @@ async function boot() {
 
 		e.preventDefault();
 		const file = [ ...( e.dataTransfer?.files || [] ) ].find( ( f ) => /\.(glb|gltf)$/i.test( f.name ) );
-		if ( file ) { inspector.setTab( 'scene' ); inspector.sceneTab.importFile( file ); } else if ( e.dataTransfer?.files?.length ) toast( 'Drop a .glb or .gltf file to import it.' );
+		const lookFile = [ ...( e.dataTransfer?.files || [] ) ].find( ( f ) => /\.json$/i.test( f.name ) );
+		if ( file ) { inspector.setTab( 'scene' ); inspector.sceneTab.importFile( file ); } else if ( lookFile ) {
+
+			lookFile.text().then( ( t ) => { const l = app.actions.importLook( JSON.parse( t ) ); toast( `Imported "${l.name}" into My looks.` ); } ).catch( ( err ) => toast( `Import failed: ${err.message}`, 6000 ) );
+
+		} else if ( e.dataTransfer?.files?.length ) toast( 'Drop a .glb or .gltf file to import it, or a look .json.' );
 
 	} );
 
@@ -292,6 +301,48 @@ async function boot() {
 
 	};
 
+	// Gallery previews: each look alone on the current scene, rendered offscreen with the
+	// loop paused; the state on screen is restored afterwards.
+	const thumbnails = ( ids, onOne ) => pausedWhile( async () => {
+
+		const out = {};
+		const [ w, hgt ] = [ 240, 135 ];
+		const cam = app.camera, aspect = cam.aspect;
+		cam.aspect = w / hgt;
+		cam.updateProjectionMatrix();
+		try {
+
+			await withRendererSize( renderer, w, hgt, async () => {
+
+				for ( const id of ids ) {
+
+					app.runtime.apply( app.resolveFor( id ) );
+					app.runtime.update( app.frozenTime ?? 1, { focus: app.controls.target } );
+					await renderToPixels( renderer, w, hgt, () => app.runtime.render() ); // compiles
+					const px = await renderToPixels( renderer, w, hgt, () => app.runtime.render() );
+					const c = document.createElement( 'canvas' );
+					c.width = w; c.height = hgt;
+					c.getContext( '2d' ).putImageData( new ImageData( new Uint8ClampedArray( px.data ), w, hgt ), 0, 0 );
+					out[ id ] = c.toDataURL( 'image/jpeg', 0.85 );
+					onOne?.( id, out[ id ] );
+
+				}
+
+			} );
+
+		} finally {
+
+			app.runtime.apply( app.resolved );
+			cam.aspect = aspect;
+			cam.updateProjectionMatrix();
+
+		}
+
+		return out;
+
+	} );
+	const gallery = createGallery( $( 'looks' ), app, { thumbnails } );
+
 	// Spikes pause the loop and render offscreen.
 	const runSpikes = ( ids = null, onResult, options ) => pausedWhile( () => runSpikeSuite( { renderer, ids, onResult, options } ) );
 
@@ -301,8 +352,14 @@ async function boot() {
 
 		if ( s.scene ) app.actions.setScene( s.scene, { tier: s.tier, shot: s.shot } );
 		else if ( s.tier !== undefined ) app.actions.setTier( s.tier );
-		if ( s.look ) app.actions.setLook( s.look );
-		if ( s.params ) for ( const [ id, value ] of Object.entries( s.params ) ) app.actions.setParam( id, value );
+		// A check starts from a clean slate: no part looks, scope or isolate unless it sets them.
+		app.actions.setScope( null );
+		app.actions.setIsolate( null );
+		if ( Object.keys( app.store.get().parts ).length || s.parts ) app.actions.setParts( s.parts || {} );
+		if ( s.look ) app.actions.setLook( s.look, { transition: false } );
+		if ( s.recipe ) app.actions.setRecipe( s.recipe );
+		if ( s.params ) for ( const [ id, value ] of Object.entries( s.params ) ) app.actions.setParam( id, value, { part: null } );
+		if ( s.tab ) { inspector.setTab( s.tab ); appRoot.classList.add( 'inspector-open' ); }
 		toast( 'Set up. Close this panel (✕ or Esc) to try it.' );
 
 	};
@@ -345,11 +402,29 @@ async function boot() {
 		version: BUILD.version,
 		frameStats: () => ( { ...stats } ),
 		scenes: () => SCENES.map( ( s ) => ( { id: s.id, name: s.name, shots: Object.keys( s.shots ) } ) ),
-		looks: () => LOOKS.map( ( l ) => ( { id: l.id, name: l.name } ) ),
+		looks: () => app.libraryLooks().map( ( l ) => ( { id: l.id, name: l.name, family: l.family || l.id } ) ),
+		/** Replaces the recipe (§6.6): { base, modules: { [module]: { from, blend: { with, t }, mute, solo } }, morph }. */
+		setRecipe: async ( recipe ) => { app.actions.setRecipe( recipe ); await nextFrames(); },
+		/** Replaces every part's state (§6.7): { [part]: { look, modules, overrides } }. */
+		setParts: async ( parts ) => { app.actions.setParts( parts ); await nextFrames(); },
+		setTransition: ( patch ) => app.actions.setTransition( patch ),
+		/** Advances the app clock by dt seconds (drives transitions while captures are paused). */
+		tick: ( dt ) => app.tick( dt ),
+		/** The current state as a share URL hash (`#state=…`), and opening one. */
+		shareHash: () => app.actions.shareHash(),
+		openShare: async ( hash ) => { const p = parseShareHash( hash ); if ( ! p ) throw new Error( 'not a share hash' ); await app.actions.openShare( p.kind, p.text ); await nextFrames(); },
+		/** A short hash of the resolved values on screen: equal hashes mean the same look. */
+		resolvedHash: () => resolvedHash( app.resolved ),
+		coherence: () => app.coherence(),
+		/** Renders the gallery's look previews on the current scene. */
+		galleryPreviews: () => gallery.refresh(),
+		undo: () => app.actions.undo(),
+		redo: () => app.actions.redo(),
 		setScene: async ( id, opts ) => { app.actions.setScene( id, opts ); await nextFrames(); },
 		setDensity: async ( d ) => { app.actions.setDensity( d ); await nextFrames(); },
 		setTier: async ( tier ) => { app.actions.setTier( tier ); await nextFrames(); },
-		applyLook: async ( idOrJson ) => { app.actions.setLook( idOrJson ); await nextFrames(); },
+		/** Applies a look (id or JSON). Cuts by default; `{ transition: true }` plays the current transition. */
+		applyLook: async ( idOrJson, { transition = false } = {} ) => { app.actions.setLook( idOrJson, { transition } ); await nextFrames(); },
 		setParam: ( id, value ) => app.actions.setParam( id, value ),
 		setStrength: ( s ) => app.actions.setStrength( s ),
 		getResolvedLook: () => app.resolved,
@@ -418,7 +493,7 @@ async function boot() {
 			const ctx = sheet.getContext( '2d' );
 			ctx.fillStyle = '#1b1b1c'; ctx.fillRect( 0, 0, sheet.width, sheet.height );
 			ctx.font = '12px system-ui, sans-serif';
-			const previous = { scene: app.store.get().sceneId, look: app.store.get().lookId, tier: app.store.get().tier };
+			const previous = { scene: app.store.get().sceneId, recipe: app.store.get().recipe, tier: app.store.get().tier };
 
 			for ( const [ row, sceneId ] of scenes.entries() ) {
 
@@ -426,7 +501,7 @@ async function boot() {
 
 				for ( const [ col, lookId ] of looks.entries() ) {
 
-					app.actions.setLook( lookId );
+					app.actions.setLook( lookId, { transition: false } );
 					const { id } = await api.capture( { width: w, height: hgt } );
 					const px = captures.get( id );
 					ctx.putImageData( new ImageData( new Uint8ClampedArray( px.data ), w, hgt ), col * w, row * ( hgt + 18 ) + 18 );
@@ -438,7 +513,7 @@ async function boot() {
 			}
 
 			app.actions.setScene( previous.scene, { tier: previous.tier } );
-			app.actions.setLook( previous.look );
+			app.actions.setRecipe( previous.recipe );
 			return sheet.toDataURL( 'image/png' );
 
 		},
@@ -490,7 +565,7 @@ async function boot() {
 			ctx.fillStyle = '#1b1b1c'; ctx.fillRect( 0, 0, sheet.width, sheet.height );
 			ctx.font = '12px system-ui, sans-serif';
 			const s0 = app.store.get();
-			const previous = { scene: s0.sceneId, look: s0.lookId, tier: s0.tier, shot: s0.shot, frozen: app.frozenTime };
+			const previous = { scene: s0.sceneId, recipe: s0.recipe, parts: s0.parts, tier: s0.tier, shot: s0.shot, frozen: app.frozenTime };
 			const baseCache = new Map();
 			const cells = [];
 			app.actions.freeze( 1.115 ); // off the stepped-animation grid, so stepping shows
@@ -499,25 +574,16 @@ async function boot() {
 
 				const errorsBefore = log.errors().length;
 				app.actions.setScene( d.scene, { tier, shot: d.shot ?? undefined } );
-				app.actions.setLook( d.look );
+				app.actions.setLook( d.look, { transition: false } );
 				const saved = { ...app.overrides() };
 				const baseKey = `${d.scene}|${d.look}|${d.shot}|${d.advance || 0}`;
 				if ( ! baseCache.has( baseKey ) ) baseCache.set( baseKey, captures.get( ( await api.capture( { width: w, height: hgt, advance: d.advance } ) ).id ) );
-				// Per-part demo values go into a derived look (per-part overrides arrive with the Parts tab).
-				if ( d.parts ) {
-
-					const base = app.look();
-					const parts = { ...base.parts };
-					for ( const [ part, params ] of Object.entries( d.parts ) ) parts[ part ] = { params: { ...base.parts?.[ part ]?.params, ...params } };
-					app.actions.setLook( { ...base, id: `${base.id}-demo`, name: `${base.name} (demo)`, parts } );
-
-				}
-
-				for ( const [ id, value ] of Object.entries( d.params ) ) app.actions.setParam( id, value );
+				// Per-part demo values are part overrides (Parts tab).
+				for ( const [ part, params ] of Object.entries( d.parts || {} ) ) for ( const [ id, value ] of Object.entries( params ) ) app.actions.setParam( id, value, { part } );
+				for ( const [ id, value ] of Object.entries( d.params ) ) app.actions.setParam( id, value, { part: null } );
 				const shot = await api.capture( { width: w, height: hgt, advance: d.advance } );
-				app.actions.setOverrides( app.store.get().lookId, {} );
-				app.actions.setLook( d.look );
 				app.actions.setOverrides( d.look, saved );
+				for ( const part of Object.keys( d.parts || {} ) ) app.actions.resetPart( part );
 				const diff = pixelDiff( baseCache.get( baseKey ), captures.get( shot.id ) ).mae;
 				const errors = log.errors().slice( errorsBefore ).map( ( e ) => e.message.split( '\n' )[ 0 ] );
 				const x = ( i % cols ) * w, y = Math.floor( i / cols ) * ( hgt + pad );
@@ -532,7 +598,8 @@ async function boot() {
 
 			app.actions.freeze( previous.frozen );
 			app.actions.setScene( previous.scene, { tier: previous.tier, shot: previous.shot ?? undefined } );
-			app.actions.setLook( previous.look );
+			app.actions.setRecipe( previous.recipe );
+			app.actions.setParts( previous.parts );
 			return { url: sheet.toDataURL( 'image/png' ), cells };
 
 		},
@@ -586,6 +653,27 @@ async function boot() {
 		},
 		report: () => panel.report(),
 	} );
+
+	// Share links (§6.12): `#state=` or `#look=` opens that state, then the hash is cleared
+	// (the state autosaves like any other).
+	const shared = parseShareHash( location.hash );
+	if ( shared ) {
+
+		try {
+
+			await app.actions.openShare( shared.kind, shared.text );
+			toast( shared.kind === 'look' ? 'Opened the shared look.' : 'Opened the shared state: scene, recipe, parts and tweaks.' );
+
+		} catch ( e ) {
+
+			log.add( 'warn', [ 'Share link could not be read:', e ] );
+			toast( 'This share link could not be read; it may be cut off. Showing your last state instead.', 7000 );
+
+		}
+
+		history.replaceState( null, '', location.pathname + location.search );
+
+	}
 
 	// First presented frame, then ready.
 	await nextFrames();

@@ -200,6 +200,10 @@ export const CAMERA = [
 	{
 		id: 'quality.traa', label: 'TRAA', stage: 'camera', neighborhood: true,
 		// Temporal AA: the styled camera is jittered every frame and the history is blended.
+		// It resolves the finished image (`final`): nested inside a later effect's texture
+		// boundary, three's TRAA node renders black. Screen-fixed patterns (paper, halftone)
+		// stay sharp; animated grain is softened by the history blend.
+		final: true,
 		enabled: ( v ) => ! v[ 'retro.pixel.enabled' ] && v[ 'quality.aa' ] === 'traa',
 		requires: () => [ 'depth', 'velocity' ],
 		build( c, ctx ) {

@@ -26,7 +26,7 @@ export default [
 		tags: [ 'grain' ],
 	} ),
 	p( {
-		id: 'media.kuwahara.enabled', label: 'Painterly (Kuwahara)', type: 'bool', default: false, structural: true, cost: HEAVY,
+		id: 'media.kuwahara.enabled', scope: 'mask', label: 'Painterly (Kuwahara)', type: 'bool', default: false, structural: true, cost: HEAVY,
 		learn: {
 			what: 'An edge-preserving smoothing filter: each pixel takes the average color of the calmest neighborhood around it, so flat areas become brush-like patches while edges stay sharp.',
 			why: 'Painters simplify: they describe a surface with a few strokes of nearly flat color. Kuwahara does the same to a render, which hides the geometry\'s regularity and reads as hand-painted.',
@@ -48,7 +48,7 @@ export default [
 		tags: [ 'kuwahara' ],
 	} ),
 	p( {
-		id: 'media.watercolor.enabled', label: 'Watercolor', type: 'bool', default: false, structural: true, cost: MEDIUM,
+		id: 'media.watercolor.enabled', scope: 'mask', label: 'Watercolor', type: 'bool', default: false, structural: true, cost: MEDIUM,
 		learn: {
 			what: 'Imitates watercolor on paper: pigment pools and darkens at the edges of each shape, granulates in the dips of the paper, and the image wobbles and bleeds slightly.',
 			why: 'Edge darkening is watercolor\'s signature: water carries pigment to the rim of a wet area as it dries. A render with darker rims and soft bleeds reads as painted.',
@@ -82,7 +82,7 @@ export default [
 		tags: [ 'watercolor' ],
 	} ),
 	p( {
-		id: 'media.halftone.enabled', label: 'Halftone (print)', type: 'bool', default: false, structural: true, cost: CHEAP,
+		id: 'media.halftone.enabled', scope: 'mask', label: 'Halftone (print)', type: 'bool', default: false, structural: true, cost: CHEAP,
 		learn: {
 			what: 'Rebuilds the image from dots whose size follows the tone, like printing. Mono uses one ink; CMYK prints four rotated screens of cyan, magenta, yellow and black.',
 			why: 'Visible print dots (Ben-Day dots) are the texture of comics and pop art: they say "printed page".',
@@ -130,7 +130,7 @@ export default [
 		tags: [ 'halftone', 'color' ],
 	} ),
 	p( {
-		id: 'media.hatching.enabled', label: 'Hatching (post)', type: 'bool', default: false, structural: true, cost: CHEAP,
+		id: 'media.hatching.enabled', scope: 'mask', label: 'Hatching (post)', type: 'bool', default: false, structural: true, cost: CHEAP,
 		learn: {
 			what: 'Draws parallel pen lines wherever the image is dark; darker tones add more layers at other angles (cross-hatching).',
 			why: 'Engravers and comic inkers build tone from lines instead of gray. Hatching makes a render read as drawn.',
@@ -197,7 +197,7 @@ export default [
 		tags: [ 'print' ],
 	} ),
 	p( {
-		id: 'media.paper.enabled', label: 'Paper', type: 'bool', default: false, structural: true, cost: CHEAP,
+		id: 'media.paper.enabled', scope: 'mask', label: 'Paper', type: 'bool', default: false, structural: true, cost: CHEAP,
 		learn: {
 			what: 'Prints the image onto a paper or canvas texture: the color is multiplied by the paper, so ink and paint take on its grain.',
 			why: 'A medium needs a surface. Paper texture turns a clean digital image into an object, and ties lines and paint together.',

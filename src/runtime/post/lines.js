@@ -7,9 +7,10 @@
 //
 // Styling: thicker in shadow (light-weighted), a hand wobble that can boil at a few
 // frames per second, a pencil / brush / ink texture, colored lines (the darkened local
-// color), opacity, distance fade, and fog.
+// color), opacity, distance fade, and fog. Thickness and ink color are per part (§6.7):
+// the part under the pixel picks them from the part arrays.
 
-import { Fn, vec2, vec3, float, max, mix, smoothstep, step, abs, floor, select, luminance, saturation, colorToDirection, perspectiveDepthToViewZ, mx_noise_float } from 'three/tsl';
+import { Fn, vec2, vec3, float, int, round, max, mix, smoothstep, step, abs, floor, select, luminance, saturation, colorToDirection, perspectiveDepthToViewZ, mx_noise_float } from 'three/tsl';
 import { fogFactor } from '../atmosphere/atmosphere.js';
 
 // Opposite pairs: the Laplacian of inverse depth is zero on any plane, so grazing
@@ -19,7 +20,7 @@ const PAIRS = [ [ 1, 0 ], [ 0, 1 ], [ 0.7071, 0.7071 ], [ 0.7071, - 0.7071 ] ];
 /**
  * @param {Node} color - display-referred image to ink over
  * @param {object} b - { depth, normal, ids } texture nodes from the scene pass
- * @param {object} u - line uniforms: thickness, color, silhouette, crease, creaseThreshold, depthThreshold, idWeight, followFog, near, far
+ * @param {object} u - line uniforms: partThickness, partColor (arrays by part index), silhouette, crease, creaseThreshold, depthThreshold, idWeight, followFog, near, far
  * @param {object} atmos - atmosphere uniforms (fog)
  * @param {object} grid - { uv, texel: size of one sample step in uv, scale: sample steps per px at 1080p, coord: integer grid coordinate }
  * @param {object} P - registry uniforms (ParamUniforms) for the styling controls
@@ -46,7 +47,8 @@ export function screenLines( color, b, u, atmos, { uv, texel, scale, coord }, P,
 		const texture = P.get( 'lines.screen.texture' ), texAmount = P.get( 'lines.screen.textureAmount' );
 		const swell = mx_noise_float( vec3( coord.mul( 0.012 ), 4.1 ) ).mul( 0.5 ).add( 0.5 );
 		const brush = mix( float( 1 ), swell.mul( swell ).mul( 2.2 ).add( 0.15 ), texAmount.mul( step( 1.5, texture ).mul( step( texture, 2.5 ) ) ) );
-		const radius = max( u.thickness.mul( scale ).mul( dark.mul( P.get( 'lines.screen.lightWeight' ) ).add( 1 ) ).mul( brush ), 0.0 );
+		const part = int( round( b.ids.sample( uv ).r.mul( 255 ) ) );
+		const radius = max( u.partThickness.element( part ).mul( scale ).mul( dark.mul( P.get( 'lines.screen.lightWeight' ) ).add( 1 ) ).mul( brush ), 0.0 );
 
 		const dist = ( d ) => perspectiveDepthToViewZ( d, u.near, u.far ).negate();
 		const d0 = dist( b.depth.sample( at ).r ).toVar();
@@ -103,7 +105,7 @@ export function screenLines( color, b, u, atmos, { uv, texel, scale, coord }, P,
 
 		// Colored lines: a darker, more saturated version of the color under the line.
 		const local = saturation( color.rgb.mul( P.get( 'lines.screen.darken' ) ), float( 1.3 ) );
-		const ink = mix( u.color, local, P.get( 'lines.screen.colorFromSurface' ) );
+		const ink = mix( u.partColor.element( part ), local, P.get( 'lines.screen.colorFromSurface' ) );
 		return vec3( mix( color.rgb, ink, alpha ) );
 
 	} )();

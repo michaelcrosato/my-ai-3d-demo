@@ -1,6 +1,6 @@
 {
   "name": "my-ai-3d-demo",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "Style Lab: a live art-style preview tool for games (three.js r182, WebGPU).",
   "type": "module",
