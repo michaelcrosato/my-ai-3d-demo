@@ -345,6 +345,7 @@ async function boot() {
 	const resize = () => {
 
 		const { clientWidth: w, clientHeight: h } = canvas.parentElement;
+		if ( ! w || ! h ) return; // collapsed for a moment: keep the last size (WebGPU rejects empty textures)
 		renderer.setSize( w, h, false );
 		app.camera.aspect = w / Math.max( 1, h );
 		app.camera.updateProjectionMatrix();

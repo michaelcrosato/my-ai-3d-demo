@@ -133,6 +133,7 @@ table.slots tr.drop-on { outline: 1px dashed var(--accent); }
 .statusbar .status { margin-left: auto; overflow: hidden; text-overflow: ellipsis; }
 .rebuild-chip { color: var(--warn); overflow: hidden; text-overflow: ellipsis; }
 #app.ui-hidden .topbar, #app.ui-hidden .looks, #app.ui-hidden .inspector, #app.ui-hidden .statusbar { display: none; }
+#app.ui-hidden { grid-template-rows: minmax(0, 1fr); } /* the view alone fills the window */
 #app.ui-hidden .workspace { grid-template-columns: 1fr; }
 table.ratings { border-collapse: collapse; margin: 6px 0; width: 100%; }
 table.ratings td, table.ratings th { padding: 2px 4px; text-align: left; font-weight: 500; }

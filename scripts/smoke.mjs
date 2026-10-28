@@ -983,6 +983,14 @@ async function m9Checks( page, fail, run, base ) {
 		await wait( 50 );
 		check( 'Esc closes the map', keys.hidden, null );
 
+		// Hide UI (H): the view fills the window (it used to collapse to zero height).
+		document.dispatchEvent( new KeyboardEvent( 'keydown', { key: 'h', bubbles: true } ) );
+		await wait( 150 );
+		const hidden = document.querySelector( '#viewport' ).getBoundingClientRect();
+		check( 'hiding the UI (H) leaves the view filling the window', Math.round( hidden.width ) === innerWidth && Math.round( hidden.height ) === innerHeight, [ hidden.width, hidden.height ] );
+		document.dispatchEvent( new KeyboardEvent( 'keydown', { key: 'h', bubbles: true } ) );
+		await wait( 150 );
+
 		// Error messages: a file that is not a model, and a cut-off share link.
 		const dt = new DataTransfer();
 		dt.items.add( new File( [ 'hello' ], 'notes.txt', { type: 'text/plain' } ) );
@@ -1017,12 +1025,12 @@ async function m9Checks( page, fail, run, base ) {
 		if ( label === 'phone' ) {
 
 			await mkdir( ARTIFACTS, { recursive: true } );
-			await first.screenshot( { path: path.join( ARTIFACTS, 'm9-phone-welcome.png' ) } );
+			await first.screenshot( { path: path.join( ARTIFACTS, 'm9-phone-welcome.png' ), timeout: 240000 } );
 			await first.click( '#welcome-modal .welcome-options button:last-child' );
 			await first.click( '#inspector-btn' );
 			await first.waitForTimeout( 300 );
 			r.inspector = await first.evaluate( () => document.querySelector( '#inspector' ).getBoundingClientRect().height > 200 );
-			await first.screenshot( { path: path.join( ARTIFACTS, 'm9-phone-inspector.png' ) } );
+			await first.screenshot( { path: path.join( ARTIFACTS, 'm9-phone-inspector.png' ), timeout: 240000 } );
 			r.overflowAfter = await first.evaluate( () => document.documentElement.scrollWidth - window.innerWidth );
 
 		}
