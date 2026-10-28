@@ -1,4 +1,4 @@
-/* Style Lab runtime v0.4.0 (a2058a3) */
+/* Style Lab runtime v0.5.0 (33f33a8) */
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -10,13 +10,444 @@ import * as THREE10 from "three/webgpu";
 import { mrt as mrt3, output as output3, normalView as normalView2, directionToColor, vec4 as vec45, velocity, emissive } from "three/tsl";
 
 // src/runtime/materials/factory.js
-import * as THREE2 from "three/webgpu";
+import * as THREE3 from "three/webgpu";
 import * as TSL from "three/tsl";
-import { uniform as uniform3, vec3 as vec32, vec4, mrt, output, fract, sin, cos, dot, floor, float as float3, smoothstep as smoothstep3, modelWorldMatrix, modelViewProjection, positionLocal, materialColor, Fn as Fn3 } from "three/tsl";
+import { uniform as uniform4, vec3 as vec34, vec4, mrt, output, fract as fract3, sin as sin3, cos as cos3, dot as dot3, floor as floor3, float as float4, mix as mix5, step as step5, smoothstep as smoothstep5, modelWorldMatrix, modelViewProjection, positionLocal, positionWorld as positionWorld3, positionView, materialColor, hue, mx_noise_float, mx_worley_noise_float, viewportDepthTexture, perspectiveDepthToViewZ, cameraNear, cameraFar, Fn as Fn4 } from "three/tsl";
 
 // src/runtime/materials/StyleLightingModel.js
 import { Color, LightingModel, MeshToonNodeMaterial, MeshStandardNodeMaterial } from "three/webgpu";
-import { float, vec3, uniform, normalView, normalWorld, diffuseColor, luminance, smoothstep, max, min, fwidth, select, step, positionViewDirection, mix, Fn, materialEmissive } from "three/tsl";
+import { float as float2, vec3 as vec33, uniform as uniform2, normalView, normalWorld as normalWorld2, diffuseColor, luminance as luminance2, smoothstep as smoothstep3, max as max3, min, fwidth as fwidth2, select as select3, step as step3, floor as floor2, positionViewDirection, mix as mix4, Fn as Fn2, materialEmissive, screenCoordinate as screenCoordinate3 } from "three/tsl";
+
+// src/runtime/materials/patterns.js
+import { vec2, abs, max, step, fract, length, smoothstep, fwidth, cos, sin, select, screenCoordinate, screenSize, positionWorld, normalWorld } from "three/tsl";
+var rotate2 = (p12, degrees) => {
+  const a = degrees.mul(Math.PI / 180);
+  const c = cos(a), s = sin(a);
+  return vec2(p12.x.mul(c).sub(p12.y.mul(s)), p12.x.mul(s).add(p12.y.mul(c)));
+};
+function patternCoord(space, size, angle) {
+  if (space === "world") {
+    const n = abs(normalWorld);
+    const p12 = positionWorld.mul(100).div(size);
+    const uv = select(n.x.greaterThan(max(n.y, n.z)), p12.zy, select(n.y.greaterThan(n.z), p12.xz, p12.xy));
+    return rotate2(uv, angle);
+  }
+  return rotate2(screenCoordinate.xy.div(size.mul(screenSize.y.div(1080))), angle);
+}
+function dotMask(coord, coverage) {
+  const d = length(fract(coord).sub(0.5));
+  const r = coverage.clamp(0, 1).sqrt().mul(0.7071);
+  const aa = max(fwidth(d), 1e-3);
+  return smoothstep(r.sub(aa), r.add(aa), d).oneMinus().mul(step(1e-3, coverage));
+}
+function lineMask(coord, width) {
+  const l = abs(fract(coord.y).sub(0.5));
+  const aa = max(fwidth(coord.y), 1e-3);
+  return smoothstep(width.sub(aa), width.add(aa), l).oneMinus().mul(step(1e-3, width));
+}
+
+// src/runtime/post/stage-display.js
+import * as THREE from "three/webgpu";
+import { Fn, vec2 as vec22, vec3 as vec32, float, int, ivec2, mix as mix2, max as max2, step as step2, smoothstep as smoothstep2, sin as sin2, cos as cos2, dot as dot2, fract as fract2, floor, length as length2, select as select2, luminance, textureLoad, interleavedGradientNoise, uniform, uniformArray, screenUV, screenSize as screenSize2, screenCoordinate as screenCoordinate2, If, Loop } from "three/tsl";
+
+// src/runtime/post/colorspace.js
+import { vec3, dot, cbrt, sRGBTransferEOTF } from "three/tsl";
+function linearToOklab(c) {
+  const l = cbrt(dot(c, vec3(0.4122214708, 0.5363325363, 0.0514459929)));
+  const m = cbrt(dot(c, vec3(0.2119034982, 0.6806995451, 0.1073969566)));
+  const s = cbrt(dot(c, vec3(0.0883024619, 0.2817188376, 0.6299787005)));
+  const lms = vec3(l, m, s);
+  return vec3(
+    dot(lms, vec3(0.2104542553, 0.793617785, -0.0040720468)),
+    dot(lms, vec3(1.9779984951, -2.428592205, 0.4505937099)),
+    dot(lms, vec3(0.0259040371, 0.7827717662, -0.808675766))
+  );
+}
+var displayToOklab = (c) => linearToOklab(sRGBTransferEOTF(c.max(0)));
+
+// src/runtime/color/lut.js
+var clamp01 = (x) => Math.min(1, Math.max(0, x));
+var lum = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+var mix = (a, b, t) => a + (b - a) * t;
+var mix3 = (a, b, t) => [mix(a[0], b[0], t), mix(a[1], b[1], t), mix(a[2], b[2], t)];
+var smooth = (e0, e1, x) => {
+  const t = clamp01((x - e0) / (e1 - e0));
+  return t * t * (3 - 2 * t);
+};
+var sCurve = (x, k) => mix(x, x * x * (3 - 2 * x), k);
+var saturate3 = (c, s) => {
+  const l = lum(c);
+  return c.map((v) => l + (v - l) * s);
+};
+var softLight = (a, b) => a.map((x, i) => b[i] < 0.5 ? x - (1 - 2 * b[i]) * x * (1 - x) : x + (2 * b[i] - 1) * ((x < 0.25 ? ((16 * x - 12) * x + 4) * x : Math.sqrt(x)) - x));
+var LUT_PRESETS = {
+  "teal-orange": (c) => {
+    const l = lum(c);
+    const tone = mix3([0.05, 0.42, 0.5], [1, 0.62, 0.32], smooth(0.15, 0.85, l));
+    const graded = softLight(c.map((x) => sCurve(x, 0.35)), tone);
+    return saturate3(mix3(c, graded, 0.75), 1.08);
+  },
+  "warm-film": (c) => {
+    const lifted = c.map((x) => 0.035 + sCurve(x, 0.3) * 0.94);
+    return saturate3([lifted[0] * 1.06, lifted[1] * 1, lifted[2] * 0.88], 0.92);
+  },
+  bleach: (c) => {
+    const l = lum(c);
+    const overlay = c.map((x) => l < 0.5 ? 2 * x * l : 1 - 2 * (1 - x) * (1 - l));
+    return saturate3(mix3(c, overlay, 0.65), 0.45).map((x) => sCurve(x, 0.25));
+  },
+  cross: (c) => [sCurve(c[0], 0.6), sCurve(c[1], 0.3) * 0.95 + 0.04, 0.12 + c[2] * 0.72],
+  faded: (c) => saturate3(c.map((x) => 0.08 + x * 0.84), 0.78).map((x, i) => x * [1.02, 1, 0.97][i]),
+  "cool-night": (c) => saturate3(c, 0.55).map((x, i) => Math.pow(clamp01(x), 1.2) * [0.78, 0.88, 1.12][i])
+};
+function bakeLut(preset, size = 33) {
+  const f = typeof preset === "function" ? preset : LUT_PRESETS[preset];
+  if (!f) throw new Error(`Unknown LUT preset ${preset}`);
+  const data = new Uint8Array(size * size * size * 4);
+  let i = 0;
+  for (let b = 0; b < size; b++) for (let g = 0; g < size; g++) for (let r = 0; r < size; r++) {
+    const out = f([r / (size - 1), g / (size - 1), b / (size - 1)]);
+    data[i++] = Math.round(clamp01(out[0]) * 255);
+    data[i++] = Math.round(clamp01(out[1]) * 255);
+    data[i++] = Math.round(clamp01(out[2]) * 255);
+    data[i++] = 255;
+  }
+  return data;
+}
+var PALETTES = {
+  pico8: ["#000000", "#1d2b53", "#7e2553", "#008751", "#ab5236", "#5f574f", "#c2c3c7", "#fff1e8", "#ff004d", "#ffa300", "#ffec27", "#00e436", "#29adff", "#83769c", "#ff77a8", "#ffccaa"],
+  gameboy: ["#0f380f", "#306230", "#8bac0f", "#9bbc0f"],
+  cga: ["#000000", "#55ffff", "#ff55ff", "#ffffff"],
+  nes: ["#000000", "#fcfcfc", "#7c7c7c", "#bcbcbc", "#a80020", "#f83800", "#fca044", "#f8b800", "#00a800", "#58d854", "#0058f8", "#3cbcfc", "#6844fc", "#d800cc", "#503000", "#f8d8b8"],
+  onebit: ["#16131f", "#e8e2d0"]
+};
+function bayerMatrix(n) {
+  if (n === 1) return [[0]];
+  const m = bayerMatrix(n / 2);
+  const out = Array.from({ length: n }, () => new Array(n));
+  const h = n / 2;
+  for (let y = 0; y < h; y++) for (let x = 0; x < h; x++) {
+    const v = m[y][x] * 4;
+    out[y][x] = v;
+    out[y][x + h] = v + 2;
+    out[y + h][x] = v + 3;
+    out[y + h][x + h] = v + 1;
+  }
+  return out;
+}
+
+// src/runtime/color/color.js
+var color_exports = {};
+__export(color_exports, {
+  adjustHex: () => adjustHex,
+  hexToLinear: () => hexToLinear,
+  hexToOklab: () => hexToOklab,
+  hexToRgb: () => hexToRgb,
+  isHex: () => isHex,
+  kelvinToLinear: () => kelvinToLinear,
+  linearToHex: () => linearToHex,
+  linearToOklab: () => linearToOklab2,
+  linearToSrgb: () => linearToSrgb,
+  luminanceOfHex: () => luminanceOfHex,
+  mixHex: () => mixHex,
+  oklabToHex: () => oklabToHex,
+  oklabToLinear: () => oklabToLinear,
+  oklabToOklch: () => oklabToOklch,
+  oklchToOklab: () => oklchToOklab,
+  remapToPalette: () => remapToPalette,
+  rgbToHex: () => rgbToHex,
+  srgbToLinear: () => srgbToLinear,
+  whiteBalanceGains: () => whiteBalanceGains
+});
+var clamp012 = (x) => Math.min(1, Math.max(0, x));
+function hexToRgb(hex) {
+  let h = String(hex).trim().replace(/^#/, "");
+  if (h.length === 3) h = h.replace(/./g, (c) => c + c);
+  if (!/^[0-9a-f]{6}$/i.test(h)) throw new Error(`Not a hex color: ${hex}`);
+  const n = parseInt(h, 16);
+  return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255];
+}
+function rgbToHex([r, g, b]) {
+  const to = (x) => Math.round(clamp012(x) * 255).toString(16).padStart(2, "0");
+  return `#${to(r)}${to(g)}${to(b)}`;
+}
+var isHex = (v) => typeof v === "string" && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v);
+var srgbToLinear = (c) => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+var linearToSrgb = (c) => c <= 31308e-7 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+var hexToLinear = (hex) => hexToRgb(hex).map(srgbToLinear);
+var linearToHex = (rgb) => rgbToHex(rgb.map((c) => linearToSrgb(Math.max(0, c))));
+function linearToOklab2([r, g, b]) {
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [
+    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s
+  ];
+}
+function oklabToLinear([L, a, b]) {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s
+  ];
+}
+var hexToOklab = (hex) => linearToOklab2(hexToLinear(hex));
+var oklabToHex = (lab) => linearToHex(oklabToLinear(lab));
+function oklabToOklch([L, a, b]) {
+  return [L, Math.hypot(a, b), Math.atan2(b, a) * 180 / Math.PI];
+}
+function oklchToOklab([L, C, h]) {
+  const r = h * Math.PI / 180;
+  return [L, C * Math.cos(r), C * Math.sin(r)];
+}
+function mixHex(a, b, t) {
+  const p12 = hexToOklab(a), q = hexToOklab(b);
+  return oklabToHex(p12.map((v, i) => v + (q[i] - v) * t));
+}
+function adjustHex(hex, { saturation: saturation3 = 1, value = 1, hue: hue3 = 0 } = {}) {
+  if (saturation3 === 1 && value === 1 && hue3 === 0) return hex.toLowerCase();
+  const [L, C, h] = oklabToOklch(hexToOklab(hex));
+  return oklabToHex(oklchToOklab([clamp012(L * value), C * saturation3, h + hue3]));
+}
+function remapToPalette(hex, palette, { keepValue = true } = {}) {
+  if (!palette || palette.length === 0) return hex.toLowerCase();
+  const lab = hexToOklab(hex);
+  let best = null, bestD = Infinity;
+  for (const entry of palette) {
+    const p12 = hexToOklab(entry);
+    const d = 0.5 * (p12[0] - lab[0]) ** 2 + (p12[1] - lab[1]) ** 2 + (p12[2] - lab[2]) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = p12;
+    }
+  }
+  return oklabToHex(keepValue ? [(lab[0] + best[0]) / 2, best[1], best[2]] : best);
+}
+function kelvinToLinear(kelvin) {
+  const t = Math.min(4e4, Math.max(1e3, kelvin)) / 100;
+  let r, g, b;
+  if (t <= 66) {
+    r = 255;
+    g = 99.4708025861 * Math.log(t) - 161.1195681661;
+    b = t <= 19 ? 0 : 138.5177312231 * Math.log(t - 10) - 305.0447927307;
+  } else {
+    r = 329.698727446 * Math.pow(t - 60, -0.1332047592);
+    g = 288.1221695283 * Math.pow(t - 60, -0.0755148492);
+    b = 255;
+  }
+  const lin = [r, g, b].map((c) => srgbToLinear(clamp012(c / 255)));
+  const y = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+  return lin.map((c) => c / y);
+}
+function whiteBalanceGains(temperature = 0, tint = 0) {
+  const light = kelvinToLinear(6500 * Math.pow(2, -temperature));
+  const ref = kelvinToLinear(6500);
+  const gains = light.map((c, i) => c / ref[i]);
+  gains[1] *= 1 - tint * 0.2;
+  const y = 0.2126 * gains[0] + 0.7152 * gains[1] + 0.0722 * gains[2];
+  return gains.map((c) => c / y);
+}
+var luminanceOfHex = (hex) => {
+  const [r, g, b] = hexToLinear(hex);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+
+// src/runtime/post/stage-display.js
+var MAX_PALETTE = 16;
+function bayerTexture() {
+  const data = new Uint8Array(16 * 64);
+  [16, 8, 4, 2].forEach((n, block) => {
+    const m = bayerMatrix(n);
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) data[(block * 16 + y) * 16 + x] = Math.round((m[y % n][x % n] + 0.5) / (n * n) * 255);
+  });
+  const t = new THREE.DataTexture(data, 16, 64, THREE.RedFormat, THREE.UnsignedByteType);
+  t.minFilter = t.magFilter = THREE.NearestFilter;
+  t.needsUpdate = true;
+  return t;
+}
+var bayer = null;
+function ditherThreshold(coord, pattern) {
+  bayer ??= bayerTexture();
+  const row = float(3).sub(pattern).clamp(0, 3).mul(16);
+  const ordered = textureLoad(bayer, ivec2(int(coord.x).mod(16), int(coord.y).mod(16).add(int(row)))).r;
+  return select2(pattern.greaterThan(3.5), interleavedGradientNoise(coord), ordered);
+}
+function createDisplayLists() {
+  return {
+    paletteRgb: uniformArray(Array.from({ length: MAX_PALETTE }, () => new THREE.Vector3()), "vec3"),
+    paletteLab: uniformArray(Array.from({ length: MAX_PALETTE }, () => new THREE.Vector3()), "vec3"),
+    paletteCount: uniform(2)
+  };
+}
+function quantizePalette(v) {
+  const id = v["retro.quantize.palette"];
+  const colors = id === "look" ? v["palette.colors"] : PALETTES[id];
+  return (colors && colors.length >= 2 ? colors : PALETTES.onebit).slice(0, MAX_PALETTE);
+}
+function applyDisplayLists(L, v) {
+  const colors = quantizePalette(v);
+  colors.forEach((hex, i) => {
+    L.paletteRgb.array[i].set(...hexToRgb(hex));
+    L.paletteLab.array[i].set(...hexToOklab(hex));
+  });
+  L.paletteCount.value = colors.length;
+}
+var DISPLAY = [
+  {
+    id: "retro.quantize",
+    label: "Color depth and dithering",
+    stage: "display",
+    enabled: (v) => v["retro.quantize.mode"] !== "off",
+    requires: () => [],
+    key: (v) => v["retro.quantize.mode"],
+    build(c, ctx) {
+      const P = ctx.P, L = ctx.lists;
+      const d = ditherThreshold(ctx.coord, P.get("retro.dither.pattern")).sub(0.5).mul(P.get("retro.dither.amount"));
+      if (ctx.v["retro.quantize.mode"] === "posterize") {
+        const n = P.get("retro.quantize.levels").sub(1);
+        return floor(c.clamp(0, 1).mul(n).add(0.5).add(d)).div(n).clamp(0, 1);
+      }
+      return Fn(() => {
+        const spread = float(1).div(float(L.paletteCount).sqrt());
+        const lab = displayToOklab(c.add(d.mul(spread))).toVar();
+        const best = vec32(0).toVar(), bestD = float(1e9).toVar();
+        Loop({ start: int(0), end: int(L.paletteCount), type: "int", condition: "<" }, ({ i }) => {
+          const delta = lab.sub(L.paletteLab.element(i));
+          const dd = dot2(delta, delta);
+          If(dd.lessThan(bestD), () => {
+            bestD.assign(dd);
+            best.assign(L.paletteRgb.element(i));
+          });
+        });
+        return best;
+      })();
+    }
+  },
+  {
+    id: "lens.ca",
+    label: "Chromatic aberration",
+    stage: "display",
+    neighborhood: true,
+    enabled: (v) => v["lens.ca.enabled"],
+    requires: () => [],
+    build(c, ctx) {
+      const tex = ctx.texture(c);
+      const p12 = screenUV.sub(0.5);
+      const o = p12.mul(length2(p12).mul(2)).mul(ctx.P.get("lens.ca.amount").mul(0.012));
+      return vec32(tex.sample(screenUV.add(o)).r, tex.sample(screenUV).g, tex.sample(screenUV.sub(o)).b);
+    }
+  },
+  {
+    id: "lens.distortion",
+    label: "Lens distortion",
+    stage: "display",
+    neighborhood: true,
+    enabled: (v) => v["lens.distortion.enabled"],
+    requires: () => [],
+    build(c, ctx) {
+      const tex = ctx.texture(c);
+      const k = ctx.P.get("lens.distortion.amount").mul(1.6);
+      const aspect = screenSize2.x.div(screenSize2.y);
+      const p12 = screenUV.sub(0.5).mul(vec22(aspect, 1));
+      const r2 = dot2(p12, p12);
+      const corner = aspect.mul(aspect).add(1).mul(0.25);
+      const zoom = float(1).div(float(1).add(max2(k, 0).mul(corner)));
+      const q = p12.mul(r2.mul(k).add(1)).mul(zoom).div(vec22(aspect, 1)).add(0.5);
+      return tex.sample(q.clamp(0, 1)).rgb;
+    }
+  },
+  {
+    id: "lens.vignette",
+    label: "Vignette",
+    stage: "display",
+    always: true,
+    enabled: () => true,
+    requires: () => [],
+    build(c, ctx) {
+      const P = ctx.P;
+      const aspect = screenSize2.x.div(screenSize2.y);
+      const sx = mix2(1, aspect, P.get("lens.vignette.roundness"));
+      const p12 = ctx.uv.sub(0.5).mul(2).mul(vec22(sx, 1));
+      const r = length2(p12).div(length2(vec22(sx, 1)));
+      const softness = P.get("lens.vignette.softness");
+      const v = smoothstep2(softness.oneMinus(), softness.mul(0.2).add(1), r).mul(P.get("lens.vignette.amount"));
+      return mix2(c, P.get("lens.vignette.color"), v);
+    }
+  },
+  {
+    id: "media.grain",
+    label: "Film grain",
+    stage: "display",
+    always: true,
+    enabled: () => true,
+    requires: () => [],
+    build(c, ctx) {
+      const P = ctx.P;
+      const cell = floor(ctx.coord.div(P.get("media.grain.size").mul(ctx.gridSize.y.div(1080)).max(1)));
+      const seed = floor(ctx.U.time.mul(24)).mul(P.get("media.grain.animated"));
+      const n = fract2(sin2(dot2(cell.add(vec22(seed.mul(17.13), seed.mul(41.7))), vec22(12.9898, 78.233))).mul(43758.5453)).sub(0.5);
+      const response = luminance(c).sub(0.5).mul(2).pow(2).mul(0.6).oneMinus();
+      return c.add(n.mul(P.get("media.grain.amount")).mul(2).mul(response));
+    }
+  },
+  {
+    id: "lens.letterbox",
+    label: "Letterbox",
+    stage: "display",
+    always: true,
+    enabled: () => true,
+    requires: () => [],
+    build(c, ctx) {
+      const P = ctx.P;
+      const screen = screenSize2.x.div(screenSize2.y), target = P.get("lens.letterbox.aspect");
+      const amount = P.get("lens.letterbox.amount");
+      const barY = float(1).sub(screen.div(target)).max(0).mul(0.5).mul(amount);
+      const barX = float(1).sub(target.div(screen)).max(0).mul(0.5).mul(amount);
+      const uv = ctx.uv;
+      const bar = max2(max2(step2(uv.y, barY), step2(barY.oneMinus(), uv.y)).mul(step2(1e-4, barY)), max2(step2(uv.x, barX), step2(barX.oneMinus(), uv.x)).mul(step2(1e-4, barX)));
+      return mix2(c, P.get("lens.letterbox.color"), bar);
+    }
+  },
+  {
+    id: "retro.crt",
+    label: "CRT",
+    stage: "display",
+    neighborhood: true,
+    enabled: (v) => v["retro.crt.enabled"],
+    requires: () => [],
+    build(c, ctx) {
+      const P = ctx.P;
+      const tex = ctx.texture(c);
+      return Fn(() => {
+        const k = P.get("retro.crt.curvature");
+        const p12 = screenUV.mul(2).sub(1).toVar();
+        p12.addAssign(p12.mul(p12.yx.mul(p12.yx)).mul(k));
+        const uv = p12.mul(0.5).add(0.5);
+        const edge = smoothstep2(0, 0.012, uv.x).mul(smoothstep2(0, 0.012, uv.x.oneMinus())).mul(smoothstep2(0, 0.012, uv.y)).mul(smoothstep2(0, 0.012, uv.y.oneMinus()));
+        const px = vec22(2).div(screenSize2).mul(screenSize2.y.div(1080));
+        const col = tex.sample(uv).rgb.toVar();
+        const glow = tex.sample(uv.add(vec22(px.x, 0))).rgb.add(tex.sample(uv.sub(vec22(px.x, 0))).rgb).add(tex.sample(uv.add(vec22(0, px.y))).rgb).add(tex.sample(uv.sub(vec22(0, px.y))).rgb).mul(0.25);
+        col.assign(mix2(col, max2(col, glow), P.get("retro.crt.glow")).add(glow.mul(P.get("retro.crt.glow")).mul(0.2)));
+        const rows = ctx.pixel ? ctx.gridSize.y : screenSize2.y.div(screenSize2.y.div(360).max(2));
+        const phase = fract2(uv.y.mul(rows));
+        const scan = float(1).sub(P.get("retro.crt.scanlines").mul(cos2(phase.mul(Math.PI)).pow(2)));
+        const triad = floor(screenCoordinate2.x).mod(3);
+        const maskRgb = vec32(select2(triad.lessThan(0.5), 1.25, 0.8), select2(triad.lessThan(0.5).or(triad.greaterThan(1.5)), 0.8, 1.25), select2(triad.greaterThan(1.5), 1.25, 0.8));
+        const mask = mix2(vec32(1), maskRgb, P.get("retro.crt.mask"));
+        const flicker = float(1).add(sin2(ctx.U.time.mul(59)).mul(P.get("retro.crt.flicker")));
+        const gain = float(1).add(P.get("retro.crt.scanlines").mul(0.4));
+        return col.mul(scan).mul(mask).mul(flicker).mul(gain).mul(edge);
+      })();
+    }
+  }
+];
+
+// src/runtime/materials/StyleLightingModel.js
 var RECIPROCAL_PI = 1 / Math.PI;
 function createSurfaceUniforms({
   threshold = 0.5,
@@ -25,25 +456,54 @@ function createSurfaceUniforms({
   tintStrength = 0.5
 } = {}) {
   return {
-    threshold: uniform(threshold),
-    softness: uniform(softness),
-    shadowTint: uniform(new Color(shadowTint)),
-    tintStrength: uniform(tintStrength),
-    specIntensity: uniform(0),
-    specSize: uniform(0.15),
-    specSoftness: uniform(0.02),
-    rimIntensity: uniform(0),
-    rimWidth: uniform(0.3),
-    rimSoftness: uniform(0.05),
-    rimColor: uniform(new Color("#ffffff")),
-    rimLitSide: uniform(0)
+    threshold: uniform2(threshold),
+    softness: uniform2(softness),
+    shadowTint: uniform2(new Color(shadowTint)),
+    tintStrength: uniform2(tintStrength),
+    specIntensity: uniform2(0),
+    specSize: uniform2(0.15),
+    specSoftness: uniform2(0.02),
+    rimIntensity: uniform2(0),
+    rimWidth: uniform2(0.3),
+    rimSoftness: uniform2(0.05),
+    rimColor: uniform2(new Color("#ffffff")),
+    rimLitSide: uniform2(0),
+    // Shading patterns (finish()).
+    halftoneSize: uniform2(6),
+    halftoneAngle: uniform2(45),
+    halftoneThreshold: uniform2(0.75),
+    halftoneAmount: uniform2(0.85),
+    halftoneColor: uniform2(new Color("#1e1d36")),
+    hatchSpacing: uniform2(6),
+    hatchAngle: uniform2(-45),
+    hatchLayers: uniform2(2),
+    hatchThreshold: uniform2(0.3),
+    hatchAmount: uniform2(0.85),
+    hatchColor: uniform2(new Color("#1e1d36")),
+    // Base color (factory colorNode): variation, vertical gradient, toon water.
+    variationAmount: uniform2(0.1),
+    variationScale: uniform2(0.6),
+    variationHue: uniform2(0.4),
+    gradientAmount: uniform2(0.3),
+    gradientHeight: uniform2(3),
+    waterShallow: uniform2(new Color("#45c3e0")),
+    waterDeep: uniform2(new Color("#1c6fd1")),
+    waterDepth: uniform2(4),
+    waterBands: uniform2(3),
+    waterFoam: uniform2(0.35),
+    waterPattern: uniform2(0.4),
+    waterFoamColor: uniform2(new Color("#ffffff")),
+    // Wind (factory positionNode).
+    windStrength: uniform2(1),
+    windSpeed: uniform2(1),
+    windGusts: uniform2(0.3)
   };
 }
-var rimTerm = Fn(([width, softness]) => {
+var rimTerm = Fn2(([width, softness]) => {
   const fresnel = normalView.dot(positionViewDirection).clamp().oneMinus();
   const edge = width.oneMinus();
-  const s = max(softness, fwidth(fresnel).mul(0.5));
-  return smoothstep(edge.sub(s), edge.add(s), fresnel);
+  const s = max3(softness, fwidth2(fresnel).mul(0.5));
+  return smoothstep3(edge.sub(s), edge.add(s), fresnel);
 });
 var StyleLightingModel = class extends LightingModel {
   /**
@@ -51,6 +511,7 @@ var StyleLightingModel = class extends LightingModel {
    * @param {string} surface.model - 'toon' | 'halfLambert' | 'flat' (structural)
    * @param {number} surface.bands - Number of light bands (structural). 1 = continuous.
    * @param {object} surface.uniforms - From createSurfaceUniforms().
+   * @param {object} [surface.patterns] - { halftone: 'screen'|'world'|null, hatching: …, dither: bool } (structural)
    */
   constructor(surface) {
     super();
@@ -58,18 +519,22 @@ var StyleLightingModel = class extends LightingModel {
     this.keyRamp = null;
   }
   start(builder) {
-    this.keyRamp = float(0).toVar("styleKeyRamp");
+    this.keyRamp = float2(0).toVar("styleKeyRamp");
     super.start(builder);
   }
   ramp(amount) {
     const bands = this.surface.bands;
+    if (this.surface.patterns?.dither) {
+      const n = Math.max(1, bands - 1);
+      return floor2(amount.mul(n).add(ditherThreshold(floor2(screenCoordinate3.xy), float2(1)))).div(n).clamp(0, 1);
+    }
     if (bands <= 1) return amount;
     const { threshold, softness } = this.surface.uniforms;
-    const s = max(softness, fwidth(amount).mul(0.5));
-    let r = float(0);
+    const s = max3(softness, fwidth2(amount).mul(0.5));
+    let r = float2(0);
     for (let k = 1; k < bands; k++) {
       const t = min(threshold.mul(2 * k / bands), 0.98);
-      r = r.add(smoothstep(t.sub(s), t.add(s), amount));
+      r = r.add(smoothstep3(t.sub(s), t.add(s), amount));
     }
     return r.div(bands - 1);
   }
@@ -78,7 +543,7 @@ var StyleLightingModel = class extends LightingModel {
       case "halfLambert":
         return NdotL.mul(0.5).add(0.5).pow(2);
       case "flat":
-        return float(1);
+        return float2(1);
       default:
         return NdotL.max(0);
     }
@@ -86,16 +551,16 @@ var StyleLightingModel = class extends LightingModel {
   direct({ lightDirection: lightDirection2, lightColor, lightNode, reflectedLight }) {
     const NdotL = normalView.dot(lightDirection2);
     const base = lightNode.baseColorNode || lightNode.colorNode;
-    const baseLuminance = luminance(base);
-    const visibility = select(baseLuminance.greaterThan(1e-5), luminance(lightColor).div(baseLuminance), 0);
+    const baseLuminance = luminance2(base);
+    const visibility = select3(baseLuminance.greaterThan(1e-5), luminance2(lightColor).div(baseLuminance), 0);
     const r = this.ramp(this.facing(NdotL).mul(visibility).clamp());
-    this.keyRamp.assign(max(this.keyRamp, r));
+    this.keyRamp.assign(max3(this.keyRamp, r));
     reflectedLight.directDiffuse.addAssign(diffuseColor.rgb.mul(base).mul(r).mul(RECIPROCAL_PI));
     const { specIntensity, specSize, specSoftness } = this.surface.uniforms;
     const H = lightDirection2.add(positionViewDirection).normalize();
     const x = normalView.dot(H).clamp().oneMinus().div(specSize.mul(specSize).mul(0.5).max(1e-4));
-    const w = max(specSoftness.mul(4), fwidth(x).mul(0.5));
-    const spec = smoothstep(w.oneMinus(), w.add(1), x).oneMinus().mul(step(0, NdotL));
+    const w = max3(specSoftness.mul(4), fwidth2(x).mul(0.5));
+    const spec = smoothstep3(w.oneMinus(), w.add(1), x).oneMinus().mul(step3(0, NdotL));
     reflectedLight.directSpecular.addAssign(base.mul(visibility).mul(spec).mul(specIntensity));
   }
   indirect(builder) {
@@ -106,8 +571,27 @@ var StyleLightingModel = class extends LightingModel {
   finish(builder) {
     const u = this.surface.uniforms;
     const fill = diffuseColor.rgb.mul(u.shadowTint).mul(u.tintStrength).mul(this.keyRamp.oneMinus());
-    const rim = rimTerm(u.rimWidth, u.rimSoftness).mul(u.rimIntensity).mul(mix(1, this.keyRamp, u.rimLitSide));
-    builder.context.outgoingLight.addAssign(vec3(fill).add(u.rimColor.mul(rim)));
+    const rim = rimTerm(u.rimWidth, u.rimSoftness).mul(u.rimIntensity).mul(mix4(1, this.keyRamp, u.rimLitSide));
+    const outgoing = builder.context.outgoingLight;
+    outgoing.addAssign(vec33(fill).add(u.rimColor.mul(rim)));
+    const p12 = this.surface.patterns || {};
+    const light = this.keyRamp;
+    if (p12.halftone) {
+      const coverage = u.halftoneThreshold.sub(light).div(max3(u.halftoneThreshold, 1e-3)).clamp(0, 1);
+      const dots = dotMask(patternCoord(p12.halftone, u.halftoneSize, u.halftoneAngle), coverage);
+      outgoing.assign(mix4(outgoing, u.halftoneColor, dots.mul(u.halftoneAmount)));
+    }
+    if (p12.hatching) {
+      let lines = float2(0);
+      for (let k = 0; k < 3; k++) {
+        const level = u.hatchThreshold.mul(1 - k * 0.4);
+        const on = step3(float2(k).add(0.5), u.hatchLayers);
+        const depth = level.sub(light).div(max3(level, 1e-3)).clamp(0, 1);
+        const coord = patternCoord(p12.hatching, u.hatchSpacing, u.hatchAngle.add(k * 70));
+        lines = max3(lines, lineMask(coord, depth.mul(0.22).add(0.08).mul(step3(light, level))).mul(on));
+      }
+      outgoing.assign(mix4(outgoing, u.hatchColor, lines.mul(u.hatchAmount)));
+    }
   }
 };
 var StyleSurfaceMaterial = class extends MeshToonNodeMaterial {
@@ -126,20 +610,20 @@ var StyleStandardMaterial = class extends MeshStandardNodeMaterial {
     this.surface = surface;
     this.isStyleSurfaceMaterial = true;
     const u = surface.uniforms;
-    const lit = smoothstep(0, 0.35, normalWorld.dot(keyDirection));
-    const rim = rimTerm(u.rimWidth, u.rimSoftness).mul(u.rimIntensity).mul(mix(1, lit, u.rimLitSide));
+    const lit = smoothstep3(0, 0.35, normalWorld2.dot(keyDirection));
+    const rim = rimTerm(u.rimWidth, u.rimSoftness).mul(u.rimIntensity).mul(mix4(1, lit, u.rimLitSide));
     this.emissiveNode = materialEmissive.add(u.rimColor.mul(rim));
   }
 };
 
 // src/runtime/materials/outline.js
-import { BufferAttribute, Vector3, BackSide } from "three";
-var _a = new Vector3();
-var _b = new Vector3();
-var _c = new Vector3();
-var _e1 = new Vector3();
-var _e2 = new Vector3();
-var _n = new Vector3();
+import { BufferAttribute, Vector3 as Vector32, BackSide } from "three";
+var _a = new Vector32();
+var _b = new Vector32();
+var _c = new Vector32();
+var _e1 = new Vector32();
+var _e2 = new Vector32();
+var _n = new Vector32();
 function computeOutlineNormals(geometry, { name = "outlineNormal", precision = 1e4 } = {}) {
   const pos = geometry.getAttribute("position");
   const index = geometry.getIndex();
@@ -167,7 +651,7 @@ function computeOutlineNormals(geometry, { name = "outlineNormal", precision = 1
       const angle = Math.acos(Math.min(1, Math.max(-1, _e1.dot(_e2))));
       const key = keys[ids[k]];
       let sum = sums.get(key);
-      if (sum === void 0) sums.set(key, sum = new Vector3());
+      if (sum === void 0) sums.set(key, sum = new Vector32());
       sum.addScaledVector(_n, angle);
     }
   }
@@ -184,40 +668,40 @@ function computeOutlineNormals(geometry, { name = "outlineNormal", precision = 1
   return geometry;
 }
 function createHullMaterial({ THREE: THREE11, TSL: TSL2, color, thickness, normalName = "outlineNormal", snapRows = null }) {
-  const { Fn: Fn10, vec4: vec46, attribute, positionLocal: positionLocal2, modelViewMatrix, cameraProjectionMatrix, screenSize: screenSize3 } = TSL2;
+  const { Fn: Fn10, vec4: vec46, attribute, positionLocal: positionLocal2, modelViewMatrix, cameraProjectionMatrix, screenSize: screenSize4 } = TSL2;
   const material = new THREE11.MeshBasicNodeMaterial({ side: BackSide });
   material.colorNode = color;
   material.vertexNode = Fn10(() => {
     const clip = cameraProjectionMatrix.mul(modelViewMatrix).mul(vec46(positionLocal2, 1));
     const nView = modelViewMatrix.mul(vec46(attribute(normalName, "vec3"), 0)).xyz;
     const nClip = cameraProjectionMatrix.mul(vec46(nView, 0)).xy;
-    const pixels = thickness.mul(screenSize3.y.div(1080));
-    const offset = nClip.normalize().mul(pixels).mul(2).div(screenSize3).mul(clip.w);
+    const pixels = thickness.mul(screenSize4.y.div(1080));
+    const offset = nClip.normalize().mul(pixels).mul(2).div(screenSize4).mul(clip.w);
     const out = vec46(clip.xy.add(offset), clip.zw);
     return snapRows ? snapClip(TSL2, out, snapRows) : out;
   })();
   return material;
 }
 function snapClip(TSL2, clip, rows) {
-  const { vec2: vec26, vec4: vec46, floor: floor6, screenSize: screenSize3 } = TSL2;
-  const grid = vec26(rows.mul(screenSize3.x.div(screenSize3.y)), rows).mul(0.5);
+  const { vec2: vec28, vec4: vec46, floor: floor9, screenSize: screenSize4 } = TSL2;
+  const grid = vec28(rows.mul(screenSize4.x.div(screenSize4.y)), rows).mul(0.5);
   const ndc = clip.xy.div(clip.w);
-  return vec46(floor6(ndc.mul(grid).add(0.5)).div(grid).mul(clip.w), clip.zw);
+  return vec46(floor9(ndc.mul(grid).add(0.5)).div(grid).mul(clip.w), clip.zw);
 }
 
 // src/runtime/render/blobs.js
-import * as THREE from "three/webgpu";
-import { Fn as Fn2, uniformArray, uniform as uniform2, float as float2, int, Loop, max as max2, smoothstep as smoothstep2, step as step2, positionWorld } from "three/tsl";
+import * as THREE2 from "three/webgpu";
+import { Fn as Fn3, uniformArray as uniformArray2, uniform as uniform3, float as float3, int as int2, Loop as Loop2, max as max4, smoothstep as smoothstep4, step as step4, positionWorld as positionWorld2 } from "three/tsl";
 var MAX_BLOBS = 48;
 var MAX_FOOTPRINT = 6;
-var _box = new THREE.Box3();
-var _size = new THREE.Vector3();
+var _box = new THREE2.Box3();
+var _size = new THREE2.Vector3();
 var BlobShadows = class {
   constructor() {
-    this.data = uniformArray(Array.from({ length: MAX_BLOBS }, () => new THREE.Vector4()), "vec4");
-    this.count = uniform2(0, "int");
-    this.softness = uniform2(0.6);
-    this.opacity = uniform2(0.5);
+    this.data = uniformArray2(Array.from({ length: MAX_BLOBS }, () => new THREE2.Vector4()), "vec4");
+    this.count = uniform3(0, "int");
+    this.softness = uniform3(0.6);
+    this.opacity = uniform3(0.5);
     this.size = 1.1;
     this.candidates = [];
     this.owners = [];
@@ -228,10 +712,10 @@ var BlobShadows = class {
   setScene(root) {
     this.candidates = [];
     root.updateMatrixWorld(true);
-    const inverse = new THREE.Matrix4();
+    const inverse = new THREE2.Matrix4();
     for (const object of root.children) {
       const counts = {};
-      const box = new THREE.Box3();
+      const box = new THREE2.Box3();
       inverse.copy(object.matrixWorld).invert();
       object.traverse((o) => {
         if (!o.isMesh || !o.userData.style) return;
@@ -275,16 +759,16 @@ var BlobShadows = class {
   /** Darkening in [0, opacity] at the fragment's world position (one node, shared by every material). */
   shade() {
     if (this.node) return this.node;
-    this.node = Fn2(() => {
-      const shade = float2(0).toVar();
-      Loop({ start: int(0), end: this.count, type: "int", condition: "<" }, ({ i }) => {
+    this.node = Fn3(() => {
+      const shade = float3(0).toVar();
+      Loop2({ start: int2(0), end: this.count, type: "int", condition: "<" }, ({ i }) => {
         const b = this.data.element(i);
-        const d = positionWorld.xz.sub(b.xz).length().div(b.w);
-        const h = b.y.sub(positionWorld.y);
-        const disc = smoothstep2(this.softness.oneMinus().mul(0.95), 1, d).oneMinus();
-        const below = step2(-0.06, h);
-        const fade = smoothstep2(0, max2(b.w.mul(2.5), 1), h).oneMinus();
-        shade.assign(max2(shade, disc.mul(below).mul(fade)));
+        const d = positionWorld2.xz.sub(b.xz).length().div(b.w);
+        const h = b.y.sub(positionWorld2.y);
+        const disc = smoothstep4(this.softness.oneMinus().mul(0.95), 1, d).oneMinus();
+        const below = step4(-0.06, h);
+        const fade = smoothstep4(0, max4(b.w.mul(2.5), 1), h).oneMinus();
+        shade.assign(max4(shade, disc.mul(below).mul(fade)));
       });
       return shade.mul(this.opacity);
     })();
@@ -728,12 +1212,13 @@ var surface_default = [
       { value: "pbr", label: "Stylized PBR" },
       { value: "toon", label: "Toon (cel)" },
       { value: "halfLambert", label: "Half-Lambert (soft wrap)" },
-      { value: "flat", label: "Flat (cast shadows only)" }
+      { value: "flat", label: "Flat (cast shadows only)" },
+      { value: "toonWater", label: "Toon water (depth color + foam)" }
     ],
     learn: {
       what: "How a surface turns light into color. Toon bands the light into flat tones; half-Lambert wraps light softly around the form; flat ignores the surface angle; PBR is physically based.",
       why: "The shading model is the biggest single decision in a style. Banded light simplifies shapes into a few readable planes, which is why toon styles make simple geometry look intentional.",
-      avoid: "PBR on blockout geometry: it shows every flaw of the primitives."
+      avoid: "PBR on blockout geometry: it shows every flaw of the primitives. Toon water is meant for the water part only."
     },
     brief: "Shading model: {label}.",
     tags: ["shading", "toon", "cel"]
@@ -952,6 +1437,456 @@ var surface_default = [
     },
     brief: "Flat-shaded facets.",
     tags: ["low poly", "faceted"]
+  }),
+  p2({
+    id: "surface.halftone.enabled",
+    label: "Halftone shading",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: CHEAP,
+    learn: {
+      what: "Prints dots of ink into the shadowed bands of each surface; the darker the light, the bigger the dots. Needs a toon, half-Lambert or flat model.",
+      why: "Comic colorists shade with Ben-Day dots instead of darker paint. Doing it in the material means the dots follow the light exactly, per part.",
+      avoid: 'Screen-space dots on fast-moving objects: they stay fixed on screen while the object slides under them (the "shower-door" effect). Use world space for those.'
+    },
+    brief: "Halftone dots in the shadow bands.",
+    tags: ["halftone", "comic", "pattern"]
+  }),
+  p2({
+    id: "surface.halftone.size",
+    label: "Dot size (shading)",
+    type: "float",
+    min: 2,
+    max: 24,
+    step: 0.5,
+    unit: "px@1080p",
+    default: 6,
+    enabledBy: "surface.halftone.enabled",
+    learn: { what: "Dot spacing in pixels at 1080p (in world space: centimeters).", why: "Bigger dots are bolder and more pop-art." },
+    brief: "Shading dots {value} px at 1080p.",
+    tags: ["halftone"]
+  }),
+  p2({
+    id: "surface.halftone.angle",
+    label: "Dot angle (shading)",
+    type: "angle",
+    min: -90,
+    max: 90,
+    step: 1,
+    unit: "°",
+    default: 45,
+    enabledBy: "surface.halftone.enabled",
+    learn: { what: "Rotation of the dot grid.", why: "45° hides the grid best." },
+    brief: "Shading dots at {value}°.",
+    tags: ["halftone"]
+  }),
+  p2({
+    id: "surface.halftone.threshold",
+    label: "Dots below light",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.75,
+    enabledBy: "surface.halftone.enabled",
+    learn: { what: "Light level (0 = deepest shadow, 1 = full light) below which dots appear.", why: "With 3 bands, 0.75 dots the middle and dark bands; 0.3 dots only the darkest." },
+    brief: "Dots where light is below {value}.",
+    tags: ["halftone"]
+  }),
+  p2({
+    id: "surface.halftone.amount",
+    label: "Dot strength",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.85,
+    neutral: 0,
+    enabledBy: "surface.halftone.enabled",
+    learn: { what: "How dark the dots are.", why: "Partial strength gives tinted dots instead of solid ink." },
+    brief: "Dot strength {value}.",
+    tags: ["halftone"]
+  }),
+  p2({
+    id: "surface.halftone.color",
+    label: "Dot ink",
+    type: "color",
+    default: "#1e1d36",
+    enabledBy: "surface.halftone.enabled",
+    learn: { what: "The ink color of the dots.", why: "A deep blue or purple ink keeps shadows colorful." },
+    brief: "Dot ink {value}.",
+    tags: ["halftone", "color"]
+  }),
+  p2({
+    id: "surface.halftone.space",
+    label: "Dot space",
+    type: "enum",
+    default: "screen",
+    structural: true,
+    enabledBy: "surface.halftone.enabled",
+    options: [{ value: "screen", label: "Screen (stable size)" }, { value: "world", label: "World (sticks to surfaces)" }],
+    learn: { what: "Whether the dots are fixed to the screen or to the surfaces.", why: "Screen dots keep a constant size, like print; world dots move with objects but grow and shrink with distance." },
+    brief: "Dots in {label} space.",
+    tags: ["halftone", "shower-door"]
+  }),
+  p2({
+    id: "surface.hatching.enabled",
+    label: "Hatching shading",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: CHEAP,
+    learn: {
+      what: "Draws pen lines into the dark bands of each surface; darker light adds crossing layers. Needs a toon, half-Lambert or flat model.",
+      why: "Hatching describes form the way an inker would, following the light on each object."
+    },
+    brief: "Hatching in the dark bands.",
+    tags: ["hatching", "ink", "pattern"]
+  }),
+  p2({
+    id: "surface.hatching.spacing",
+    label: "Hatch spacing (shading)",
+    type: "float",
+    min: 2,
+    max: 24,
+    step: 0.5,
+    unit: "px@1080p",
+    default: 6,
+    enabledBy: "surface.hatching.enabled",
+    learn: { what: "Distance between lines, in pixels at 1080p (centimeters in world space).", why: "Tight lines read as fine pen work." },
+    brief: "Shading hatch spacing {value} px at 1080p.",
+    tags: ["hatching"]
+  }),
+  p2({
+    id: "surface.hatching.angle",
+    label: "Hatch angle (shading)",
+    type: "angle",
+    min: -90,
+    max: 90,
+    step: 1,
+    unit: "°",
+    default: -45,
+    enabledBy: "surface.hatching.enabled",
+    learn: { what: "Angle of the first layer.", why: "Crossing layers rotate from it." },
+    brief: "Shading hatches at {value}°.",
+    tags: ["hatching"]
+  }),
+  p2({
+    id: "surface.hatching.layers",
+    label: "Hatch layers (shading)",
+    type: "int",
+    min: 1,
+    max: 3,
+    step: 1,
+    default: 2,
+    enabledBy: "surface.hatching.enabled",
+    learn: { what: "How many crossing layers the darkest light gets.", why: "More layers give deeper, engraved shadows." },
+    brief: "Up to {value} hatch layers.",
+    tags: ["hatching"]
+  }),
+  p2({
+    id: "surface.hatching.threshold",
+    label: "Hatch below light",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.3,
+    enabledBy: "surface.hatching.enabled",
+    learn: { what: "Light level below which the first layer appears.", why: "Keep hatching to the deepest band and let dots or flat color carry the middle tones." },
+    brief: "Hatching where light is below {value}.",
+    tags: ["hatching"]
+  }),
+  p2({
+    id: "surface.hatching.amount",
+    label: "Hatch strength (shading)",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.85,
+    neutral: 0,
+    enabledBy: "surface.hatching.enabled",
+    learn: { what: "How dark the lines are.", why: "Light hatching reads as pencil, full strength as ink." },
+    brief: "Shading hatch strength {value}.",
+    tags: ["hatching"]
+  }),
+  p2({
+    id: "surface.hatching.color",
+    label: "Hatch ink (shading)",
+    type: "color",
+    default: "#1e1d36",
+    enabledBy: "surface.hatching.enabled",
+    learn: { what: "The line color.", why: "Match the line ink, so hatching and outlines read as one pen." },
+    brief: "Hatch ink {value}.",
+    tags: ["hatching", "color"]
+  }),
+  p2({
+    id: "surface.hatching.space",
+    label: "Hatch space",
+    type: "enum",
+    default: "screen",
+    structural: true,
+    enabledBy: "surface.hatching.enabled",
+    options: [{ value: "screen", label: "Screen (stable width)" }, { value: "world", label: "World (sticks to surfaces)" }],
+    learn: { what: "Whether lines are fixed to the screen or to the surfaces.", why: "The same trade-off as halftone: screen lines keep their width, world lines move with objects." },
+    brief: "Hatching in {label} space.",
+    tags: ["hatching", "shower-door"]
+  }),
+  p2({
+    id: "surface.dither.enabled",
+    label: "Dithered shading (1-bit)",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: CHEAP,
+    learn: {
+      what: "Replaces smooth light bands with an ordered dither pattern between them. With 2 bands the light is 1-bit: lit or not, and the gradient becomes a checker of dots.",
+      why: "This is how 1-bit and early Mac games drew light: two inks and a pattern. Doing it in the material keeps it on the objects, crisp at any resolution."
+    },
+    brief: "Ordered-dither shading between the light bands.",
+    tags: ["dither", "1-bit", "retro", "pattern"]
+  }),
+  p2({
+    id: "surface.variation.enabled",
+    label: "Color variation",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: CHEAP,
+    learn: {
+      what: "Varies each surface's color slightly with soft noise, in hue and value.",
+      why: 'Real paint and real materials are never one flat color. A little variation inside each shape is what painters call "broken color": the scene stops looking like plastic.',
+      avoid: "Strong variation on graphic toon looks, where flat color is the point."
+    },
+    brief: "Color variation inside each surface.",
+    tags: ["color", "variation", "painterly", "texture"]
+  }),
+  p2({
+    id: "surface.variation.amount",
+    label: "Variation amount",
+    type: "float",
+    min: 0,
+    max: 0.5,
+    step: 5e-3,
+    default: 0.1,
+    neutral: 0,
+    enabledBy: "surface.variation.enabled",
+    learn: { what: "How much colors drift.", why: "0.05–0.1 is felt rather than seen." },
+    brief: "Color variation {value}.",
+    tags: ["variation"]
+  }),
+  p2({
+    id: "surface.variation.scale",
+    label: "Variation size",
+    type: "float",
+    min: 0.05,
+    max: 5,
+    step: 0.01,
+    unit: "/m",
+    default: 0.6,
+    enabledBy: "surface.variation.enabled",
+    learn: { what: "Noise frequency per meter: low values make big patches, high values a fine mottle.", why: "Patches about a meter across read as brush work at gameplay distance." },
+    brief: "Variation frequency {value} per meter.",
+    tags: ["variation"]
+  }),
+  p2({
+    id: "surface.variation.hue",
+    label: "Hue vs. value",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.4,
+    enabledBy: "surface.variation.enabled",
+    learn: { what: "0 varies only lightness; 1 only hue.", why: "Painters vary hue more than value, so shapes keep their read while the color gets richer." },
+    brief: "Variation split {value} hue / value.",
+    tags: ["variation"]
+  }),
+  p2({
+    id: "surface.variation.space",
+    label: "Variation space",
+    type: "enum",
+    default: "world",
+    structural: true,
+    enabledBy: "surface.variation.enabled",
+    options: [{ value: "world", label: "World" }, { value: "object", label: "Object (moves with it)" }],
+    learn: { what: "Whether the noise is fixed in the world or travels with each object.", why: "Object space keeps moving characters from swimming through the pattern." },
+    brief: "Variation in {label} space.",
+    tags: ["variation"]
+  }),
+  p2({
+    id: "surface.gradient.enabled",
+    label: "Vertical gradient",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: CHEAP,
+    learn: {
+      what: "Darkens each object toward its base and lightens it toward its top.",
+      why: "Sky light hits tops and the ground darkens bases. A painted gradient fakes that occlusion for free and grounds objects, a classic hand-painted texture trick."
+    },
+    brief: "Vertical gradient: darker at the base, lighter on top.",
+    tags: ["gradient", "painterly", "grounding"]
+  }),
+  p2({
+    id: "surface.gradient.amount",
+    label: "Gradient amount",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.3,
+    neutral: 0,
+    enabledBy: "surface.gradient.enabled",
+    learn: { what: "How strong the gradient is.", why: "0.2–0.35 is natural; more becomes a stylized airbrush." },
+    brief: "Gradient amount {value}.",
+    tags: ["gradient"]
+  }),
+  p2({
+    id: "surface.gradient.height",
+    label: "Gradient height",
+    type: "float",
+    min: 0.2,
+    max: 30,
+    step: 0.1,
+    unit: "m",
+    default: 3,
+    enabledBy: "surface.gradient.enabled",
+    learn: { what: "Height over which the gradient runs, from each object's origin.", why: "Match it to the part: about 2 m for characters, more for buildings." },
+    brief: "Gradient over {value} m.",
+    tags: ["gradient"]
+  }),
+  p2({
+    id: "surface.water.shallow",
+    label: "Water: shallow",
+    type: "color",
+    default: "#45c3e0",
+    learn: { what: "Toon water color where it is shallow.", why: "A bright, light shallow color makes shores and depth readable at a glance." },
+    brief: "Shallow water {value}.",
+    tags: ["water"]
+  }),
+  p2({
+    id: "surface.water.deep",
+    label: "Water: deep",
+    type: "color",
+    default: "#1c6fd1",
+    learn: { what: "Toon water color where it is deep.", why: "Deep water darkens and saturates; the contrast with the shallows gives the sea its shape." },
+    brief: "Deep water {value}.",
+    tags: ["water"]
+  }),
+  p2({
+    id: "surface.water.depth",
+    label: "Water: depth range",
+    type: "float",
+    min: 0.2,
+    max: 30,
+    step: 0.1,
+    unit: "m",
+    default: 4,
+    learn: { what: "Depth at which water reaches its deep color.", why: "Smaller values give a narrow shallow rim; larger ones long gradients of lagoon." },
+    brief: "Deep color at {value} m.",
+    tags: ["water"]
+  }),
+  p2({
+    id: "surface.water.bands",
+    label: "Water: color bands",
+    type: "int",
+    min: 0,
+    max: 5,
+    step: 1,
+    default: 3,
+    learn: { what: "Flat steps between the shallow and deep colors (0 is smooth).", why: "Banded depth is the toon-water signature: flat rings of color around islands." },
+    brief: "Water depth in {value} bands.",
+    tags: ["water", "toon"]
+  }),
+  p2({
+    id: "surface.water.foam",
+    label: "Water: shore foam",
+    type: "float",
+    min: 0,
+    max: 2,
+    step: 0.01,
+    unit: "m",
+    default: 0.35,
+    learn: { what: "Width of the white foam line where water meets objects and shores.", why: "Intersection foam is the cheapest way to make water feel like it touches the world." },
+    brief: "Shore foam {value} m wide.",
+    tags: ["water", "foam"]
+  }),
+  p2({
+    id: "surface.water.pattern",
+    label: "Water: foam pattern",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.4,
+    learn: { what: "Drifting cellular foam lines on the surface.", why: "Stylized seas draw their motion with a few bright lines instead of reflections." },
+    brief: "Foam pattern {value}.",
+    tags: ["water", "foam"]
+  }),
+  p2({
+    id: "surface.water.foamColor",
+    label: "Water: foam color",
+    type: "color",
+    default: "#ffffff",
+    learn: { what: "Color of foam and foam lines.", why: "Pure white reads as sunlit foam; tinted foam fits darker or sunset palettes." },
+    brief: "Foam {value}.",
+    tags: ["water", "foam"]
+  }),
+  p2({
+    id: "surface.wind.enabled",
+    label: "Wind sway",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: CHEAP,
+    learn: {
+      what: "Makes every mesh of the part sway with the wind, more toward its top. Grass always sways; this adds trees, bushes, flags and anything else you pick.",
+      why: "Moving foliage is the simplest sign of a living world, and it gives still shots a sense of air.",
+      avoid: "Wind on rigid things (buildings, rocks). Swaying meshes get no hull outline, because the hull wouldn't follow the sway."
+    },
+    brief: "Wind sway (stronger toward the top of each mesh).",
+    tags: ["wind", "foliage", "motion"]
+  }),
+  p2({
+    id: "surface.wind.strength",
+    label: "Wind strength",
+    type: "float",
+    min: 0,
+    max: 3,
+    step: 0.01,
+    unit: "×",
+    default: 1,
+    learn: { what: "Scales how far grass and swaying meshes move.", why: "A breeze vs. a storm: strength sets the mood." },
+    brief: "Wind strength ×{value}.",
+    tags: ["wind"]
+  }),
+  p2({
+    id: "surface.wind.speed",
+    label: "Wind speed",
+    type: "float",
+    min: 0,
+    max: 3,
+    step: 0.01,
+    unit: "×",
+    default: 1,
+    learn: { what: "Scales how fast the sway oscillates.", why: "Slow sway is calm; fast sway is gusty and tense." },
+    brief: "Wind speed ×{value}.",
+    tags: ["wind"]
+  }),
+  p2({
+    id: "surface.wind.gusts",
+    label: "Gusts",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.3,
+    learn: { what: "Slow waves of stronger wind rolling across the scene.", why: "Gusts make wind travel across a field instead of everything moving in lockstep." },
+    brief: "Gusts {value}.",
+    tags: ["wind"]
   })
 ];
 
@@ -1157,6 +2092,164 @@ var lines_default = [
     },
     brief: "Ink fades with fog (amount {value}).",
     tags: ["lines", "fog", "depth"]
+  }),
+  p3({
+    id: "lines.screen.opacity",
+    label: "Ink opacity",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 1,
+    neutral: 0,
+    enabledBy: "lines.screen.enabled",
+    learn: { what: "How opaque the ink is.", why: "Translucent lines read as pencil or soft paint; opaque ones as ink." },
+    brief: "Ink opacity {value}.",
+    tags: ["lines"]
+  }),
+  p3({
+    id: "lines.screen.colorFromSurface",
+    label: "Colored lines",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0,
+    enabledBy: "lines.screen.enabled",
+    learn: {
+      what: "Mixes the ink toward a darker, more saturated version of the color under it, instead of one fixed ink color.",
+      why: "Colored lines (a dark red line on a red coat) are the anime and modern-illustration look: softer than black ink, but still separating shapes."
+    },
+    brief: "Lines take the darkened local color (amount {value}).",
+    tags: ["lines", "color", "anime"]
+  }),
+  p3({
+    id: "lines.screen.darken",
+    label: "Colored-line darkness",
+    type: "float",
+    min: 0.05,
+    max: 1,
+    step: 0.01,
+    default: 0.45,
+    enabledBy: "lines.screen.enabled",
+    learn: { what: "How dark colored lines are, as a fraction of the local color.", why: "Around 0.4–0.6 keeps the hue readable while still reading as a line." },
+    brief: "Colored lines at {value}× the local color.",
+    tags: ["lines", "color"]
+  }),
+  p3({
+    id: "lines.screen.fade",
+    label: "Distance fade",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0,
+    enabledBy: "lines.screen.enabled",
+    learn: {
+      what: "Thins out lines between the fade start and end distances.",
+      why: "Distant detail drawn with full-strength ink turns to noise, especially at high complexity. Illustrators draw the background lighter; fading does the same.",
+      typical: "0.7–1 on dense scenes (meadows, cities)."
+    },
+    brief: "Lines fade with distance (amount {value}).",
+    tags: ["lines", "depth", "noise"]
+  }),
+  p3({
+    id: "lines.screen.fadeStart",
+    label: "Fade start",
+    type: "float",
+    min: 0,
+    max: 300,
+    step: 1,
+    unit: "m",
+    default: 25,
+    enabledBy: "lines.screen.enabled",
+    learn: { what: "Distance where lines start to fade.", why: "Keep the play area fully inked." },
+    brief: "Line fade starts at {value} m.",
+    tags: ["lines"]
+  }),
+  p3({
+    id: "lines.screen.fadeEnd",
+    label: "Fade end",
+    type: "float",
+    min: 1,
+    max: 1e3,
+    step: 1,
+    unit: "m",
+    default: 120,
+    enabledBy: "lines.screen.enabled",
+    learn: { what: "Distance where lines reach their minimum.", why: "Beyond this, shapes read by value and color only." },
+    brief: "Line fade ends at {value} m.",
+    tags: ["lines"]
+  }),
+  p3({
+    id: "lines.screen.lightWeight",
+    label: "Thicker in shadow",
+    type: "float",
+    min: 0,
+    max: 2,
+    step: 0.01,
+    default: 0,
+    enabledBy: "lines.screen.enabled",
+    learn: {
+      what: "Makes lines thicker where the image is dark (up to +100% per 1.0).",
+      why: "Inkers weight lines by light: thin where the light hits, heavy on the shadow side. It adds form and drama for free."
+    },
+    brief: "Lines up to {value}× thicker in shadow.",
+    tags: ["lines", "comic", "weight"]
+  }),
+  p3({
+    id: "lines.screen.wobble",
+    label: "Wobble",
+    type: "float",
+    min: 0,
+    max: 4,
+    step: 0.05,
+    unit: "px@1080p",
+    default: 0,
+    enabledBy: "lines.screen.enabled",
+    learn: {
+      what: "Displaces the lines irregularly, as if drawn by hand. With line boil (Motion), the wobble changes a few times a second.",
+      why: "Perfect lines look computer-made. A little wobble reads as a human hand; boiling lines are the signature of hand-drawn animation."
+    },
+    brief: "Hand wobble {value} px at 1080p.",
+    tags: ["lines", "hand-drawn", "boil"]
+  }),
+  p3({
+    id: "lines.screen.wobbleScale",
+    label: "Wobble frequency",
+    type: "float",
+    min: 0.2,
+    max: 4,
+    step: 0.05,
+    default: 1,
+    enabledBy: "lines.screen.enabled",
+    learn: { what: "How quickly the wobble varies along a line.", why: "Low frequency looks like a slow, confident hand; high frequency like a shaky one." },
+    brief: "Wobble frequency {value}.",
+    tags: ["lines"]
+  }),
+  p3({
+    id: "lines.screen.texture",
+    label: "Line texture",
+    type: "enum",
+    default: "none",
+    enabledBy: "lines.screen.enabled",
+    options: [{ value: "none", label: "Clean" }, { value: "pencil", label: "Pencil (grainy)" }, { value: "brush", label: "Brush (varying width)" }, { value: "ink", label: "Ink (blotchy)" }],
+    learn: { what: "The tool the lines are drawn with.", why: "Grainy pencil, swelling brush strokes or blotchy dip-pen ink each say a different medium." },
+    brief: "Line texture: {label}.",
+    tags: ["lines", "texture"]
+  }),
+  p3({
+    id: "lines.screen.textureAmount",
+    label: "Texture amount",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.6,
+    enabledBy: "lines.screen.enabled",
+    learn: { what: "How strong the line texture is.", why: "Subtle texture adds character without breaking the lines." },
+    brief: "Line texture amount {value}.",
+    tags: ["lines", "texture"]
   })
 ];
 
@@ -1546,6 +2639,143 @@ var atmosphere_default = [
     learn: { what: "How quickly rays fade along their length.", why: "Lower values keep the rays near the sun." },
     brief: "God ray decay {value}.",
     tags: ["god rays"]
+  }),
+  p5({
+    id: "atmosphere.heightFog.density",
+    label: "Height fog",
+    type: "float",
+    min: 0,
+    max: 0.3,
+    step: 1e-3,
+    default: 0,
+    neutral: 0,
+    learn: {
+      what: "Fog that pools near the ground and thins out with height, like mist in a valley or haze at sea level.",
+      why: "Low-lying fog separates layers of a landscape (each hill gets its own pale band) and makes tall things rise out of it. Combine it with distance fog.",
+      typical: "0.02–0.08."
+    },
+    brief: "Height fog density {value}.",
+    tags: ["fog", "height fog", "atmosphere", "mist"]
+  }),
+  p5({
+    id: "atmosphere.heightFog.base",
+    label: "Height fog level",
+    type: "float",
+    min: -20,
+    max: 60,
+    step: 0.5,
+    unit: "m",
+    default: 0,
+    learn: { what: "The height where height fog is at full density.", why: "Set it to the valley floor or the sea." },
+    brief: "Height fog at {value} m.",
+    tags: ["height fog"]
+  }),
+  p5({
+    id: "atmosphere.heightFog.falloff",
+    label: "Height fog falloff",
+    type: "float",
+    min: 0.02,
+    max: 2,
+    step: 0.01,
+    default: 0.25,
+    learn: { what: "How quickly height fog thins with altitude.", why: "High values make a thin layer of ground mist; low values a deep haze." },
+    brief: "Height fog falloff {value} per meter.",
+    tags: ["height fog"]
+  }),
+  p5({
+    id: "atmosphere.clouds.amount",
+    label: "Toon clouds",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0,
+    neutral: 0,
+    learn: {
+      what: "Flat, stylized clouds painted into the sky, drifting slowly.",
+      why: "A big sky with simple, banded clouds is half of a cel-shaded adventure look, and gives the eye depth and a sense of weather."
+    },
+    brief: "Toon clouds (opacity {value}).",
+    tags: ["sky", "clouds", "toon"]
+  }),
+  p5({
+    id: "atmosphere.clouds.coverage",
+    label: "Cloud coverage",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.45,
+    learn: { what: "How much of the sky the clouds cover.", why: "Scattered clouds read as fair weather; full coverage as overcast." },
+    brief: "Cloud coverage {value}.",
+    tags: ["clouds"]
+  }),
+  p5({
+    id: "atmosphere.clouds.softness",
+    label: "Cloud softness",
+    type: "float",
+    min: 0,
+    max: 0.5,
+    step: 0.01,
+    default: 0.06,
+    learn: { what: "How soft cloud edges are.", why: "Hard edges read as graphic, cel-painted clouds; soft ones as painted or real." },
+    brief: "Cloud edge softness {value}.",
+    tags: ["clouds"]
+  }),
+  p5({
+    id: "atmosphere.clouds.bands",
+    label: "Cloud shading bands",
+    type: "int",
+    min: 0,
+    max: 4,
+    step: 1,
+    default: 2,
+    learn: { what: "Flat tones of light inside each cloud (0 is smooth).", why: "Two tones (lit top, shaded belly) is the classic toon cloud." },
+    brief: "Clouds shaded in {value} bands.",
+    tags: ["clouds", "toon"]
+  }),
+  p5({
+    id: "atmosphere.clouds.scale",
+    label: "Cloud size",
+    type: "float",
+    min: 0.2,
+    max: 4,
+    step: 0.05,
+    unit: "×",
+    default: 1,
+    learn: { what: "Size of the cloud shapes.", why: "Large clouds feel calm and close; small ones feel high and far away." },
+    brief: "Cloud size ×{value}.",
+    tags: ["clouds"]
+  }),
+  p5({
+    id: "atmosphere.clouds.speed",
+    label: "Cloud drift",
+    type: "float",
+    min: 0,
+    max: 3,
+    step: 0.01,
+    default: 0.3,
+    learn: { what: "How fast clouds drift.", why: "Slow drift adds life to a still shot." },
+    brief: "Cloud drift {value}.",
+    tags: ["clouds", "motion"]
+  }),
+  p5({
+    id: "atmosphere.clouds.color",
+    label: "Cloud color",
+    type: "color",
+    default: "#ffffff",
+    learn: { what: "The lit color of the clouds.", why: "Tint it with the sun: white at noon, peach at sunset." },
+    brief: "Clouds {value}.",
+    tags: ["clouds", "color"]
+  }),
+  p5({
+    id: "atmosphere.clouds.shade",
+    label: "Cloud shadow color",
+    type: "color",
+    default: "#a9b8dc",
+    learn: { what: "The color of the clouds' shaded undersides.", why: "A cool, sky-tinted shade keeps clouds airy; gray reads as rain." },
+    brief: "Cloud shade {value}.",
+    tags: ["clouds", "color"]
   })
 ];
 
@@ -2336,6 +3566,411 @@ var media_default = [
     learn: { what: "Changes the grain pattern every frame.", why: "Moving grain reads as film; static grain reads as a texture printed on the screen." },
     brief: "Grain animates each frame.",
     tags: ["grain"]
+  }),
+  p8({
+    id: "media.kuwahara.enabled",
+    label: "Painterly (Kuwahara)",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: HEAVY,
+    learn: {
+      what: "An edge-preserving smoothing filter: each pixel takes the average color of the calmest neighborhood around it, so flat areas become brush-like patches while edges stay sharp.",
+      why: "Painters simplify: they describe a surface with a few strokes of nearly flat color. Kuwahara does the same to a render, which hides the geometry's regularity and reads as hand-painted.",
+      avoid: "Combining it with another medium (halftone, hatching, watercolor): two media read as noise. On phones, use a small radius at a lower render scale."
+    },
+    brief: "Kuwahara (painterly) filter.",
+    tags: ["painterly", "kuwahara", "paint", "media"]
+  }),
+  p8({
+    id: "media.kuwahara.radius",
+    label: "Brush size",
+    type: "int",
+    min: 1,
+    max: 8,
+    step: 1,
+    unit: "px@1080p",
+    default: 4,
+    enabledBy: "media.kuwahara.enabled",
+    learn: { what: "The filter radius: how big the paint patches get, in pixels at 1080p.", why: "Bigger brushes simplify more, like a looser painting; cost grows with the square of the radius.", typical: "3–5." },
+    brief: "Kuwahara radius {value} px at 1080p.",
+    tags: ["kuwahara"]
+  }),
+  p8({
+    id: "media.kuwahara.sharpness",
+    label: "Stroke sharpness",
+    type: "float",
+    min: 1,
+    max: 16,
+    step: 0.5,
+    default: 8,
+    enabledBy: "media.kuwahara.enabled",
+    learn: { what: "How strongly the calmest neighborhood wins. High values give crisp, flat strokes; low values blend them softly.", why: "Crisp strokes read as oil or gouache; soft ones as a dreamy blur." },
+    brief: "Stroke sharpness {value}.",
+    tags: ["kuwahara"]
+  }),
+  p8({
+    id: "media.watercolor.enabled",
+    label: "Watercolor",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: MEDIUM,
+    learn: {
+      what: "Imitates watercolor on paper: pigment pools and darkens at the edges of each shape, granulates in the dips of the paper, and the image wobbles and bleeds slightly.",
+      why: "Edge darkening is watercolor's signature: water carries pigment to the rim of a wet area as it dries. A render with darker rims and soft bleeds reads as painted.",
+      avoid: "Strong lines on top: real watercolor has no ink outlines (unless it's pen and wash)."
+    },
+    brief: "Watercolor simulation (edge darkening, granulation, wobble, bleed).",
+    tags: ["watercolor", "paint", "media"]
+  }),
+  p8({
+    id: "media.watercolor.edges",
+    label: "Edge darkening",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.45,
+    neutral: 0,
+    enabledBy: "media.watercolor.enabled",
+    learn: { what: "How much pigment pools at the edges of color areas.", why: "The darker rim is what makes a shape read as a watercolor wash." },
+    brief: "Edge darkening {value}.",
+    tags: ["watercolor"]
+  }),
+  p8({
+    id: "media.watercolor.granulation",
+    label: "Granulation",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.35,
+    neutral: 0,
+    enabledBy: "media.watercolor.enabled",
+    learn: { what: "Pigment settling into the paper's texture, strongest in darker washes.", why: "Granulation is the grain of real pigment; it makes flat color feel physical." },
+    brief: "Granulation {value}.",
+    tags: ["watercolor", "texture"]
+  }),
+  p8({
+    id: "media.watercolor.wobble",
+    label: "Wobble",
+    type: "float",
+    min: 0,
+    max: 8,
+    step: 0.1,
+    unit: "px@1080p",
+    default: 2.5,
+    neutral: 0,
+    enabledBy: "media.watercolor.enabled",
+    learn: { what: "Irregular displacement of the image, as if painted by hand.", why: "Hand-painted edges are never perfectly straight." },
+    brief: "Hand wobble {value} px at 1080p.",
+    tags: ["watercolor"]
+  }),
+  p8({
+    id: "media.watercolor.bleed",
+    label: "Bleed",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.3,
+    neutral: 0,
+    enabledBy: "media.watercolor.enabled",
+    learn: { what: "Colors softly running into each other.", why: "Wet-in-wet bleeding gives watercolor its loose, luminous feel." },
+    brief: "Color bleed {value}.",
+    tags: ["watercolor"]
+  }),
+  p8({
+    id: "media.halftone.enabled",
+    label: "Halftone (print)",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: CHEAP,
+    learn: {
+      what: "Rebuilds the image from dots whose size follows the tone, like printing. Mono uses one ink; CMYK prints four rotated screens of cyan, magenta, yellow and black.",
+      why: 'Visible print dots (Ben-Day dots) are the texture of comics and pop art: they say "printed page".',
+      avoid: "Very small dots on small screens: they turn into moiré. Keep dots at least 4 px at 1080p."
+    },
+    brief: "Halftone print screen.",
+    tags: ["halftone", "comic", "print", "media"]
+  }),
+  p8({
+    id: "media.halftone.mode",
+    label: "Halftone inks",
+    type: "enum",
+    default: "mono",
+    structural: true,
+    enabledBy: "media.halftone.enabled",
+    options: [{ value: "mono", label: "Mono (one ink)" }, { value: "cmyk", label: "CMYK (four screens)" }],
+    learn: { what: "One ink over paper, or the four process colors.", why: "Mono halftone is pop-art shading; CMYK reproduces the full image like a magazine." },
+    brief: "Halftone: {label}.",
+    tags: ["halftone", "cmyk"]
+  }),
+  p8({
+    id: "media.halftone.size",
+    label: "Dot size",
+    type: "float",
+    min: 2,
+    max: 24,
+    step: 0.5,
+    unit: "px@1080p",
+    default: 7,
+    enabledBy: "media.halftone.enabled",
+    learn: { what: "Distance between dot centers, in pixels at 1080p.", why: "Big dots are bold and graphic; small dots read as fine print." },
+    brief: "Halftone cells {value} px at 1080p.",
+    tags: ["halftone"]
+  }),
+  p8({
+    id: "media.halftone.angle",
+    label: "Screen angle",
+    type: "angle",
+    min: -90,
+    max: 90,
+    step: 1,
+    unit: "°",
+    default: 45,
+    enabledBy: "media.halftone.enabled",
+    learn: { what: "Rotation of the dot grid. In CMYK the other inks use their classic offsets from it (15°, 75°, 0°).", why: "45° hides the grid from the eye best, which is why black ink traditionally uses it." },
+    brief: "Screen angle {value}°.",
+    tags: ["halftone"]
+  }),
+  p8({
+    id: "media.halftone.shadows",
+    label: "Dots in shadows only",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0,
+    enabledBy: "media.halftone.enabled",
+    learn: { what: "0 prints dots everywhere; higher values keep the light tones clean and only screen the shadows.", why: "Comic colorists often screen only the shadows, so the lit shapes stay flat and bright." },
+    brief: "Dots limited to shadows (amount {value}).",
+    tags: ["halftone", "comic"]
+  }),
+  p8({
+    id: "media.halftone.amount",
+    label: "Halftone amount",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 1,
+    neutral: 0,
+    enabledBy: "media.halftone.enabled",
+    learn: { what: "Blends between the image and its halftone version.", why: "A partial halftone keeps the colors while adding the print texture." },
+    brief: "Halftone at {value}.",
+    tags: ["halftone"]
+  }),
+  p8({
+    id: "media.halftone.ink",
+    label: "Dot ink",
+    type: "color",
+    default: "#15131c",
+    enabledBy: "media.halftone.enabled",
+    learn: { what: "The ink color of mono halftone.", why: "A dark blue or brown ink is softer than black and still reads as print." },
+    brief: "Halftone ink {value}.",
+    tags: ["halftone", "color"]
+  }),
+  p8({
+    id: "media.hatching.enabled",
+    label: "Hatching (post)",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: CHEAP,
+    learn: {
+      what: "Draws parallel pen lines wherever the image is dark; darker tones add more layers at other angles (cross-hatching).",
+      why: "Engravers and comic inkers build tone from lines instead of gray. Hatching makes a render read as drawn.",
+      avoid: "Hatching on top of halftone or painterly filters: pick one medium."
+    },
+    brief: "Hatching in the dark tones.",
+    tags: ["hatching", "ink", "sketch", "media"]
+  }),
+  p8({
+    id: "media.hatching.layers",
+    label: "Hatch layers",
+    type: "int",
+    min: 1,
+    max: 4,
+    step: 1,
+    default: 3,
+    enabledBy: "media.hatching.enabled",
+    learn: { what: "How many crossing layers the darkest tones get.", why: "One layer is light shading; three or four is dense engraving." },
+    brief: "Up to {value} hatch layers.",
+    tags: ["hatching"]
+  }),
+  p8({
+    id: "media.hatching.spacing",
+    label: "Line spacing",
+    type: "float",
+    min: 2,
+    max: 24,
+    step: 0.5,
+    unit: "px@1080p",
+    default: 6,
+    enabledBy: "media.hatching.enabled",
+    learn: { what: "Distance between hatch lines, in pixels at 1080p.", why: "Tight lines read as fine pen work, wide ones as bold marker." },
+    brief: "Hatch spacing {value} px at 1080p.",
+    tags: ["hatching"]
+  }),
+  p8({
+    id: "media.hatching.angle",
+    label: "Hatch angle",
+    type: "angle",
+    min: -90,
+    max: 90,
+    step: 1,
+    unit: "°",
+    default: 45,
+    enabledBy: "media.hatching.enabled",
+    learn: { what: "Angle of the first layer; the next layers cross it.", why: "Right-handed artists naturally hatch at about 45°, bottom-left to top-right." },
+    brief: "First hatch layer at {value}°.",
+    tags: ["hatching"]
+  }),
+  p8({
+    id: "media.hatching.threshold",
+    label: "Hatch threshold",
+    type: "float",
+    min: 0.05,
+    max: 1,
+    step: 0.01,
+    default: 0.55,
+    enabledBy: "media.hatching.enabled",
+    learn: { what: "Brightness below which the first layer of lines appears.", why: "A low threshold keeps hatching in the deep shadows; a high one hatches most of the image." },
+    brief: "Hatching below brightness {value}.",
+    tags: ["hatching"]
+  }),
+  p8({
+    id: "media.hatching.amount",
+    label: "Hatch strength",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.85,
+    neutral: 0,
+    enabledBy: "media.hatching.enabled",
+    learn: { what: "How dark the hatch lines are.", why: "Light hatching adds texture; full strength draws solid ink lines." },
+    brief: "Hatch strength {value}.",
+    tags: ["hatching"]
+  }),
+  p8({
+    id: "media.hatching.color",
+    label: "Hatch ink",
+    type: "color",
+    default: "#1d1a24",
+    enabledBy: "media.hatching.enabled",
+    learn: { what: "The color of the hatch lines.", why: "Graphite gray reads as pencil; near-black as ink." },
+    brief: "Hatch ink {value}.",
+    tags: ["hatching", "color"]
+  }),
+  p8({
+    id: "media.misregistration.enabled",
+    label: "Print misregistration",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: CHEAP,
+    learn: {
+      what: "Offsets the color plates slightly, as when a printing press is out of alignment.",
+      why: "Cheap comics and screen prints are never perfectly aligned; the colored fringes sell the printed look."
+    },
+    brief: "CMYK plate misregistration.",
+    tags: ["print", "comic", "media"]
+  }),
+  p8({
+    id: "media.misregistration.offset",
+    label: "Plate offset",
+    type: "float",
+    min: 0,
+    max: 8,
+    step: 0.1,
+    unit: "px@1080p",
+    default: 1.2,
+    neutral: 0,
+    enabledBy: "media.misregistration.enabled",
+    learn: { what: "How far the plates are out of alignment.", why: "1–2 px is believable; more is a deliberate pop-art statement." },
+    brief: "Plates offset {value} px at 1080p.",
+    tags: ["print"]
+  }),
+  p8({
+    id: "media.misregistration.angle",
+    label: "Offset direction",
+    type: "angle",
+    min: -180,
+    max: 180,
+    step: 1,
+    unit: "°",
+    default: 30,
+    enabledBy: "media.misregistration.enabled",
+    learn: { what: "Direction of the offset.", why: "Diagonal offsets show on both horizontal and vertical edges." },
+    brief: "Offset at {value}°.",
+    tags: ["print"]
+  }),
+  p8({
+    id: "media.paper.enabled",
+    label: "Paper",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: CHEAP,
+    learn: {
+      what: "Prints the image onto a paper or canvas texture: the color is multiplied by the paper, so ink and paint take on its grain.",
+      why: "A medium needs a surface. Paper texture turns a clean digital image into an object, and ties lines and paint together."
+    },
+    brief: "Paper texture under the image.",
+    tags: ["paper", "texture", "media"]
+  }),
+  p8({
+    id: "media.paper.type",
+    label: "Paper type",
+    type: "enum",
+    default: "newsprint",
+    enabledBy: "media.paper.enabled",
+    options: [{ value: "newsprint", label: "Newsprint" }, { value: "watercolor", label: "Watercolor (cold press)" }, { value: "canvas", label: "Canvas" }, { value: "kraft", label: "Kraft" }],
+    learn: { what: "Which surface: smooth newsprint fibers, bumpy cold-press, woven canvas, or brown kraft.", why: "Each medium belongs to its surface: comics to newsprint, washes to cold-press, oils to canvas." },
+    brief: "Paper: {label}.",
+    tags: ["paper"]
+  }),
+  p8({
+    id: "media.paper.color",
+    label: "Paper color",
+    type: "color",
+    default: "#f3ead3",
+    enabledBy: "media.paper.enabled",
+    learn: { what: "The paper tint the image is printed on.", why: "Off-white paper warms every color slightly and lifts the blacks, like real print." },
+    brief: "Paper color {value}.",
+    tags: ["paper", "color"]
+  }),
+  p8({
+    id: "media.paper.strength",
+    label: "Paper strength",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.4,
+    neutral: 0,
+    enabledBy: "media.paper.enabled",
+    learn: { what: "How visible the paper texture and tint are.", why: "Subtle paper adds tactility without fighting the image." },
+    brief: "Paper strength {value}.",
+    tags: ["paper"]
+  }),
+  p8({
+    id: "media.paper.scale",
+    label: "Paper grain size",
+    type: "float",
+    min: 0.25,
+    max: 4,
+    step: 0.05,
+    unit: "×",
+    default: 1,
+    enabledBy: "media.paper.enabled",
+    learn: { what: "Size of the paper grain.", why: "Match it to the medium: fine for pen, coarse for paint." },
+    brief: "Paper grain ×{value}.",
+    tags: ["paper"]
   })
 ];
 
@@ -2598,6 +4233,23 @@ var motion_default = [
     },
     brief: "Animation stepped at {value} fps (camera smooth); 0 = continuous.",
     tags: ["motion", "animation", "on twos"]
+  }),
+  p10({
+    id: "motion.boil.fps",
+    label: "Line boil",
+    type: "int",
+    min: 0,
+    max: 24,
+    step: 1,
+    unit: "fps",
+    default: 0,
+    learn: {
+      what: 'Redraws the line wobble this many times per second, so lines "boil" like hand-drawn animation. 0 keeps the wobble still.',
+      why: "In traditional animation every frame is redrawn, so lines shimmer slightly. Boil at 8–12 fps makes a still scene feel alive and drawn.",
+      avoid: "High boil rates: above about 12 fps it reads as noise, not drawing."
+    },
+    brief: "Line boil at {value} fps (0 = static).",
+    tags: ["motion", "lines", "boil", "hand-drawn"]
   })
 ];
 
@@ -2620,6 +4272,29 @@ var quality_default = [
     },
     brief: "Render at {value}× resolution.",
     tags: ["quality", "performance"]
+  }),
+  p11({
+    id: "quality.aa",
+    label: "Anti-aliasing",
+    type: "enum",
+    default: "auto",
+    structural: true,
+    cost: { ...CHEAP, fpe: 0.4 },
+    options: [
+      { value: "auto", label: "Auto (MSAA, or FXAA with extra buffers)" },
+      { value: "none", label: "None" },
+      { value: "fxaa", label: "FXAA (fast, soft)" },
+      { value: "smaa", label: "SMAA (sharper edges)" },
+      { value: "msaa", label: "MSAA 4× (geometry edges)" },
+      { value: "traa", label: "TRAA (temporal, smoothest)" }
+    ],
+    learn: {
+      what: "How jagged edges are smoothed. MSAA samples geometry edges while rendering; FXAA and SMAA blur edges they detect afterwards; TRAA jitters the camera and blends frames over time.",
+      why: "Clean edges matter most for line-heavy styles. MSAA is cheap on phones (tile-based GPUs resolve it on chip) but can't be used with the ids buffer, so Auto switches to FXAA when lines need it. Pixel looks skip AA: their hard pixels are the point.",
+      avoid: "TRAA with fast motion or retro looks: it ghosts slightly and smooths away pixel crispness."
+    },
+    brief: "Anti-aliasing: {label}.",
+    tags: ["quality", "aa", "performance"]
   })
 ];
 
@@ -2657,137 +4332,16 @@ function defaults() {
 }
 var clone = (v) => Array.isArray(v) ? [...v] : v;
 
-// src/runtime/color/color.js
-var color_exports = {};
-__export(color_exports, {
-  adjustHex: () => adjustHex,
-  hexToLinear: () => hexToLinear,
-  hexToOklab: () => hexToOklab,
-  hexToRgb: () => hexToRgb,
-  isHex: () => isHex,
-  kelvinToLinear: () => kelvinToLinear,
-  linearToHex: () => linearToHex,
-  linearToOklab: () => linearToOklab,
-  linearToSrgb: () => linearToSrgb,
-  luminanceOfHex: () => luminanceOfHex,
-  mixHex: () => mixHex,
-  oklabToHex: () => oklabToHex,
-  oklabToLinear: () => oklabToLinear,
-  oklabToOklch: () => oklabToOklch,
-  oklchToOklab: () => oklchToOklab,
-  remapToPalette: () => remapToPalette,
-  rgbToHex: () => rgbToHex,
-  srgbToLinear: () => srgbToLinear,
-  whiteBalanceGains: () => whiteBalanceGains
-});
-var clamp01 = (x) => Math.min(1, Math.max(0, x));
-function hexToRgb(hex) {
-  let h = String(hex).trim().replace(/^#/, "");
-  if (h.length === 3) h = h.replace(/./g, (c) => c + c);
-  if (!/^[0-9a-f]{6}$/i.test(h)) throw new Error(`Not a hex color: ${hex}`);
-  const n = parseInt(h, 16);
-  return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255];
-}
-function rgbToHex([r, g, b]) {
-  const to = (x) => Math.round(clamp01(x) * 255).toString(16).padStart(2, "0");
-  return `#${to(r)}${to(g)}${to(b)}`;
-}
-var isHex = (v) => typeof v === "string" && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v);
-var srgbToLinear = (c) => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-var linearToSrgb = (c) => c <= 31308e-7 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
-var hexToLinear = (hex) => hexToRgb(hex).map(srgbToLinear);
-var linearToHex = (rgb) => rgbToHex(rgb.map((c) => linearToSrgb(Math.max(0, c))));
-function linearToOklab([r, g, b]) {
-  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
-  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
-  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
-  return [
-    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
-    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
-    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s
-  ];
-}
-function oklabToLinear([L, a, b]) {
-  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
-  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
-  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
-  return [
-    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s
-  ];
-}
-var hexToOklab = (hex) => linearToOklab(hexToLinear(hex));
-var oklabToHex = (lab) => linearToHex(oklabToLinear(lab));
-function oklabToOklch([L, a, b]) {
-  return [L, Math.hypot(a, b), Math.atan2(b, a) * 180 / Math.PI];
-}
-function oklchToOklab([L, C, h]) {
-  const r = h * Math.PI / 180;
-  return [L, C * Math.cos(r), C * Math.sin(r)];
-}
-function mixHex(a, b, t) {
-  const p12 = hexToOklab(a), q = hexToOklab(b);
-  return oklabToHex(p12.map((v, i) => v + (q[i] - v) * t));
-}
-function adjustHex(hex, { saturation: saturation2 = 1, value = 1, hue: hue2 = 0 } = {}) {
-  if (saturation2 === 1 && value === 1 && hue2 === 0) return hex.toLowerCase();
-  const [L, C, h] = oklabToOklch(hexToOklab(hex));
-  return oklabToHex(oklchToOklab([clamp01(L * value), C * saturation2, h + hue2]));
-}
-function remapToPalette(hex, palette, { keepValue = true } = {}) {
-  if (!palette || palette.length === 0) return hex.toLowerCase();
-  const lab = hexToOklab(hex);
-  let best = null, bestD = Infinity;
-  for (const entry of palette) {
-    const p12 = hexToOklab(entry);
-    const d = 0.5 * (p12[0] - lab[0]) ** 2 + (p12[1] - lab[1]) ** 2 + (p12[2] - lab[2]) ** 2;
-    if (d < bestD) {
-      bestD = d;
-      best = p12;
-    }
-  }
-  return oklabToHex(keepValue ? [(lab[0] + best[0]) / 2, best[1], best[2]] : best);
-}
-function kelvinToLinear(kelvin) {
-  const t = Math.min(4e4, Math.max(1e3, kelvin)) / 100;
-  let r, g, b;
-  if (t <= 66) {
-    r = 255;
-    g = 99.4708025861 * Math.log(t) - 161.1195681661;
-    b = t <= 19 ? 0 : 138.5177312231 * Math.log(t - 10) - 305.0447927307;
-  } else {
-    r = 329.698727446 * Math.pow(t - 60, -0.1332047592);
-    g = 288.1221695283 * Math.pow(t - 60, -0.0755148492);
-    b = 255;
-  }
-  const lin = [r, g, b].map((c) => srgbToLinear(clamp01(c / 255)));
-  const y = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
-  return lin.map((c) => c / y);
-}
-function whiteBalanceGains(temperature = 0, tint = 0) {
-  const light = kelvinToLinear(6500 * Math.pow(2, -temperature));
-  const ref = kelvinToLinear(6500);
-  const gains = light.map((c, i) => c / ref[i]);
-  gains[1] *= 1 - tint * 0.2;
-  const y = 0.2126 * gains[0] + 0.7152 * gains[1] + 0.0722 * gains[2];
-  return gains.map((c) => c / y);
-}
-var luminanceOfHex = (hex) => {
-  const [r, g, b] = hexToLinear(hex);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-};
-
 // src/runtime/materials/factory.js
 var LAYER_STYLED = 1;
 var LAYER_PLAIN = 2;
-var objectIdNode = Fn3(() => {
+var objectIdNode = Fn4(() => {
   const t = modelWorldMatrix.element(3).xyz;
-  const h = fract(sin(dot(t, vec32(12.9898, 78.233, 37.719))).mul(43758.5453));
-  return floor(h.mul(254)).add(1).div(255);
+  const h = fract3(sin3(dot3(t, vec34(12.9898, 78.233, 37.719))).mul(43758.5453));
+  return floor3(h.mul(254)).add(1).div(255);
 });
 var idsNode = (part) => vec4(PART_INDEX[part] / 255, objectIdNode(), 0, 1);
-var deformKey = (s) => s.wave ? `wave:${s.wave.amplitude}/${s.wave.frequency}/${s.wave.falloff ?? 90}` : s.wind ? `wind:${s.wind.strength}/${s.wind.height}` : "";
+var deformKey = (s, wind = s.wind) => s.wave ? `wave:${s.wave.amplitude}/${s.wave.frequency}/${s.wave.falloff ?? 90}` : wind ? `wind:${wind.strength}/${wind.height}` : "";
 var styleKey = (s) => [s.color, s.emissive, s.emissiveIntensity, s.roughness, s.metalness ?? 0, s.opacity ?? 1, deformKey(s), s.doubleSided, s.map?.uuid ?? "", s.vertexColors ? "vc" : ""].join("|");
 function paletteColor(hex, v) {
   let c = hex.toLowerCase();
@@ -2795,7 +4349,60 @@ function paletteColor(hex, v) {
   if (v["palette.tintAmount"] > 0) c = mixHex(c, v["palette.tint"], v["palette.tintAmount"]);
   return adjustHex(c, { saturation: v["palette.saturation"], value: v["palette.value"], hue: v["palette.hue"] });
 }
-var structKey = (v, blobs) => [v["surface.model"], v["surface.model"] === "pbr" ? 0 : v["surface.bands"], v["surface.flatNormals"] ? "flat" : "", v["retro.vertexSnap.enabled"] ? "snap" : "", blobs ? "blob" : ""].join("|");
+var structKey = (v, blobs) => [
+  v["surface.model"],
+  v["surface.model"] === "pbr" ? 0 : v["surface.bands"],
+  v["surface.flatNormals"] ? "flat" : "",
+  v["retro.vertexSnap.enabled"] ? "snap" : "",
+  v["surface.halftone.enabled"] ? `dots-${v["surface.halftone.space"]}` : "",
+  v["surface.hatching.enabled"] ? `hatch-${v["surface.hatching.space"]}` : "",
+  v["surface.dither.enabled"] ? "dither" : "",
+  v["surface.variation.enabled"] ? `var-${v["surface.variation.space"]}` : "",
+  v["surface.gradient.enabled"] ? "grad" : "",
+  v["surface.wind.enabled"] ? "wind" : "",
+  blobs ? "blob" : ""
+].join("|");
+var SURFACE_UNIFORMS = {
+  "surface.threshold": "threshold",
+  "surface.softness": "softness",
+  "surface.shadowTintStrength": "tintStrength",
+  "surface.spec.intensity": "specIntensity",
+  "surface.spec.size": "specSize",
+  "surface.spec.softness": "specSoftness",
+  "surface.rim.intensity": "rimIntensity",
+  "surface.rim.width": "rimWidth",
+  "surface.rim.softness": "rimSoftness",
+  "surface.halftone.size": "halftoneSize",
+  "surface.halftone.angle": "halftoneAngle",
+  "surface.halftone.threshold": "halftoneThreshold",
+  "surface.halftone.amount": "halftoneAmount",
+  "surface.hatching.spacing": "hatchSpacing",
+  "surface.hatching.angle": "hatchAngle",
+  "surface.hatching.layers": "hatchLayers",
+  "surface.hatching.threshold": "hatchThreshold",
+  "surface.hatching.amount": "hatchAmount",
+  "surface.variation.amount": "variationAmount",
+  "surface.variation.scale": "variationScale",
+  "surface.variation.hue": "variationHue",
+  "surface.gradient.amount": "gradientAmount",
+  "surface.gradient.height": "gradientHeight",
+  "surface.water.depth": "waterDepth",
+  "surface.water.bands": "waterBands",
+  "surface.water.foam": "waterFoam",
+  "surface.water.pattern": "waterPattern",
+  "surface.wind.strength": "windStrength",
+  "surface.wind.speed": "windSpeed",
+  "surface.wind.gusts": "windGusts"
+};
+var SURFACE_COLORS = {
+  "surface.shadowTint": "shadowTint",
+  "surface.rim.color": "rimColor",
+  "surface.halftone.color": "halftoneColor",
+  "surface.hatching.color": "hatchColor",
+  "surface.water.shallow": "waterShallow",
+  "surface.water.deep": "waterDeep",
+  "surface.water.foamColor": "waterFoamColor"
+};
 var StyleMaterials = class {
   /**
    * @param {object} o
@@ -2807,10 +4414,10 @@ var StyleMaterials = class {
     this.keyDirection = keyDirection;
     this.parts = Object.fromEntries(PARTS.map((p12) => [p12, {
       surface: createSurfaceUniforms(),
-      hullColor: uniform3(new THREE2.Color("#1b1d2a")),
-      hullThickness: uniform3(1.5),
+      hullColor: uniform4(new THREE3.Color("#1b1d2a")),
+      hullThickness: uniform4(1.5),
       hullEnabled: false,
-      snapRows: uniform3(120),
+      snapRows: uniform4(120),
       struct: null,
       values: null
     }]));
@@ -2825,27 +4432,76 @@ var StyleMaterials = class {
     if (!wave) return null;
     const { amplitude, frequency, falloff = 90 } = wave;
     const t = this.time;
-    const fade = smoothstep3(falloff, falloff * 0.4, positionLocal.xz.length());
-    const y = sin(positionLocal.x.mul(frequency).add(t)).mul(cos(positionLocal.z.mul(frequency * 0.8).add(t.mul(0.7)))).mul(amplitude).mul(fade);
-    return positionLocal.add(vec32(0, y, 0));
+    const fade = smoothstep5(falloff, falloff * 0.4, positionLocal.xz.length());
+    const y = sin3(positionLocal.x.mul(frequency).add(t)).mul(cos3(positionLocal.z.mul(frequency * 0.8).add(t.mul(0.7)))).mul(amplitude).mul(fade);
+    return positionLocal.add(vec34(0, y, 0));
   }
-  /** Grass and foliage sway: offset grows with height above the mesh origin. */
-  windNode(wind) {
+  /**
+   * Grass and foliage sway: offset grows with height above the mesh origin. With a part's
+   * uniforms (`u`), the look scales strength and speed and adds gusts; the plain twin
+   * passes none and keeps the scene's own motion.
+   */
+  windNode(wind, u = null) {
     const { strength = 0.12, height = 0.5 } = wind;
-    const t = this.time;
+    const t = u ? this.time.mul(u.windSpeed) : this.time;
     const h = positionLocal.y.div(height).clamp(0, 1.5).pow(2);
-    const phase = positionLocal.x.mul(0.35).add(positionLocal.z.mul(0.2));
-    const sway = sin(t.mul(1.7).add(phase)).add(sin(t.mul(3.1).add(positionLocal.x.mul(0.9))).mul(0.3)).mul(strength);
-    return positionLocal.add(vec32(sway, 0, sway.mul(0.6)).mul(h));
+    const origin = modelWorldMatrix.element(3).xz;
+    const phase = positionLocal.x.mul(0.35).add(positionLocal.z.mul(0.2)).add(origin.x.mul(0.13)).add(origin.y.mul(0.07));
+    let sway = sin3(t.mul(1.7).add(phase)).add(sin3(t.mul(3.1).add(positionLocal.x.mul(0.9))).mul(0.3)).mul(strength);
+    if (u) sway = sway.mul(u.windStrength).mul(sin3(t.mul(0.45).add(origin.x.mul(0.06)).add(origin.y.mul(0.04))).mul(u.windGusts).add(1));
+    return positionLocal.add(vec34(sway, 0, sway.mul(0.6)).mul(h));
   }
-  deformNode(style) {
-    return style.wave ? this.waveNode(style.wave) : style.wind ? this.windNode(style.wind) : null;
+  deformNode(style, wind = style.wind, u = null) {
+    return style.wave ? this.waveNode(style.wave) : wind ? this.windNode(wind, u) : null;
+  }
+  /** Wind for a mesh of a part with Wind sway on: the kit's own, or a gentle sway scaled to the mesh. */
+  effectiveWind(entry) {
+    if (entry.style.wind) return entry.style.wind;
+    if (!this.parts[entry.part].values["surface.wind.enabled"] || entry.style.wave) return null;
+    const g = entry.mesh.geometry;
+    if (!g.boundingBox) g.computeBoundingBox();
+    const height = Math.max(0.3, g.boundingBox.max.y);
+    return { strength: Math.min(0.25, 0.03 * height), height };
+  }
+  /** Toon water's base color: banded depth color, shore foam and drifting foam lines. */
+  waterColorNode(u) {
+    return Fn4(() => {
+      const sceneZ = perspectiveDepthToViewZ(viewportDepthTexture().r, cameraNear, cameraFar);
+      const depth = positionView.z.sub(sceneZ).max(0);
+      const t = depth.div(u.waterDepth).clamp(0, 1).toVar();
+      const banded = floor3(t.mul(u.waterBands).add(0.5)).div(u.waterBands.max(1));
+      const k = mix5(t, banded, step5(0.5, u.waterBands));
+      const base = mix5(u.waterShallow, u.waterDeep, k);
+      const foam = smoothstep5(u.waterFoam.mul(0.7), u.waterFoam, depth).oneMinus().mul(step5(1e-3, u.waterFoam));
+      const cells2 = mx_worley_noise_float(vec34(positionWorld3.xz.mul(0.22), this.time.mul(0.15)));
+      const lines = smoothstep5(0.62, 0.7, cells2).mul(u.waterPattern);
+      return mix5(base, u.waterFoamColor, foam.max(lines));
+    })();
+  }
+  /** The styled base color: material (or toon water) → color variation → vertical gradient → blob shadows. */
+  colorNode(v, u, blobs) {
+    const water = v["surface.model"] === "toonWater";
+    const variation = v["surface.variation.enabled"], gradient = v["surface.gradient.enabled"];
+    if (!water && !variation && !gradient && !blobs) return null;
+    let c = water ? this.waterColorNode(u) : materialColor.rgb;
+    if (variation) {
+      const p12 = v["surface.variation.space"] === "object" ? positionLocal : positionWorld3;
+      const n = mx_noise_float(p12.mul(u.variationScale)).mul(2).clamp(-1, 1);
+      const amount = u.variationAmount.mul(n);
+      c = hue(c.mul(amount.mul(u.variationHue.oneMinus()).add(1)), amount.mul(u.variationHue).mul(2.5));
+    }
+    if (gradient) {
+      const h = positionWorld3.y.sub(modelWorldMatrix.element(3).y).div(u.gradientHeight).clamp(0, 1);
+      c = c.mul(mix5(u.gradientAmount.oneMinus(), u.gradientAmount.mul(0.35).add(1), h));
+    }
+    if (blobs) c = c.mul(float4(1).sub(this.blobs.shade()));
+    return vec4(c, materialColor.a);
   }
   /** Settings shared by the styled and plain twins of a mesh. */
   common(material, style) {
-    material.side = style.doubleSided ? THREE2.DoubleSide : THREE2.FrontSide;
+    material.side = style.doubleSided ? THREE3.DoubleSide : THREE3.FrontSide;
     if (style.emissive) {
-      material.emissive = new THREE2.Color(style.emissive);
+      material.emissive = new THREE3.Color(style.emissive);
       material.emissiveIntensity = style.emissiveIntensity;
     }
     material.positionNode = this.deformNode(style);
@@ -2857,19 +4513,32 @@ var StyleMaterials = class {
     if (style.map) material.map = style.map;
     if (style.vertexColors) material.vertexColors = true;
   }
-  styledMaterial(style, part) {
+  /** The styled material of a mesh entry ({ mesh, style, part }), cached by part structure and style. */
+  styledMaterial(entry) {
+    const { style, part } = entry;
     const pv = this.parts[part];
-    const key = `${part}|${pv.struct}|${styleKey(style)}`;
+    const wind = this.effectiveWind(entry);
+    const key = `${part}|${pv.struct}|${styleKey(style)}|${deformKey(style, wind)}`;
     let material = this.styled.get(key);
     if (material) return material;
     const v = pv.values;
-    const surface = { model: v["surface.model"], bands: v["surface.bands"], uniforms: pv.surface };
+    const patterns = {
+      halftone: v["surface.halftone.enabled"] ? v["surface.halftone.space"] : null,
+      hatching: v["surface.hatching.enabled"] ? v["surface.hatching.space"] : null,
+      dither: v["surface.dither.enabled"]
+    };
+    const surface = { model: v["surface.model"], bands: v["surface.bands"], uniforms: pv.surface, patterns };
     material = surface.model === "pbr" ? new StyleStandardMaterial(surface, this.keyDirection, { roughness: style.roughness, metalness: style.metalness ?? 0 }) : new StyleSurfaceMaterial(surface);
     material.name = `style:${part}:${surface.model}`;
     material.flatShading = v["surface.flatNormals"];
     this.common(material, style);
+    material.positionNode = this.deformNode(style, wind, pv.surface);
     if (v["retro.vertexSnap.enabled"]) material.vertexNode = snapClip(TSL, modelViewProjection, pv.snapRows);
-    if (pv.struct.endsWith("blob")) material.colorNode = materialColor.mul(float3(1).sub(this.blobs.shade()));
+    material.colorNode = this.colorNode(v, pv.surface, pv.struct.endsWith("blob"));
+    if (surface.model === "toonWater") {
+      material.transparent = true;
+      material.depthWrite = true;
+    }
     material.mrtNode = mrt({ output, ids: idsNode(part) });
     material.userData = { sourceColor: style.color, part, key };
     material.color.set(paletteColor(style.color, v));
@@ -2881,7 +4550,7 @@ var StyleMaterials = class {
     const key = styleKey(style);
     let material = this.plain.get(key);
     if (material) return material;
-    material = new THREE2.MeshStandardNodeMaterial({ color: new THREE2.Color(style.color), roughness: style.roughness ?? 0.8, metalness: style.metalness ?? 0, fog: false });
+    material = new THREE3.MeshStandardNodeMaterial({ color: new THREE3.Color(style.color), roughness: style.roughness ?? 0.8, metalness: style.metalness ?? 0, fog: false });
     material.name = "plain";
     this.common(material, style);
     this.plain.set(key, material);
@@ -2893,7 +4562,7 @@ var StyleMaterials = class {
     const key = `${part}|${snap ? "snap" : ""}`;
     let material = this.hulls.get(key);
     if (material) return material;
-    material = createHullMaterial({ THREE: THREE2, TSL, color: pv.hullColor, thickness: pv.hullThickness, snapRows: snap ? pv.snapRows : null });
+    material = createHullMaterial({ THREE: THREE3, TSL, color: pv.hullColor, thickness: pv.hullThickness, snapRows: snap ? pv.snapRows : null });
     material.name = `hull:${part}`;
     material.mrtNode = mrt({ output, ids: idsNode(part) });
     this.hulls.set(key, material);
@@ -2908,9 +4577,10 @@ var StyleMaterials = class {
     });
     for (const mesh of meshes) {
       const style = mesh.userData.style;
-      mesh.material = this.styledMaterial(style, style.part);
+      const entry = { mesh, style, part: style.part, plain: null, hull: null };
+      mesh.material = this.styledMaterial(entry);
       mesh.layers.set(LAYER_STYLED);
-      const plain = mesh.isSkinnedMesh ? new THREE2.SkinnedMesh(mesh.geometry, this.plainMaterial(style)) : new THREE2.Mesh(mesh.geometry, this.plainMaterial(style));
+      const plain = mesh.isSkinnedMesh ? new THREE3.SkinnedMesh(mesh.geometry, this.plainMaterial(style)) : new THREE3.Mesh(mesh.geometry, this.plainMaterial(style));
       if (mesh.isSkinnedMesh) {
         plain.bindMode = mesh.bindMode;
         plain.bind(mesh.skeleton, mesh.bindMatrix);
@@ -2921,7 +4591,7 @@ var StyleMaterials = class {
       plain.castShadow = mesh.castShadow;
       plain.receiveShadow = mesh.receiveShadow;
       mesh.add(plain);
-      const entry = { mesh, style, part: style.part, plain, hull: null };
+      entry.plain = plain;
       this.entries.push(entry);
       this.updateHull(entry);
     }
@@ -2929,11 +4599,11 @@ var StyleMaterials = class {
   updateHull(entry) {
     const pv = this.parts[entry.part];
     const s = entry.style;
-    const want = pv.hullEnabled && pv.hullThickness.value > 0.01 && !s.wave && !s.wind && !entry.mesh.isSkinnedMesh && (s.opacity ?? 1) >= 1;
+    const want = pv.hullEnabled && pv.hullThickness.value > 0.01 && !s.wave && !this.effectiveWind(entry) && !entry.mesh.isSkinnedMesh && (s.opacity ?? 1) >= 1;
     if (want && !entry.hull) {
       const g = entry.mesh.geometry;
       if (!g.getAttribute("outlineNormal")) computeOutlineNormals(g);
-      const hull = new THREE2.Mesh(g, this.hullMaterial(entry.part));
+      const hull = new THREE3.Mesh(g, this.hullMaterial(entry.part));
       hull.name = "hull";
       hull.layers.set(LAYER_STYLED);
       hull.castShadow = hull.receiveShadow = false;
@@ -2964,17 +4634,8 @@ var StyleMaterials = class {
       const v = parts[part];
       pv.values = v;
       const u = pv.surface;
-      u.threshold.value = v["surface.threshold"];
-      u.softness.value = v["surface.softness"];
-      u.shadowTint.value.set(v["surface.shadowTint"]);
-      u.tintStrength.value = v["surface.shadowTintStrength"];
-      u.specIntensity.value = v["surface.spec.intensity"];
-      u.specSize.value = v["surface.spec.size"];
-      u.specSoftness.value = v["surface.spec.softness"];
-      u.rimIntensity.value = v["surface.rim.intensity"];
-      u.rimWidth.value = v["surface.rim.width"];
-      u.rimSoftness.value = v["surface.rim.softness"];
-      u.rimColor.value.set(v["surface.rim.color"]);
+      for (const [id, name] of Object.entries(SURFACE_UNIFORMS)) u[name].value = v[id];
+      for (const [id, name] of Object.entries(SURFACE_COLORS)) u[name].value.set(v[id]);
       u.rimLitSide.value = v["surface.rim.litSide"] ? 1 : 0;
       pv.hullColor.value.set(v["lines.hull.color"]);
       pv.hullThickness.value = v["lines.hull.thickness"];
@@ -2987,7 +4648,7 @@ var StyleMaterials = class {
       }
     }
     for (const entry of this.entries) {
-      if (rebuilt.includes(entry.part)) entry.mesh.material = this.styledMaterial(entry.style, entry.part);
+      if (rebuilt.includes(entry.part)) entry.mesh.material = this.styledMaterial(entry);
       this.updateHull(entry);
     }
     for (const material of this.styled.values()) material.color.set(paletteColor(material.userData.sourceColor, this.parts[material.userData.part].values));
@@ -2999,7 +4660,7 @@ var StyleMaterials = class {
     const entry = this.entries.find((e) => e.mesh === mesh);
     if (!entry || !this.parts[part]) return false;
     entry.part = entry.style.part = part;
-    entry.mesh.material = this.styledMaterial(entry.style, part);
+    entry.mesh.material = this.styledMaterial(entry);
     if (entry.hull) {
       entry.mesh.remove(entry.hull);
       entry.hull = null;
@@ -3033,62 +4694,98 @@ var StyleMaterials = class {
 };
 
 // src/runtime/atmosphere/atmosphere.js
-import * as THREE3 from "three/webgpu";
-import { Fn as Fn4, uniform as uniform4, vec3 as vec33, float as float4, mix as mix2, smoothstep as smoothstep4, step as step3, select as select2, exp, floor as floor2, fract as fract2, fwidth as fwidth2, max as max3, acos, clamp, positionWorld as positionWorld2, positionView, cameraPosition, fog, mrt as mrt2, output as output2 } from "three/tsl";
+import * as THREE4 from "three/webgpu";
+import { Fn as Fn5, uniform as uniform5, vec2 as vec23, vec3 as vec35, float as float5, mix as mix6, smoothstep as smoothstep6, step as step6, select as select4, exp, floor as floor4, fract as fract4, fwidth as fwidth3, max as max5, abs as abs2, acos, clamp, positionWorld as positionWorld4, positionView as positionView2, cameraPosition, fog, mrt as mrt2, output as output2, mx_fractal_noise_float } from "three/tsl";
 function createAtmosphereUniforms() {
   return {
-    zenith: uniform4(new THREE3.Color("#87ceeb")),
-    horizon: uniform4(new THREE3.Color("#87ceeb")),
-    ground: uniform4(new THREE3.Color("#87ceeb")),
-    exponent: uniform4(1),
-    sunDirection: uniform4(new THREE3.Vector3(0, 1, 0)),
-    sunColor: uniform4(new THREE3.Color("#ffffff")),
-    sunRadius: uniform4(0),
+    zenith: uniform5(new THREE4.Color("#87ceeb")),
+    horizon: uniform5(new THREE4.Color("#87ceeb")),
+    ground: uniform5(new THREE4.Color("#87ceeb")),
+    exponent: uniform5(1),
+    sunDirection: uniform5(new THREE4.Vector3(0, 1, 0)),
+    sunColor: uniform5(new THREE4.Color("#ffffff")),
+    sunRadius: uniform5(0),
     // radians
-    sunSoftness: uniform4(0.5),
-    fogType: uniform4(0),
+    sunSoftness: uniform5(0.5),
+    fogType: uniform5(0),
     // 0 off · 1 linear · 2 exp · 3 exp2
-    fogAmount: uniform4(1),
-    fogDensity: uniform4(8e-3),
-    fogStart: uniform4(10),
-    fogEnd: uniform4(200),
-    fogColor: uniform4(new THREE3.Color("#c8dcf0")),
-    fogSkyTint: uniform4(1),
-    fogBands: uniform4(0)
+    fogAmount: uniform5(1),
+    fogDensity: uniform5(8e-3),
+    fogStart: uniform5(10),
+    fogEnd: uniform5(200),
+    fogColor: uniform5(new THREE4.Color("#c8dcf0")),
+    fogSkyTint: uniform5(1),
+    fogBands: uniform5(0),
+    heightDensity: uniform5(0),
+    heightBase: uniform5(0),
+    heightFalloff: uniform5(0.25),
+    clouds: uniform5(0),
+    cloudCoverage: uniform5(0.45),
+    cloudSoftness: uniform5(0.06),
+    cloudBands: uniform5(2),
+    cloudScale: uniform5(1),
+    cloudSpeed: uniform5(0.3),
+    cloudColor: uniform5(new THREE4.Color("#ffffff")),
+    cloudShade: uniform5(new THREE4.Color("#a9b8dc")),
+    time: uniform5(0)
+    // the runtime shares its clock uniform here
   };
 }
 var FOG_TYPES = { off: 0, linear: 1, exp: 2, exp2: 3 };
 function skyGradient(u, dir) {
   const up = clamp(dir.y, 0, 1).pow(u.exponent);
-  const above = mix2(u.horizon, u.zenith, up);
-  const below = mix2(u.horizon, u.ground, smoothstep4(0, 0.08, dir.y.negate()));
-  return mix2(below, above, step3(0, dir.y));
+  const above = mix6(u.horizon, u.zenith, up);
+  const below = mix6(u.horizon, u.ground, smoothstep6(0, 0.08, dir.y.negate()));
+  return mix6(below, above, step6(0, dir.y));
+}
+function cloudLayer(u, dir, sky) {
+  const up = max5(dir.y, 0);
+  const uv = dir.xz.div(up.add(0.3)).mul(u.cloudScale.reciprocal().mul(1.1)).add(vec23(u.time.mul(u.cloudSpeed).mul(0.01), u.time.mul(u.cloudSpeed).mul(3e-3)));
+  const n = mx_fractal_noise_float(vec35(uv, 0.5), 3).mul(1.2).add(0.5);
+  const edge = u.cloudCoverage.oneMinus();
+  const mask = smoothstep6(edge.sub(u.cloudSoftness), edge.add(u.cloudSoftness).add(1e-3), n);
+  const toward = mx_fractal_noise_float(vec35(uv.add(u.sunDirection.xz.normalize().mul(0.06)), 0.5), 3).mul(1.2).add(0.5);
+  const lit = n.sub(toward).mul(5).add(0.65).clamp(0, 1);
+  const bands = max5(u.cloudBands, 1);
+  const banded = select4(u.cloudBands.greaterThan(0.5), floor4(lit.mul(bands).add(0.5)).div(bands), lit);
+  const color = mix6(u.cloudShade, u.cloudColor, banded);
+  const fade = smoothstep6(0, 0.08, dir.y);
+  return mix6(sky, color, mask.mul(fade).mul(u.clouds));
 }
 function skyColor(u, dir) {
   const angle = acos(clamp(dir.dot(u.sunDirection), -1, 1));
-  const r = max3(u.sunRadius, 1e-4);
-  const disc = smoothstep4(r.mul(u.sunSoftness.mul(-0.85).add(1)).sub(1e-4), r, angle).oneMinus().mul(step3(1e-4, u.sunRadius));
-  const halo = exp(angle.div(r.mul(3)).negate()).mul(0.15).mul(step3(1e-4, u.sunRadius));
-  return skyGradient(u, dir).add(u.sunColor.mul(disc.add(halo)));
+  const r = max5(u.sunRadius, 1e-4);
+  const disc = smoothstep6(r.mul(u.sunSoftness.mul(-0.85).add(1)).sub(1e-4), r, angle).oneMinus().mul(step6(1e-4, u.sunRadius));
+  const halo = exp(angle.div(r.mul(3)).negate()).mul(0.15).mul(step6(1e-4, u.sunRadius));
+  return cloudLayer(u, dir, skyGradient(u, dir).add(u.sunColor.mul(disc.add(halo))));
 }
-function fogFactor(u, dist) {
-  const linear2 = smoothstep4(u.fogStart, u.fogEnd, dist);
+function fogFactor(u, dist, world = null) {
+  const linear2 = smoothstep6(u.fogStart, u.fogEnd, dist);
   const e = exp(u.fogDensity.mul(dist).negate()).oneMinus();
   const e2 = exp(u.fogDensity.mul(dist).pow(2).negate()).oneMinus();
-  const f = select2(u.fogType.equal(1), linear2, select2(u.fogType.equal(2), e, select2(u.fogType.equal(3), e2, float4(0))));
+  let f = select4(u.fogType.equal(1), linear2, select4(u.fogType.equal(2), e, select4(u.fogType.equal(3), e2, float5(0))));
+  if (world) {
+    const b = u.heightFalloff;
+    const dy = world.y.sub(cameraPosition.y);
+    const k = b.mul(dy);
+    const shape = select4(abs2(k).lessThan(1e-3), float5(1), exp(k.negate()).oneMinus().div(k));
+    const optical = u.heightDensity.mul(dist).mul(exp(b.mul(cameraPosition.y.sub(u.heightBase)).negate().min(30))).mul(shape);
+    const h = exp(optical.max(0).negate()).oneMinus();
+    f = f.oneMinus().mul(h.oneMinus()).oneMinus();
+  }
   const x = f.mul(u.fogBands);
-  const aa = max3(fwidth2(x).mul(0.75), 0.02);
-  const banded = floor2(x).add(smoothstep4(aa.oneMinus().mul(0.5), aa.add(1).mul(0.5), fract2(x))).div(max3(u.fogBands, 1));
-  return select2(u.fogBands.greaterThan(0.5), banded, f).mul(u.fogAmount);
+  const aa = max5(fwidth3(x).mul(0.75), 0.02);
+  const banded = floor4(x).add(smoothstep6(aa.oneMinus().mul(0.5), aa.add(1).mul(0.5), fract4(x))).div(max5(u.fogBands, 1));
+  return select4(u.fogBands.greaterThan(0.5), banded, f).mul(u.fogAmount);
 }
 function createFogNode(u) {
-  const viewDir = positionWorld2.sub(cameraPosition).normalize();
-  const flat = vec33(viewDir.x, max3(viewDir.y, 0), viewDir.z).normalize();
-  const color = mix2(u.fogColor, skyGradient(u, flat), u.fogSkyTint);
-  return fog(color, fogFactor(u, positionView.length()));
+  const viewDir = positionWorld4.sub(cameraPosition).normalize();
+  const flat = vec35(viewDir.x, max5(viewDir.y, 0), viewDir.z).normalize();
+  const color = mix6(u.fogColor, skyGradient(u, flat), u.fogSkyTint);
+  return fog(color, fogFactor(u, positionView2.length(), positionWorld4));
 }
 function dome(material, layer) {
-  const mesh = new THREE3.Mesh(new THREE3.SphereGeometry(1, 48, 24), material);
+  const mesh = new THREE4.Mesh(new THREE4.SphereGeometry(1, 48, 24), material);
   mesh.layers.set(layer);
   mesh.frustumCulled = false;
   mesh.renderOrder = -1e3;
@@ -3097,35 +4794,36 @@ function dome(material, layer) {
   return mesh;
 }
 function createSkyDomes(u, { layerStyled, layerPlain, idsNode: idsNode2 }) {
-  const styled = new THREE3.MeshBasicNodeMaterial({ side: THREE3.BackSide, depthWrite: false, fog: false });
-  styled.colorNode = Fn4(() => skyColor(u, positionWorld2.sub(cameraPosition).normalize()))();
+  const styled = new THREE4.MeshBasicNodeMaterial({ side: THREE4.BackSide, depthWrite: false, fog: false });
+  styled.colorNode = Fn5(() => skyColor(u, positionWorld4.sub(cameraPosition).normalize()))();
   styled.mrtNode = mrt2({ output: output2, ids: idsNode2 });
-  const plain = new THREE3.MeshBasicNodeMaterial({ side: THREE3.BackSide, depthWrite: false, fog: false, color: new THREE3.Color("#87ceeb") });
+  const plain = new THREE4.MeshBasicNodeMaterial({ side: THREE4.BackSide, depthWrite: false, fog: false, color: new THREE4.Color("#87ceeb") });
   return { styled: dome(styled, layerStyled), plain: dome(plain, layerPlain) };
 }
 
 // src/runtime/post/graph.js
 import * as THREE8 from "three/webgpu";
-import { uniform as uniform8, vec2 as vec25, vec3 as vec310, vec4 as vec44, mix as mix8, max as max7, smoothstep as smoothstep10, step as step7, abs as abs4, floor as floor5, renderOutput as renderOutput2, screenUV as screenUV2, screenSize as screenSize2, screenCoordinate as screenCoordinate3, convertToTexture } from "three/tsl";
+import { uniform as uniform8, vec2 as vec27, vec3 as vec310, vec4 as vec44, mix as mix11, max as max8, smoothstep as smoothstep11, step as step10, abs as abs6, floor as floor8, renderOutput as renderOutput2, screenUV as screenUV2, screenSize as screenSize3, screenCoordinate as screenCoordinate6, convertToTexture } from "three/tsl";
 
 // src/runtime/post/stage-camera.js
-import * as THREE4 from "three/webgpu";
-import { Fn as Fn5, vec2, vec3 as vec34, vec4 as vec42, float as float5, int as int2, mix as mix3, smoothstep as smoothstep5, pow, abs, step as step4, Loop as Loop2, If, Break, luminance as luminance2, sample, colorToDirection, sRGBTransferEOTF, renderOutput, interleavedGradientNoise, screenCoordinate, getViewPosition, getScreenPosition } from "three/tsl";
+import * as THREE5 from "three/webgpu";
+import { Fn as Fn6, vec2 as vec24, vec3 as vec36, vec4 as vec42, float as float6, int as int3, mix as mix7, smoothstep as smoothstep7, pow, abs as abs3, step as step7, Loop as Loop3, If as If2, Break, luminance as luminance3, sample, colorToDirection, sRGBTransferEOTF as sRGBTransferEOTF2, renderOutput, interleavedGradientNoise as interleavedGradientNoise2, screenCoordinate as screenCoordinate4, getViewPosition, getScreenPosition } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { ao } from "three/addons/tsl/display/GTAONode.js";
 import { dof } from "three/addons/tsl/display/DepthOfFieldNode.js";
 import { gaussianBlur } from "three/addons/tsl/display/GaussianBlurNode.js";
 import { motionBlur } from "three/addons/tsl/display/MotionBlur.js";
+import { traa } from "three/addons/tsl/display/TRAANode.js";
 var TONE_MAPPING = {
-  none: THREE4.NoToneMapping,
-  linear: THREE4.LinearToneMapping,
-  reinhard: THREE4.ReinhardToneMapping,
-  cineon: THREE4.CineonToneMapping,
-  aces: THREE4.ACESFilmicToneMapping,
-  agx: THREE4.AgXToneMapping,
-  neutral: THREE4.NeutralToneMapping
+  none: THREE5.NoToneMapping,
+  linear: THREE5.LinearToneMapping,
+  reinhard: THREE5.ReinhardToneMapping,
+  cineon: THREE5.CineonToneMapping,
+  aces: THREE5.ACESFilmicToneMapping,
+  agx: THREE5.AgXToneMapping,
+  neutral: THREE5.NeutralToneMapping
 };
-var linear = (u) => sRGBTransferEOTF(u);
+var linear = (u) => sRGBTransferEOTF2(u);
 var CAMERA = [
   {
     id: "lighting.ao",
@@ -3142,13 +4840,13 @@ var CAMERA = [
       node.thickness = P.get("lighting.ao.radius");
       node.distanceFallOff.value = 0.5;
       const aoTex = node.getTextureNode();
-      const t = vec2(0.75).div(node.resolution);
-      const raw = aoTex.sample(ctx.uv.add(t)).r.add(aoTex.sample(ctx.uv.sub(t)).r).add(aoTex.sample(ctx.uv.add(vec2(t.x, t.y.negate()))).r).add(aoTex.sample(ctx.uv.sub(vec2(t.x, t.y.negate()))).r).mul(0.25);
+      const t = vec24(0.75).div(node.resolution);
+      const raw = aoTex.sample(ctx.uv.add(t)).r.add(aoTex.sample(ctx.uv.sub(t)).r).add(aoTex.sample(ctx.uv.add(vec24(t.x, t.y.negate()))).r).add(aoTex.sample(ctx.uv.sub(vec24(t.x, t.y.negate()))).r).mul(0.25);
       const a = raw.sub(0.35).div(0.6).clamp(0, 1);
       const occlusion = pow(a, P.get("lighting.ao.intensity"));
       const tint = linear(P.get("lighting.ao.tint"));
-      const shaded = c.mul(mix3(tint, vec34(1), occlusion));
-      return mix3(shaded, tint.mul(0.15), smoothstep5(0.55, 0.7, a).oneMinus().mul(P.get("lighting.ao.ink")));
+      const shaded = c.mul(mix7(tint, vec36(1), occlusion));
+      return mix7(shaded, tint.mul(0.15), smoothstep7(0.55, 0.7, a).oneMinus().mul(P.get("lighting.ao.ink")));
     }
   },
   {
@@ -3161,28 +4859,28 @@ var CAMERA = [
       const P = ctx.P, U = ctx.U;
       const depth = ctx.tex("depth");
       const N = 16;
-      const occlusion = Fn5(() => {
+      const occlusion = Fn6(() => {
         const d0 = depth.sample(ctx.uv).r;
         const p0 = getViewPosition(ctx.uv, d0, U.projInv).toVar();
         const len = P.get("lighting.contact.length");
         const thickness = P.get("lighting.contact.thickness");
         const bias = p0.z.negate().mul(3e-3).add(0.015);
-        const jitter = interleavedGradientNoise(screenCoordinate);
-        const hit = float5(0).toVar();
-        Loop2({ start: int2(0), end: int2(N), type: "int", condition: "<" }, ({ i }) => {
-          const t = float5(i).add(jitter).add(0.5).div(N);
+        const jitter = interleavedGradientNoise2(screenCoordinate4);
+        const hit = float6(0).toVar();
+        Loop3({ start: int3(0), end: int3(N), type: "int", condition: "<" }, ({ i }) => {
+          const t = float6(i).add(jitter).add(0.5).div(N);
           const p12 = p0.add(U.lightView.mul(len.mul(t)));
           const uv = getScreenPosition(p12, U.proj);
           const scene = getViewPosition(uv, depth.sample(uv).r, U.projInv).z;
           const delta = scene.sub(p12.z);
-          If(delta.greaterThan(bias).and(delta.lessThan(thickness.add(bias))), () => {
+          If2(delta.greaterThan(bias).and(delta.lessThan(thickness.add(bias))), () => {
             hit.assign(t.oneMinus().mul(1.5).clamp(0, 1));
             Break();
           });
         });
         const n = colorToDirection(ctx.tex("normal").sample(ctx.uv).rgb);
-        const facing = smoothstep5(0.05, 0.3, n.dot(U.lightView));
-        return hit.mul(facing).mul(step4(d0, 0.99999));
+        const facing = smoothstep7(0.05, 0.3, n.dot(U.lightView));
+        return hit.mul(facing).mul(step7(d0, 0.99999));
       })();
       return c.mul(occlusion.mul(P.get("lighting.contact.intensity")).oneMinus());
     }
@@ -3213,17 +4911,17 @@ var CAMERA = [
       const P = ctx.P, U = ctx.U;
       const depth = ctx.tex("depth"), hdr = ctx.tex("output");
       const N = 32;
-      const rays = Fn5(() => {
-        const uv = vec2(ctx.uv).toVar();
+      const rays = Fn6(() => {
+        const uv = vec24(ctx.uv).toVar();
         const delta = U.sunScreen.sub(uv).mul(P.get("atmosphere.godRays.length")).div(N).toVar();
-        uv.addAssign(delta.mul(interleavedGradientNoise(screenCoordinate)));
-        const sum = float5(0).toVar();
-        const w = float5(1).toVar();
-        Loop2({ start: int2(0), end: int2(N), type: "int", condition: "<" }, () => {
+        uv.addAssign(delta.mul(interleavedGradientNoise2(screenCoordinate4)));
+        const sum = float6(0).toVar();
+        const w = float6(1).toVar();
+        Loop3({ start: int3(0), end: int3(N), type: "int", condition: "<" }, () => {
           uv.addAssign(delta);
-          const inside = step4(0, uv.x).mul(step4(uv.x, 1)).mul(step4(0, uv.y)).mul(step4(uv.y, 1));
-          const sky = step4(0.99999, depth.sample(uv).r).mul(inside);
-          sum.addAssign(luminance2(hdr.sample(uv).rgb).min(6).mul(sky).mul(w));
+          const inside = step7(0, uv.x).mul(step7(uv.x, 1)).mul(step7(0, uv.y)).mul(step7(uv.y, 1));
+          const sky = step7(0.99999, depth.sample(uv).r).mul(inside);
+          sum.addAssign(luminance3(hdr.sample(uv).rgb).min(6).mul(sky).mul(w));
           w.mulAssign(P.get("atmosphere.godRays.decay"));
         });
         return sum.div(N);
@@ -3241,7 +4939,7 @@ var CAMERA = [
     requires: () => ["velocity"],
     build(c, ctx) {
       const velocity2 = ctx.tex("velocity").sample(ctx.uv).xy.mul(ctx.P.get("lens.motionBlur.shutter").div(360));
-      return vec34(motionBlur(ctx.texture(c), velocity2, int2(16)).rgb);
+      return vec36(motionBlur(ctx.texture(c), velocity2, int3(16)).rgb);
     }
   },
   {
@@ -3253,7 +4951,7 @@ var CAMERA = [
     requires: () => ["depth"],
     build(c, ctx) {
       const node = ctx.own(dof(vec42(c, 1), ctx.pass.getViewZNode(), ctx.U.focusDistance, ctx.P.get("lens.dof.range"), ctx.P.get("lens.dof.blur")));
-      return vec34(node.rgb);
+      return vec36(node.rgb);
     }
   },
   {
@@ -3265,10 +4963,22 @@ var CAMERA = [
     requires: () => [],
     build(c, ctx) {
       const P = ctx.P;
-      const blurred = ctx.own(gaussianBlur(vec42(c, 1), vec2(P.get("lens.tiltShift.blur")), 6));
+      const blurred = ctx.own(gaussianBlur(vec42(c, 1), vec24(P.get("lens.tiltShift.blur")), 6));
       const half = P.get("lens.tiltShift.width").mul(0.5);
-      const d = abs(ctx.uv.y.oneMinus().sub(P.get("lens.tiltShift.center")));
-      return mix3(c, vec34(blurred.rgb), smoothstep5(half, half.add(0.22), d));
+      const d = abs3(ctx.uv.y.oneMinus().sub(P.get("lens.tiltShift.center")));
+      return mix7(c, vec36(blurred.rgb), smoothstep7(half, half.add(0.22), d));
+    }
+  },
+  {
+    id: "quality.traa",
+    label: "TRAA",
+    stage: "camera",
+    neighborhood: true,
+    // Temporal AA: the styled camera is jittered every frame and the history is blended.
+    enabled: (v) => !v["retro.pixel.enabled"] && v["quality.aa"] === "traa",
+    requires: () => ["depth", "velocity"],
+    build(c, ctx) {
+      return vec36(ctx.own(traa(ctx.texture(c), ctx.tex("depth"), ctx.tex("velocity"), ctx.camera)).rgb);
     }
   },
   {
@@ -3280,112 +4990,24 @@ var CAMERA = [
     requires: () => [],
     key: (v) => v["grade.toneMapping"],
     build(c, ctx) {
-      return renderOutput(vec42(c.mul(ctx.U.exposure), 1), TONE_MAPPING[ctx.v["grade.toneMapping"]], THREE4.SRGBColorSpace).rgb;
+      return renderOutput(vec42(c.mul(ctx.U.exposure), 1), TONE_MAPPING[ctx.v["grade.toneMapping"]], THREE5.SRGBColorSpace).rgb;
     }
   }
 ];
 
 // src/runtime/post/stage-grade.js
-import * as THREE5 from "three/webgpu";
-import { Fn as Fn6, vec3 as vec36, float as float6, int as int3, mix as mix5, smoothstep as smoothstep6, abs as abs2, atan, floor as floor3, fract as fract3, min as min2, luminance as luminance3, saturation, vibrance, hue, cdl, texture3D, uniform as uniform5, uniformArray as uniformArray2 } from "three/tsl";
-
-// src/runtime/post/colorspace.js
-import { vec3 as vec35, dot as dot2, cbrt, sRGBTransferEOTF as sRGBTransferEOTF2 } from "three/tsl";
-function linearToOklab2(c) {
-  const l = cbrt(dot2(c, vec35(0.4122214708, 0.5363325363, 0.0514459929)));
-  const m = cbrt(dot2(c, vec35(0.2119034982, 0.6806995451, 0.1073969566)));
-  const s = cbrt(dot2(c, vec35(0.0883024619, 0.2817188376, 0.6299787005)));
-  const lms = vec35(l, m, s);
-  return vec35(
-    dot2(lms, vec35(0.2104542553, 0.793617785, -0.0040720468)),
-    dot2(lms, vec35(1.9779984951, -2.428592205, 0.4505937099)),
-    dot2(lms, vec35(0.0259040371, 0.7827717662, -0.808675766))
-  );
-}
-var displayToOklab = (c) => linearToOklab2(sRGBTransferEOTF2(c.max(0)));
-
-// src/runtime/color/lut.js
-var clamp012 = (x) => Math.min(1, Math.max(0, x));
-var lum = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
-var mix4 = (a, b, t) => a + (b - a) * t;
-var mix32 = (a, b, t) => [mix4(a[0], b[0], t), mix4(a[1], b[1], t), mix4(a[2], b[2], t)];
-var smooth = (e0, e1, x) => {
-  const t = clamp012((x - e0) / (e1 - e0));
-  return t * t * (3 - 2 * t);
-};
-var sCurve = (x, k) => mix4(x, x * x * (3 - 2 * x), k);
-var saturate3 = (c, s) => {
-  const l = lum(c);
-  return c.map((v) => l + (v - l) * s);
-};
-var softLight = (a, b) => a.map((x, i) => b[i] < 0.5 ? x - (1 - 2 * b[i]) * x * (1 - x) : x + (2 * b[i] - 1) * ((x < 0.25 ? ((16 * x - 12) * x + 4) * x : Math.sqrt(x)) - x));
-var LUT_PRESETS = {
-  "teal-orange": (c) => {
-    const l = lum(c);
-    const tone = mix32([0.05, 0.42, 0.5], [1, 0.62, 0.32], smooth(0.15, 0.85, l));
-    const graded = softLight(c.map((x) => sCurve(x, 0.35)), tone);
-    return saturate3(mix32(c, graded, 0.75), 1.08);
-  },
-  "warm-film": (c) => {
-    const lifted = c.map((x) => 0.035 + sCurve(x, 0.3) * 0.94);
-    return saturate3([lifted[0] * 1.06, lifted[1] * 1, lifted[2] * 0.88], 0.92);
-  },
-  bleach: (c) => {
-    const l = lum(c);
-    const overlay = c.map((x) => l < 0.5 ? 2 * x * l : 1 - 2 * (1 - x) * (1 - l));
-    return saturate3(mix32(c, overlay, 0.65), 0.45).map((x) => sCurve(x, 0.25));
-  },
-  cross: (c) => [sCurve(c[0], 0.6), sCurve(c[1], 0.3) * 0.95 + 0.04, 0.12 + c[2] * 0.72],
-  faded: (c) => saturate3(c.map((x) => 0.08 + x * 0.84), 0.78).map((x, i) => x * [1.02, 1, 0.97][i]),
-  "cool-night": (c) => saturate3(c, 0.55).map((x, i) => Math.pow(clamp012(x), 1.2) * [0.78, 0.88, 1.12][i])
-};
-function bakeLut(preset, size = 33) {
-  const f = typeof preset === "function" ? preset : LUT_PRESETS[preset];
-  if (!f) throw new Error(`Unknown LUT preset ${preset}`);
-  const data = new Uint8Array(size * size * size * 4);
-  let i = 0;
-  for (let b = 0; b < size; b++) for (let g = 0; g < size; g++) for (let r = 0; r < size; r++) {
-    const out = f([r / (size - 1), g / (size - 1), b / (size - 1)]);
-    data[i++] = Math.round(clamp012(out[0]) * 255);
-    data[i++] = Math.round(clamp012(out[1]) * 255);
-    data[i++] = Math.round(clamp012(out[2]) * 255);
-    data[i++] = 255;
-  }
-  return data;
-}
-var PALETTES = {
-  pico8: ["#000000", "#1d2b53", "#7e2553", "#008751", "#ab5236", "#5f574f", "#c2c3c7", "#fff1e8", "#ff004d", "#ffa300", "#ffec27", "#00e436", "#29adff", "#83769c", "#ff77a8", "#ffccaa"],
-  gameboy: ["#0f380f", "#306230", "#8bac0f", "#9bbc0f"],
-  cga: ["#000000", "#55ffff", "#ff55ff", "#ffffff"],
-  nes: ["#000000", "#fcfcfc", "#7c7c7c", "#bcbcbc", "#a80020", "#f83800", "#fca044", "#f8b800", "#00a800", "#58d854", "#0058f8", "#3cbcfc", "#6844fc", "#d800cc", "#503000", "#f8d8b8"],
-  onebit: ["#16131f", "#e8e2d0"]
-};
-function bayerMatrix(n) {
-  if (n === 1) return [[0]];
-  const m = bayerMatrix(n / 2);
-  const out = Array.from({ length: n }, () => new Array(n));
-  const h = n / 2;
-  for (let y = 0; y < h; y++) for (let x = 0; x < h; x++) {
-    const v = m[y][x] * 4;
-    out[y][x] = v;
-    out[y][x + h] = v + 2;
-    out[y + h][x] = v + 3;
-    out[y + h][x + h] = v + 1;
-  }
-  return out;
-}
-
-// src/runtime/post/stage-grade.js
+import * as THREE6 from "three/webgpu";
+import { Fn as Fn7, vec3 as vec37, float as float7, int as int4, mix as mix8, smoothstep as smoothstep8, abs as abs4, atan, floor as floor5, fract as fract5, min as min2, luminance as luminance4, saturation, vibrance, hue as hue2, cdl, texture3D, uniform as uniform6, uniformArray as uniformArray3 } from "three/tsl";
 var LUT_SIZE = 33;
 var lutCache = /* @__PURE__ */ new Map();
 function lutTexture(preset) {
   let t = lutCache.get(preset);
   if (t) return t;
-  t = new THREE5.Data3DTexture(bakeLut(preset, LUT_SIZE), LUT_SIZE, LUT_SIZE, LUT_SIZE);
-  t.format = THREE5.RGBAFormat;
-  t.type = THREE5.UnsignedByteType;
-  t.minFilter = t.magFilter = THREE5.LinearFilter;
-  t.wrapS = t.wrapT = t.wrapR = THREE5.ClampToEdgeWrapping;
+  t = new THREE6.Data3DTexture(bakeLut(preset, LUT_SIZE), LUT_SIZE, LUT_SIZE, LUT_SIZE);
+  t.format = THREE6.RGBAFormat;
+  t.type = THREE6.UnsignedByteType;
+  t.minFilter = t.magFilter = THREE6.LinearFilter;
+  t.wrapS = t.wrapT = t.wrapR = THREE6.ClampToEdgeWrapping;
   t.unpackAlignment = 1;
   t.needsUpdate = true;
   lutCache.set(preset, t);
@@ -3395,8 +5017,8 @@ var LUT_PRESET_IDS = Object.keys(LUT_PRESETS);
 var MAX_STOPS = 8;
 function createGradeLists() {
   return {
-    stops: uniformArray2(Array.from({ length: MAX_STOPS }, () => new THREE5.Vector3()), "vec3"),
-    stopCount: uniform5(2),
+    stops: uniformArray3(Array.from({ length: MAX_STOPS }, () => new THREE6.Vector3()), "vec3"),
+    stopCount: uniform6(2),
     lut: texture3D(lutTexture("teal-orange"))
   };
 }
@@ -3418,15 +5040,15 @@ var GRADE = [
     requires: () => [],
     build(c, ctx) {
       const P = ctx.P;
-      let x = vec36(cdl(c, vec36(P.get("grade.gain")), vec36(P.get("grade.lift")), vec36(P.get("grade.gamma"))).rgb);
+      let x = vec37(cdl(c, vec37(P.get("grade.gain")), vec37(P.get("grade.lift")), vec37(P.get("grade.gamma"))).rgb);
       x = x.sub(0.5).mul(P.get("grade.contrast")).add(0.5).max(0);
       x = saturation(x, P.get("grade.saturation"));
       x = vibrance(x, P.get("grade.vibrance"));
-      x = hue(x, P.get("grade.hue").mul(Math.PI / 180));
-      const h = smoothstep6(0.05, 0.95, luminance3(x).sub(P.get("grade.split.balance").mul(0.25)));
-      const tone = mix5(P.get("grade.split.shadows"), P.get("grade.split.highlights"), h);
+      x = hue2(x, P.get("grade.hue").mul(Math.PI / 180));
+      const h = smoothstep8(0.05, 0.95, luminance4(x).sub(P.get("grade.split.balance").mul(0.25)));
+      const tone = mix8(P.get("grade.split.shadows"), P.get("grade.split.highlights"), h);
       const softLight2 = x.mul(x).mul(tone.mul(2).oneMinus()).add(x.mul(tone).mul(2));
-      return mix5(x, softLight2, P.get("grade.split.amount"));
+      return mix8(x, softLight2, P.get("grade.split.amount"));
     }
   },
   {
@@ -3439,11 +5061,11 @@ var GRADE = [
       const P = ctx.P;
       const lab = displayToOklab(c);
       const h = atan(lab.z, lab.y).mul(180 / Math.PI);
-      const d = abs2(fract3(h.sub(P.get("grade.selective.hue")).div(360).add(0.5)).sub(0.5)).mul(360);
+      const d = abs4(fract5(h.sub(P.get("grade.selective.hue")).div(360).add(0.5)).sub(0.5)).mul(360);
       const range = P.get("grade.selective.range");
       const chroma = lab.yz.length();
-      const keep = smoothstep6(range.mul(0.6), range, d).oneMinus().mul(smoothstep6(0.02, 0.06, chroma));
-      return mix5(c, vec36(luminance3(c)), P.get("grade.selective.amount").mul(keep.oneMinus()));
+      const keep = smoothstep8(range.mul(0.6), range, d).oneMinus().mul(smoothstep8(0.02, 0.06, chroma));
+      return mix8(c, vec37(luminance4(c)), P.get("grade.selective.amount").mul(keep.oneMinus()));
     }
   },
   {
@@ -3454,7 +5076,7 @@ var GRADE = [
     requires: () => [],
     build(c, ctx) {
       const uvw = c.clamp(0, 1).mul((LUT_SIZE - 1) / LUT_SIZE).add(0.5 / LUT_SIZE);
-      return mix5(c, ctx.lists.lut.sample(uvw).rgb, ctx.P.get("grade.lut.amount"));
+      return mix8(c, ctx.lists.lut.sample(uvw).rgb, ctx.P.get("grade.lut.amount"));
     }
   },
   {
@@ -3465,63 +5087,209 @@ var GRADE = [
     requires: () => [],
     build(c, ctx) {
       const L = ctx.lists;
-      const mapped = Fn6(() => {
-        const n = float6(L.stopCount).sub(1);
-        const t = luminance3(c).clamp(0, 1).mul(n);
-        const i = min2(floor3(t), n.sub(1));
-        const a = L.stops.element(int3(i)), b = L.stops.element(int3(i).add(1));
-        return mix5(a, b, t.sub(i).clamp(0, 1));
+      const mapped = Fn7(() => {
+        const n = float7(L.stopCount).sub(1);
+        const t = luminance4(c).clamp(0, 1).mul(n);
+        const i = min2(floor5(t), n.sub(1));
+        const a = L.stops.element(int4(i)), b = L.stops.element(int4(i).add(1));
+        return mix8(a, b, t.sub(i).clamp(0, 1));
       })();
-      return mix5(c, mapped, ctx.P.get("grade.gradientMap.amount"));
+      return mix8(c, mapped, ctx.P.get("grade.gradientMap.amount"));
     }
   }
 ];
 
 // src/runtime/post/stage-medium.js
-import { Fn as Fn8, vec2 as vec23, vec3 as vec38, vec4 as vec43, float as float8, max as max5, smoothstep as smoothstep8, colorToDirection as colorToDirection3, perspectiveDepthToViewZ as perspectiveDepthToViewZ2 } from "three/tsl";
+import { Fn as Fn9, vec2 as vec26, vec3 as vec39, vec4 as vec43, float as float9, int as int5, max as max7, min as min3, mix as mix10, step as step9, smoothstep as smoothstep10, floor as floor7, fract as fract6, sin as sin4, cos as cos4, dot as dot4, pow as pow2, length as length3, select as select6, luminance as luminance6, Loop as Loop4, colorToDirection as colorToDirection3, perspectiveDepthToViewZ as perspectiveDepthToViewZ3, screenCoordinate as screenCoordinate5, mx_noise_float as mx_noise_float3, mx_worley_noise_float as mx_worley_noise_float2 } from "three/tsl";
 import { fxaa } from "three/addons/tsl/display/FXAANode.js";
+import { smaa } from "three/addons/tsl/display/SMAANode.js";
 
 // src/runtime/post/lines.js
-import { Fn as Fn7, vec2 as vec22, vec3 as vec37, float as float7, max as max4, mix as mix6, smoothstep as smoothstep7, step as step5, abs as abs3, colorToDirection as colorToDirection2, perspectiveDepthToViewZ } from "three/tsl";
+import { Fn as Fn8, vec2 as vec25, vec3 as vec38, float as float8, max as max6, mix as mix9, smoothstep as smoothstep9, step as step8, abs as abs5, floor as floor6, select as select5, luminance as luminance5, saturation as saturation2, colorToDirection as colorToDirection2, perspectiveDepthToViewZ as perspectiveDepthToViewZ2, mx_noise_float as mx_noise_float2 } from "three/tsl";
 var PAIRS = [[1, 0], [0, 1], [0.7071, 0.7071], [0.7071, -0.7071]];
-function screenLines(color, b, u, atmos, { uv, texel, scale }) {
-  return Fn7(() => {
+function screenLines(color, b, u, atmos, { uv, texel, scale, coord }, P, time) {
+  return Fn8(() => {
     const px = texel;
-    const radius = max4(u.thickness.mul(scale), 0);
-    const dist = (d) => perspectiveDepthToViewZ(d, u.near, u.far).negate();
-    const d0 = dist(b.depth.sample(uv).r).toVar();
-    const n0 = colorToDirection2(b.normal.sample(uv).rgb).toVar();
-    const id0 = b.ids.sample(uv).rg.toVar();
-    const depthEdge = float7(0).toVar();
-    const normalEdge = float7(0).toVar();
-    const idEdge = float7(0).toVar();
+    const boil = P.get("motion.boil.fps");
+    const seed = select5(boil.greaterThan(0.5), floor6(time.mul(boil)), float8(0)).mul(3.17);
+    const f = P.get("lines.screen.wobbleScale").mul(0.025);
+    const wobble = vec25(mx_noise_float2(vec38(coord.mul(f), seed)), mx_noise_float2(vec38(coord.mul(f), seed.add(11.3)))).mul(P.get("lines.screen.wobble")).mul(px).mul(scale);
+    const at = uv.add(wobble);
+    const dark = luminance5(color.rgb).oneMinus().clamp(0, 1);
+    const texture = P.get("lines.screen.texture"), texAmount = P.get("lines.screen.textureAmount");
+    const swell = mx_noise_float2(vec38(coord.mul(0.012), 4.1)).mul(0.5).add(0.5);
+    const brush = mix9(float8(1), swell.mul(swell).mul(2.2).add(0.15), texAmount.mul(step8(1.5, texture).mul(step8(texture, 2.5))));
+    const radius = max6(u.thickness.mul(scale).mul(dark.mul(P.get("lines.screen.lightWeight")).add(1)).mul(brush), 0);
+    const dist = (d) => perspectiveDepthToViewZ2(d, u.near, u.far).negate();
+    const d0 = dist(b.depth.sample(at).r).toVar();
+    const n0 = colorToDirection2(b.normal.sample(at).rgb).toVar();
+    const id0 = b.ids.sample(at).rg.toVar();
+    const depthEdge = float8(0).toVar();
+    const normalEdge = float8(0).toVar();
+    const idEdge = float8(0).toVar();
     const w0 = d0.reciprocal();
     for (const [x, y] of PAIRS) {
-      const o = vec22(x, y).mul(px).mul(radius);
-      const samples = [uv.add(o), uv.sub(o)];
+      const o = vec25(x, y).mul(px).mul(radius);
+      const samples = [at.add(o), at.sub(o)];
       const da = dist(b.depth.sample(samples[0]).r), db = dist(b.depth.sample(samples[1]).r);
       const lap = da.reciprocal().add(db.reciprocal()).sub(w0.mul(2)).div(w0);
-      depthEdge.assign(max4(depthEdge, lap.negate()));
+      depthEdge.assign(max6(depthEdge, lap.negate()));
       for (const [k, s] of samples.entries()) {
-        const n = colorToDirection2(b.normal.sample(k === 0 ? uv.add(o.mul(0.5)) : uv.sub(o.mul(0.5))).rgb);
-        normalEdge.assign(max4(normalEdge, n.dot(n0).oneMinus()));
+        const n = colorToDirection2(b.normal.sample(k === 0 ? at.add(o.mul(0.5)) : at.sub(o.mul(0.5))).rgb);
+        normalEdge.assign(max6(normalEdge, n.dot(n0).oneMinus()));
         const id = b.ids.sample(s).rg;
-        const differs = step5(0.5 / 255, abs3(id.x.sub(id0.x)).add(abs3(id.y.sub(id0.y))));
-        const notCloser = step5(d0.mul(0.999), k === 0 ? da : db);
-        idEdge.assign(max4(idEdge, differs.mul(notCloser)));
+        const differs = step8(0.5 / 255, abs5(id.x.sub(id0.x)).add(abs5(id.y.sub(id0.y))));
+        const notCloser = step8(d0.mul(0.999), k === 0 ? da : db);
+        idEdge.assign(max6(idEdge, differs.mul(notCloser)));
       }
     }
-    const th = u.depthThreshold.div(abs3(n0.z).clamp(0.25, 1));
-    const silhouette = smoothstep7(th.mul(0.5), th, depthEdge).mul(u.silhouette);
-    const crease = smoothstep7(u.creaseThreshold.mul(0.8), u.creaseThreshold.mul(1.25), normalEdge).mul(u.crease);
-    const edge = max4(silhouette, max4(crease, idEdge.mul(u.idWeight))).mul(step5(0.01, radius));
-    const fade = fogFactor(atmos, d0).mul(u.followFog).oneMinus();
-    return vec37(mix6(color.rgb, u.color, edge.clamp().mul(fade)));
+    const th = u.depthThreshold.div(abs5(n0.z).clamp(0.25, 1));
+    const silhouette = smoothstep9(th.mul(0.5), th, depthEdge).mul(u.silhouette);
+    const crease = smoothstep9(u.creaseThreshold.mul(0.8), u.creaseThreshold.mul(1.25), normalEdge).mul(u.crease);
+    let edge = max6(silhouette, max6(crease, idEdge.mul(u.idWeight))).mul(step8(0.01, radius)).clamp();
+    const grain = mx_noise_float2(vec38(coord.mul(0.9), 2.3)).mul(0.5).add(0.5);
+    const blots = mx_noise_float2(vec38(coord.mul(0.05), 6.7)).mul(0.5).add(0.5);
+    const isPencil = step8(0.5, texture).mul(step8(texture, 1.5)), isInk = step8(2.5, texture);
+    edge = edge.mul(mix9(float8(1), grain.mul(0.8).add(0.2), texAmount.mul(isPencil)));
+    edge = edge.mul(mix9(float8(1), blots.mul(0.5).add(0.75), texAmount.mul(isInk))).clamp();
+    const fog2 = fogFactor(atmos, d0).mul(u.followFog).oneMinus();
+    const fade = smoothstep9(P.get("lines.screen.fadeStart"), P.get("lines.screen.fadeEnd"), d0).mul(P.get("lines.screen.fade")).oneMinus();
+    const alpha = edge.mul(fog2).mul(fade).mul(P.get("lines.screen.opacity"));
+    const local = saturation2(color.rgb.mul(P.get("lines.screen.darken")), float8(1.3));
+    const ink = mix9(u.color, local, P.get("lines.screen.colorFromSurface"));
+    return vec38(mix9(color.rgb, ink, alpha));
   })();
 }
 
 // src/runtime/post/stage-medium.js
+var cells = (ctx, size, angle) => rotate2(ctx.coord.add(0.5).div(size.mul(ctx.gridSize.y.div(1080))), angle);
+var noise = (p12) => mx_noise_float3(p12).mul(0.5).add(0.5);
 var MEDIUM2 = [
+  {
+    id: "media.kuwahara",
+    label: "Painterly (Kuwahara)",
+    stage: "medium",
+    neighborhood: true,
+    enabled: (v) => v["media.kuwahara.enabled"],
+    requires: () => [],
+    build(c, ctx) {
+      const P = ctx.P;
+      const tex = ctx.texture(c);
+      const step1080 = ctx.texel.mul(ctx.gridSize.y.div(1080).max(1));
+      const dirs = Array.from({ length: 8 }, (_, k) => vec26(Math.cos(k * Math.PI / 4), Math.sin(k * Math.PI / 4)));
+      return Fn9(() => {
+        const rf = P.get("media.kuwahara.radius");
+        const r = int5(rf);
+        const m = dirs.map(() => vec39(0).toVar()), sq = dirs.map(() => vec39(0).toVar()), n = dirs.map(() => float9(0).toVar());
+        Loop4({ start: r.negate(), end: r, type: "int", condition: "<=", name: "kx" }, ({ kx }) => {
+          Loop4({ start: r.negate(), end: r, type: "int", condition: "<=", name: "ky" }, ({ ky }) => {
+            const v = vec26(float9(kx), float9(ky)).div(rf.max(1));
+            const d2 = dot4(v, v);
+            const g = smoothstep10(0.7, 1, d2.sqrt()).oneMinus().mul(step9(d2, 1)).mul(d2.mul(-1.5).exp());
+            const s = tex.sample(ctx.uv.add(vec26(float9(kx), float9(ky)).mul(step1080))).rgb;
+            const s2 = s.mul(s);
+            const dir = v.div(d2.sqrt().max(1e-4));
+            const center = step9(d2, 1e-6).mul(0.125);
+            for (let k = 0; k < 8; k++) {
+              const w = pow2(dir.dot(dirs[k]).max(0), 6).add(center).mul(g);
+              m[k].addAssign(s.mul(w));
+              sq[k].addAssign(s2.mul(w));
+              n[k].addAssign(w);
+            }
+          });
+        });
+        const sum = vec39(0).toVar(), wsum = float9(0).toVar();
+        const sharp = P.get("media.kuwahara.sharpness");
+        for (let k = 0; k < 8; k++) {
+          const mean = m[k].div(n[k].max(1e-5));
+          const variance = sq[k].div(n[k].max(1e-5)).sub(mean.mul(mean)).max(0);
+          const w = pow2(dot4(variance, vec39(1)).mul(250).add(1), sharp.mul(-0.5));
+          sum.addAssign(mean.mul(w));
+          wsum.addAssign(w);
+        }
+        return sum.div(wsum.max(1e-8));
+      })();
+    }
+  },
+  {
+    id: "media.watercolor",
+    label: "Watercolor",
+    stage: "medium",
+    neighborhood: true,
+    enabled: (v) => v["media.watercolor.enabled"],
+    requires: () => [],
+    build(c, ctx) {
+      const P = ctx.P;
+      const tex = ctx.texture(c);
+      const unit = ctx.texel.mul(ctx.gridSize.y.div(1080));
+      const px = ctx.coord;
+      return Fn9(() => {
+        const wob = vec26(noise(vec39(px.mul(0.012), 1.3)), noise(vec39(px.mul(0.012), 7.1))).sub(0.5).mul(2);
+        const uv = ctx.uv.add(wob.mul(P.get("media.watercolor.wobble")).mul(unit)).toVar();
+        const base = tex.sample(uv).rgb.toVar();
+        const blur = vec39(0).toVar();
+        const radius = P.get("media.watercolor.bleed").mul(4).add(2);
+        for (let i = 0; i < 8; i++) {
+          const a = i / 8 * Math.PI * 2;
+          blur.addAssign(tex.sample(uv.add(vec26(Math.cos(a), Math.sin(a)).mul(unit).mul(radius))).rgb);
+        }
+        blur.divAssign(8);
+        const bled = mix10(base, blur, P.get("media.watercolor.bleed").mul(0.7));
+        const edge = smoothstep10(0.02, 0.16, length3(base.sub(blur)));
+        const pooled = bled.mul(float9(1).sub(edge.mul(P.get("media.watercolor.edges")).mul(0.55)));
+        const grain = noise(vec39(px.mul(0.35), 3.7)).mul(0.6).add(noise(vec39(px.mul(0.07), 9.2)).mul(0.4));
+        const dark = luminance6(pooled).oneMinus();
+        return pooled.mul(float9(1).sub(grain.mul(dark).mul(P.get("media.watercolor.granulation")).mul(0.45)));
+      })();
+    }
+  },
+  {
+    id: "media.halftone",
+    label: "Halftone (print)",
+    stage: "medium",
+    enabled: (v) => v["media.halftone.enabled"],
+    requires: () => [],
+    key: (v) => v["media.halftone.mode"],
+    build(c, ctx) {
+      const P = ctx.P;
+      const size = P.get("media.halftone.size"), angle = P.get("media.halftone.angle");
+      const shadows = P.get("media.halftone.shadows");
+      const tone = (ink) => ink.sub(shadows.mul(0.55)).div(float9(1).sub(shadows.mul(0.55))).clamp(0, 1);
+      let out;
+      if (ctx.v["media.halftone.mode"] === "cmyk") {
+        const k = float9(1).sub(max7(c.r, max7(c.g, c.b))).clamp(0, 1);
+        const inv = float9(1).sub(k).max(1e-3);
+        const cyan = float9(1).sub(c.r).sub(k).div(inv), magenta = float9(1).sub(c.g).sub(k).div(inv), yellow = float9(1).sub(c.b).sub(k).div(inv);
+        const dot5 = (value, offset) => dotMask(cells(ctx, size, angle.add(offset)), tone(value));
+        const C = dot5(cyan, -30), M = dot5(magenta, 30), Y = dot5(yellow, -45), K = dot5(k, 0);
+        out = vec39(C.oneMinus(), M.oneMinus(), Y.oneMinus()).mul(K.oneMinus());
+      } else {
+        const dots = dotMask(cells(ctx, size, angle), tone(luminance6(c).oneMinus()));
+        out = mix10(c.mul(1.08).min(1), P.get("media.halftone.ink"), dots);
+      }
+      return mix10(c, out, P.get("media.halftone.amount"));
+    }
+  },
+  {
+    id: "media.hatching",
+    label: "Hatching (post)",
+    stage: "medium",
+    enabled: (v) => v["media.hatching.enabled"],
+    requires: () => [],
+    build(c, ctx) {
+      const P = ctx.P;
+      const lum2 = luminance6(c);
+      let lines = float9(0);
+      for (let k = 0; k < 4; k++) {
+        const level = P.get("media.hatching.threshold").mul(1 - k * 0.24);
+        const depth = level.sub(lum2).div(level.max(1e-3)).clamp(0, 1);
+        const coord = cells(ctx, P.get("media.hatching.spacing"), P.get("media.hatching.angle").add(k * 60));
+        const on = step9(k + 0.5, P.get("media.hatching.layers")).mul(step9(lum2, level));
+        lines = max7(lines, lineMask(coord, depth.mul(0.2).add(0.1)).mul(on));
+      }
+      return mix10(c, P.get("media.hatching.color"), lines.mul(P.get("media.hatching.amount")));
+    }
+  },
   {
     id: "lines.screen",
     label: "Screen-space ink",
@@ -3529,7 +5297,7 @@ var MEDIUM2 = [
     enabled: (v) => v["lines.screen.enabled"],
     requires: () => ["depth", "normal", "ids"],
     build(c, ctx) {
-      return screenLines(c, { depth: ctx.tex("depth"), normal: ctx.tex("normal"), ids: ctx.tex("ids") }, ctx.U.lines, ctx.atmos, { uv: ctx.uv, texel: ctx.texel, scale: ctx.lineScale });
+      return screenLines(c, { depth: ctx.tex("depth"), normal: ctx.tex("normal"), ids: ctx.tex("ids") }, ctx.U.lines, ctx.atmos, { uv: ctx.uv, texel: ctx.texel, scale: ctx.lineScale, coord: ctx.coord }, ctx.P, ctx.U.time);
     }
   },
   {
@@ -3542,23 +5310,23 @@ var MEDIUM2 = [
       const { U } = ctx;
       const depth = ctx.tex("depth"), normal = ctx.tex("normal");
       const strength = ctx.P.get("retro.pixel.edges");
-      return Fn8(() => {
-        const dist = (uv) => perspectiveDepthToViewZ2(depth.sample(uv).r, U.lines.near, U.lines.far).negate();
+      return Fn9(() => {
+        const dist = (uv) => perspectiveDepthToViewZ3(depth.sample(uv).r, U.lines.near, U.lines.far).negate();
         const d0 = dist(ctx.uv).toVar();
         const n0 = colorToDirection3(normal.sample(ctx.uv).rgb).toVar();
-        const depthEdge = float8(0).toVar(), normalEdge = float8(0).toVar();
+        const depthEdge = float9(0).toVar(), normalEdge = float9(0).toVar();
         for (const [x, y] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const uv = ctx.uv.add(vec23(x, y).mul(ctx.texel));
+          const uv = ctx.uv.add(vec26(x, y).mul(ctx.texel));
           const d = dist(uv);
           const n = colorToDirection3(normal.sample(uv).rgb);
-          depthEdge.assign(max5(depthEdge, d.sub(d0).div(d0).clamp(0, 1)));
-          const facing = smoothstep8(-0.01, 0.01, n0.sub(n).dot(vec38(-1, 1, 1).normalize()));
-          const sameSurface = smoothstep8(0, 0.02, d.sub(d0).div(d0).abs()).oneMinus();
-          normalEdge.assign(max5(normalEdge, n0.dot(n).oneMinus().mul(facing).mul(sameSurface)));
+          depthEdge.assign(max7(depthEdge, d.sub(d0).div(d0).clamp(0, 1)));
+          const facing = smoothstep10(-0.01, 0.01, n0.sub(n).dot(vec39(-1, 1, 1).normalize()));
+          const sameSurface = smoothstep10(0, 0.02, d.sub(d0).div(d0).abs()).oneMinus();
+          normalEdge.assign(max7(normalEdge, n0.dot(n).oneMinus().mul(facing).mul(sameSurface)));
         }
-        const dark = smoothstep8(0.03, 0.06, depthEdge);
-        const light = smoothstep8(0.08, 0.15, normalEdge).mul(dark.oneMinus());
-        return c.mul(float8(1).sub(dark.mul(strength).mul(0.6))).mul(float8(1).add(light.mul(strength).mul(0.5)));
+        const dark = smoothstep10(0.03, 0.06, depthEdge);
+        const light = smoothstep10(0.08, 0.15, normalEdge).mul(dark.oneMinus());
+        return c.mul(float9(1).sub(dark.mul(strength).mul(0.6))).mul(float9(1).add(light.mul(strength).mul(0.5)));
       })();
     }
   },
@@ -3567,203 +5335,54 @@ var MEDIUM2 = [
     label: "FXAA",
     stage: "medium",
     always: true,
-    // The pass renders without MSAA whenever it writes extra buffers; pixel looks stay crisp.
-    enabled: (v, ctx) => ctx.samples === 0 && !v["retro.pixel.enabled"],
+    // Auto: FXAA whenever the pass renders without MSAA (it writes extra buffers). Pixel looks stay crisp.
+    enabled: (v, ctx) => !v["retro.pixel.enabled"] && (v["quality.aa"] === "fxaa" || ["auto", "msaa"].includes(v["quality.aa"]) && ctx.samples === 0),
     requires: () => [],
     build(c, ctx) {
-      return vec38(ctx.own(fxaa(vec43(c, 1))).rgb);
-    }
-  }
-];
-
-// src/runtime/post/stage-display.js
-import * as THREE6 from "three/webgpu";
-import { Fn as Fn9, vec2 as vec24, vec3 as vec39, float as float9, int as int4, ivec2, mix as mix7, max as max6, step as step6, smoothstep as smoothstep9, sin as sin2, cos as cos2, dot as dot3, fract as fract4, floor as floor4, length, select as select3, luminance as luminance4, textureLoad, interleavedGradientNoise as interleavedGradientNoise2, uniform as uniform6, uniformArray as uniformArray3, screenUV, screenSize, screenCoordinate as screenCoordinate2, If as If2, Loop as Loop3 } from "three/tsl";
-var MAX_PALETTE = 16;
-function bayerTexture() {
-  const data = new Uint8Array(16 * 64);
-  [16, 8, 4, 2].forEach((n, block) => {
-    const m = bayerMatrix(n);
-    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) data[(block * 16 + y) * 16 + x] = Math.round((m[y % n][x % n] + 0.5) / (n * n) * 255);
-  });
-  const t = new THREE6.DataTexture(data, 16, 64, THREE6.RedFormat, THREE6.UnsignedByteType);
-  t.minFilter = t.magFilter = THREE6.NearestFilter;
-  t.needsUpdate = true;
-  return t;
-}
-var bayer = null;
-function ditherThreshold(coord, pattern) {
-  bayer ??= bayerTexture();
-  const row = float9(3).sub(pattern).clamp(0, 3).mul(16);
-  const ordered = textureLoad(bayer, ivec2(int4(coord.x).mod(16), int4(coord.y).mod(16).add(int4(row)))).r;
-  return select3(pattern.greaterThan(3.5), interleavedGradientNoise2(coord), ordered);
-}
-function createDisplayLists() {
-  return {
-    paletteRgb: uniformArray3(Array.from({ length: MAX_PALETTE }, () => new THREE6.Vector3()), "vec3"),
-    paletteLab: uniformArray3(Array.from({ length: MAX_PALETTE }, () => new THREE6.Vector3()), "vec3"),
-    paletteCount: uniform6(2)
-  };
-}
-function quantizePalette(v) {
-  const id = v["retro.quantize.palette"];
-  const colors = id === "look" ? v["palette.colors"] : PALETTES[id];
-  return (colors && colors.length >= 2 ? colors : PALETTES.onebit).slice(0, MAX_PALETTE);
-}
-function applyDisplayLists(L, v) {
-  const colors = quantizePalette(v);
-  colors.forEach((hex, i) => {
-    L.paletteRgb.array[i].set(...hexToRgb(hex));
-    L.paletteLab.array[i].set(...hexToOklab(hex));
-  });
-  L.paletteCount.value = colors.length;
-}
-var DISPLAY = [
-  {
-    id: "retro.quantize",
-    label: "Color depth and dithering",
-    stage: "display",
-    enabled: (v) => v["retro.quantize.mode"] !== "off",
-    requires: () => [],
-    key: (v) => v["retro.quantize.mode"],
-    build(c, ctx) {
-      const P = ctx.P, L = ctx.lists;
-      const d = ditherThreshold(ctx.coord, P.get("retro.dither.pattern")).sub(0.5).mul(P.get("retro.dither.amount"));
-      if (ctx.v["retro.quantize.mode"] === "posterize") {
-        const n = P.get("retro.quantize.levels").sub(1);
-        return floor4(c.clamp(0, 1).mul(n).add(0.5).add(d)).div(n).clamp(0, 1);
-      }
-      return Fn9(() => {
-        const spread = float9(1).div(float9(L.paletteCount).sqrt());
-        const lab = displayToOklab(c.add(d.mul(spread))).toVar();
-        const best = vec39(0).toVar(), bestD = float9(1e9).toVar();
-        Loop3({ start: int4(0), end: int4(L.paletteCount), type: "int", condition: "<" }, ({ i }) => {
-          const delta = lab.sub(L.paletteLab.element(i));
-          const dd = dot3(delta, delta);
-          If2(dd.lessThan(bestD), () => {
-            bestD.assign(dd);
-            best.assign(L.paletteRgb.element(i));
-          });
-        });
-        return best;
-      })();
+      return vec39(ctx.own(fxaa(vec43(c, 1))).rgb);
     }
   },
   {
-    id: "lens.ca",
-    label: "Chromatic aberration",
-    stage: "display",
+    id: "quality.smaa",
+    label: "SMAA",
+    stage: "medium",
+    enabled: (v) => !v["retro.pixel.enabled"] && v["quality.aa"] === "smaa",
+    requires: () => [],
+    build(c, ctx) {
+      return vec39(ctx.own(smaa(vec43(c, 1))).rgb);
+    }
+  },
+  {
+    id: "media.misregistration",
+    label: "Print misregistration",
+    stage: "medium",
     neighborhood: true,
-    enabled: (v) => v["lens.ca.enabled"],
-    requires: () => [],
-    build(c, ctx) {
-      const tex = ctx.texture(c);
-      const p12 = screenUV.sub(0.5);
-      const o = p12.mul(length(p12).mul(2)).mul(ctx.P.get("lens.ca.amount").mul(0.012));
-      return vec39(tex.sample(screenUV.add(o)).r, tex.sample(screenUV).g, tex.sample(screenUV.sub(o)).b);
-    }
-  },
-  {
-    id: "lens.distortion",
-    label: "Lens distortion",
-    stage: "display",
-    neighborhood: true,
-    enabled: (v) => v["lens.distortion.enabled"],
-    requires: () => [],
-    build(c, ctx) {
-      const tex = ctx.texture(c);
-      const k = ctx.P.get("lens.distortion.amount").mul(1.6);
-      const aspect = screenSize.x.div(screenSize.y);
-      const p12 = screenUV.sub(0.5).mul(vec24(aspect, 1));
-      const r2 = dot3(p12, p12);
-      const corner = aspect.mul(aspect).add(1).mul(0.25);
-      const zoom = float9(1).div(float9(1).add(max6(k, 0).mul(corner)));
-      const q = p12.mul(r2.mul(k).add(1)).mul(zoom).div(vec24(aspect, 1)).add(0.5);
-      return tex.sample(q.clamp(0, 1)).rgb;
-    }
-  },
-  {
-    id: "lens.vignette",
-    label: "Vignette",
-    stage: "display",
-    always: true,
-    enabled: () => true,
-    requires: () => [],
-    build(c, ctx) {
-      const P = ctx.P;
-      const aspect = screenSize.x.div(screenSize.y);
-      const sx = mix7(1, aspect, P.get("lens.vignette.roundness"));
-      const p12 = ctx.uv.sub(0.5).mul(2).mul(vec24(sx, 1));
-      const r = length(p12).div(length(vec24(sx, 1)));
-      const softness = P.get("lens.vignette.softness");
-      const v = smoothstep9(softness.oneMinus(), softness.mul(0.2).add(1), r).mul(P.get("lens.vignette.amount"));
-      return mix7(c, P.get("lens.vignette.color"), v);
-    }
-  },
-  {
-    id: "media.grain",
-    label: "Film grain",
-    stage: "display",
-    always: true,
-    enabled: () => true,
-    requires: () => [],
-    build(c, ctx) {
-      const P = ctx.P;
-      const cell = floor4(ctx.coord.div(P.get("media.grain.size").mul(ctx.gridSize.y.div(1080)).max(1)));
-      const seed = floor4(ctx.U.time.mul(24)).mul(P.get("media.grain.animated"));
-      const n = fract4(sin2(dot3(cell.add(vec24(seed.mul(17.13), seed.mul(41.7))), vec24(12.9898, 78.233))).mul(43758.5453)).sub(0.5);
-      const response = luminance4(c).sub(0.5).mul(2).pow(2).mul(0.6).oneMinus();
-      return c.add(n.mul(P.get("media.grain.amount")).mul(2).mul(response));
-    }
-  },
-  {
-    id: "lens.letterbox",
-    label: "Letterbox",
-    stage: "display",
-    always: true,
-    enabled: () => true,
-    requires: () => [],
-    build(c, ctx) {
-      const P = ctx.P;
-      const screen = screenSize.x.div(screenSize.y), target = P.get("lens.letterbox.aspect");
-      const amount = P.get("lens.letterbox.amount");
-      const barY = float9(1).sub(screen.div(target)).max(0).mul(0.5).mul(amount);
-      const barX = float9(1).sub(target.div(screen)).max(0).mul(0.5).mul(amount);
-      const uv = ctx.uv;
-      const bar = max6(max6(step6(uv.y, barY), step6(barY.oneMinus(), uv.y)).mul(step6(1e-4, barY)), max6(step6(uv.x, barX), step6(barX.oneMinus(), uv.x)).mul(step6(1e-4, barX)));
-      return mix7(c, P.get("lens.letterbox.color"), bar);
-    }
-  },
-  {
-    id: "retro.crt",
-    label: "CRT",
-    stage: "display",
-    neighborhood: true,
-    enabled: (v) => v["retro.crt.enabled"],
+    enabled: (v) => v["media.misregistration.enabled"],
     requires: () => [],
     build(c, ctx) {
       const P = ctx.P;
       const tex = ctx.texture(c);
-      return Fn9(() => {
-        const k = P.get("retro.crt.curvature");
-        const p12 = screenUV.mul(2).sub(1).toVar();
-        p12.addAssign(p12.mul(p12.yx.mul(p12.yx)).mul(k));
-        const uv = p12.mul(0.5).add(0.5);
-        const edge = smoothstep9(0, 0.012, uv.x).mul(smoothstep9(0, 0.012, uv.x.oneMinus())).mul(smoothstep9(0, 0.012, uv.y)).mul(smoothstep9(0, 0.012, uv.y.oneMinus()));
-        const px = vec24(2).div(screenSize).mul(screenSize.y.div(1080));
-        const col = tex.sample(uv).rgb.toVar();
-        const glow = tex.sample(uv.add(vec24(px.x, 0))).rgb.add(tex.sample(uv.sub(vec24(px.x, 0))).rgb).add(tex.sample(uv.add(vec24(0, px.y))).rgb).add(tex.sample(uv.sub(vec24(0, px.y))).rgb).mul(0.25);
-        col.assign(mix7(col, max6(col, glow), P.get("retro.crt.glow")).add(glow.mul(P.get("retro.crt.glow")).mul(0.2)));
-        const rows = ctx.pixel ? ctx.gridSize.y : screenSize.y.div(screenSize.y.div(360).max(2));
-        const phase = fract4(uv.y.mul(rows));
-        const scan = float9(1).sub(P.get("retro.crt.scanlines").mul(cos2(phase.mul(Math.PI)).pow(2)));
-        const triad = floor4(screenCoordinate2.x).mod(3);
-        const maskRgb = vec39(select3(triad.lessThan(0.5), 1.25, 0.8), select3(triad.lessThan(0.5).or(triad.greaterThan(1.5)), 0.8, 1.25), select3(triad.greaterThan(1.5), 1.25, 0.8));
-        const mask = mix7(vec39(1), maskRgb, P.get("retro.crt.mask"));
-        const flicker = float9(1).add(sin2(ctx.U.time.mul(59)).mul(P.get("retro.crt.flicker")));
-        const gain = float9(1).add(P.get("retro.crt.scanlines").mul(0.4));
-        return col.mul(scan).mul(mask).mul(flicker).mul(gain).mul(edge);
-      })();
+      const a = P.get("media.misregistration.angle").mul(Math.PI / 180);
+      const o = vec26(cos4(a), sin4(a)).mul(P.get("media.misregistration.offset")).mul(ctx.texel).mul(ctx.gridSize.y.div(1080));
+      return vec39(tex.sample(ctx.uv.add(o)).r, tex.sample(ctx.uv).g, tex.sample(ctx.uv.sub(o)).b);
+    }
+  },
+  {
+    id: "media.paper",
+    label: "Paper",
+    stage: "medium",
+    enabled: (v) => v["media.paper.enabled"],
+    requires: () => [],
+    build(c, ctx) {
+      const P = ctx.P;
+      const p12 = ctx.coord.div(P.get("media.paper.scale").mul(ctx.gridSize.y.div(1080)));
+      const type = P.get("media.paper.type");
+      const fibers = noise(vec39(p12.mul(vec26(0.9, 0.12)), 2.1)).mul(0.5).add(noise(vec39(p12.mul(0.45), 5.3)).mul(0.5));
+      const bumps = mx_worley_noise_float2(vec39(p12.mul(0.05), 0.5)).oneMinus().mul(0.7).add(noise(vec39(p12.mul(0.3), 1.1)).mul(0.3));
+      const weave = sin4(p12.x.mul(0.9)).mul(sin4(p12.y.mul(0.9))).mul(0.5).add(0.5).mul(0.6).add(noise(vec39(p12.mul(0.2), 8.4)).mul(0.4));
+      const relief = select6(type.lessThan(0.5), fibers, select6(type.lessThan(1.5), bumps, select6(type.lessThan(2.5), weave, fibers)));
+      const paper = P.get("media.paper.color").mul(relief.mul(0.22).add(0.82));
+      return mix10(c, c.mul(paper), P.get("media.paper.strength"));
     }
   }
 ];
@@ -3906,25 +5525,25 @@ function buildGraph({ styledPass, plainPass, values, P, U, lists, atmos, camera,
     texture: (c2) => ctx.own(convertToTexture(vec44(c2, 1)))
   };
   if (pixel) {
-    ctx.coord = floor5(screenCoordinate3.xy.div(U.pixelSize));
+    ctx.coord = floor8(screenCoordinate6.xy.div(U.pixelSize));
     ctx.uv = ctx.coord.add(0.5).div(U.lowRes);
-    ctx.texel = vec25(1).div(U.lowRes);
+    ctx.texel = vec27(1).div(U.lowRes);
     ctx.gridSize = U.lowRes;
     ctx.lineScale = 2 / 3;
   } else {
-    ctx.coord = floor5(screenCoordinate3.xy);
+    ctx.coord = floor8(screenCoordinate6.xy);
     ctx.uv = screenUV2;
-    ctx.texel = vec25(1).div(screenSize2);
-    ctx.gridSize = screenSize2;
-    ctx.lineScale = screenSize2.y.div(1080);
+    ctx.texel = vec27(1).div(screenSize3);
+    ctx.gridSize = screenSize3;
+    ctx.lineScale = screenSize3.y.div(1080);
   }
   let c = vec310(ctx.tex("output").sample(ctx.uv).rgb);
   for (const e of EFFECTS) if (e.enabled(values, ctx)) c = e.build(c, ctx);
   const plain = renderOutput2(plainPass.getTextureNode("output"), THREE8.ACESFilmicToneMapping, THREE8.SRGBColorSpace).rgb;
-  const showPlain = max7(U.hold, max7(U.flicker, U.split.mul(step7(screenUV2.x, U.splitPos))));
-  let out = mix8(c, plain, showPlain);
-  const divider = smoothstep10(0.5, 1.5, abs4(screenUV2.x.sub(U.splitPos)).mul(screenSize2.x)).oneMinus();
-  out = mix8(out, vec310(1), divider.mul(U.split).mul(U.hold.oneMinus()));
+  const showPlain = max8(U.hold, max8(U.flicker, U.split.mul(step10(screenUV2.x, U.splitPos))));
+  let out = mix11(c, plain, showPlain);
+  const divider = smoothstep11(0.5, 1.5, abs6(screenUV2.x.sub(U.splitPos)).mul(screenSize3.x)).oneMinus();
+  out = mix11(out, vec310(1), divider.mul(U.split).mul(U.hold.oneMinus()));
   return { node: vec44(out, 1), owned };
 }
 function disposeOwned(owned) {
@@ -4165,6 +5784,7 @@ var StyleRuntime = class {
     this.U.lines.color = this.P.get("lines.screen.color");
     this.lists = createPostLists();
     this.atmos = createAtmosphereUniforms();
+    this.atmos.time = this.U.time;
     this.scene.fogNode = createFogNode(this.atmos);
     this.materials = new StyleMaterials({ time: this.U.time, keyDirection: this.atmos.sunDirection });
     this.rigs = new Rigs(this.scene);
@@ -4224,12 +5844,18 @@ var StyleRuntime = class {
     this.apply(this.resolved);
     this.markCompile("scene");
   }
-  /** Buffers the styled pass writes for the current values, and whether it can use MSAA. */
-  passConfig(v) {
+  /**
+   * Buffers the styled pass writes for the current values, and whether it can use MSAA:
+   * only when it writes no extra buffers, the look isn't a pixel look, the AA mode allows
+   * it, and no part uses toon water (which copies the depth buffer mid-pass).
+   */
+  passConfig(v, parts) {
     const buffers = passRequirements(v);
     const pixel = v["retro.pixel.enabled"] === true;
-    const samples = buffers.size || pixel ? 0 : 4;
-    return { buffers, samples, pixel, key: `${samples}|${[...buffers].sort().join(",")}` };
+    const water = PARTS.some((p12) => parts[p12]["surface.model"] === "toonWater");
+    const msaa = ["auto", "msaa"].includes(v["quality.aa"]) && !buffers.size && !pixel && !water;
+    const samples = msaa ? 4 : 0;
+    return { buffers, samples, pixel, key: `${samples}|${[...buffers].sort().join(",")}${water ? "|water" : ""}` };
   }
   /**
    * Applies a resolved look (resolveLook()). Returns what was rebuilt.
@@ -4258,8 +5884,19 @@ var StyleRuntime = class {
     a.fogColor.value.set(v["atmosphere.fog.color"]);
     a.fogSkyTint.value = v["atmosphere.fog.skyTint"];
     a.fogBands.value = v["atmosphere.fog.bands"];
+    a.heightDensity.value = v["atmosphere.heightFog.density"];
+    a.heightBase.value = v["atmosphere.heightFog.base"];
+    a.heightFalloff.value = v["atmosphere.heightFog.falloff"];
+    a.clouds.value = v["atmosphere.clouds.amount"];
+    a.cloudCoverage.value = v["atmosphere.clouds.coverage"];
+    a.cloudSoftness.value = v["atmosphere.clouds.softness"];
+    a.cloudBands.value = v["atmosphere.clouds.bands"];
+    a.cloudScale.value = v["atmosphere.clouds.scale"];
+    a.cloudSpeed.value = v["atmosphere.clouds.speed"];
+    a.cloudColor.value.set(v["atmosphere.clouds.color"]);
+    a.cloudShade.value.set(v["atmosphere.clouds.shade"]);
     applyPostValues(this.U, this.P, this.lists, v);
-    const cfg = this.passConfig(v);
+    const cfg = this.passConfig(v, resolved.parts);
     const passRebuilt = cfg.key !== this.passKey;
     if (passRebuilt) {
       this.styledPass?.dispose();
@@ -4459,9 +6096,9 @@ var MIGRATIONS = {};
 function migrateLook(look) {
   let current = look;
   while (current.schema !== LOOK_SCHEMA) {
-    const step8 = MIGRATIONS[current.schema];
-    if (!step8) throw new Error(`Can't read look schema ${current.schema}`);
-    current = step8(current);
+    const step11 = MIGRATIONS[current.schema];
+    if (!step11) throw new Error(`Can't read look schema ${current.schema}`);
+    current = step11(current);
   }
   return current;
 }
@@ -4560,7 +6197,7 @@ function guessParts(items) {
 }
 
 // src/runtime/index.js
-var RUNTIME_VERSION = "0.4.0";
+var RUNTIME_VERSION = "0.5.0";
 export {
   EFFECTS,
   LOOK_SCHEMA,
