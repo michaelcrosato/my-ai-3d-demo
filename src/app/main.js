@@ -292,11 +292,11 @@ async function boot() {
 	// Frame loop and stats.
 	const stats = { fps: 0, cpuMs: 0, gpuMs: null, method: timestampsSupported( renderer ) ? 'timestamp' : 'n/a', triangles: 0, calls: 0 };
 	const timer = new THREE.Timer();
-	let paused = false, resolving = false, frames = 0, last = performance.now();
+	let paused = false, held = false, resolving = false, frames = 0, last = performance.now();
 
 	renderer.setAnimationLoop( () => {
 
-		if ( paused ) return;
+		if ( paused || held ) return;
 
 		timer.update();
 		const dt = Math.min( 0.1, timer.getDelta() );
@@ -350,19 +350,22 @@ async function boot() {
 
 	} );
 
-	const pausedWhile = pausedWhileRef = async ( fn ) => {
+	// Offscreen jobs (captures, the audit, spikes, gallery previews) run one at a time with
+	// the loop paused until the last one ends: two jobs interleaving would resize the
+	// renderer under each other (the Analyze tab's critic used to capture during an audit).
+	let jobs = Promise.resolve(), pendingJobs = 0;
+	const pausedWhile = pausedWhileRef = ( fn ) => {
 
+		pendingJobs ++;
 		paused = true;
-		try {
+		const job = jobs.then( async () => {
 
 			while ( resolving ) await new Promise( ( r ) => setTimeout( r, 5 ) );
-			return await fn();
+			return fn();
 
-		} finally {
-
-			paused = false;
-
-		}
+		} );
+		jobs = job.catch( () => {} ).finally( () => { if ( -- pendingJobs === 0 ) paused = false; } );
+		return job;
 
 	};
 
@@ -485,7 +488,7 @@ async function boot() {
 		/** Advances the app clock by dt seconds (drives transitions while captures are paused). */
 		tick: ( dt ) => app.tick( dt ),
 		/** Stops (true) or restarts the render loop, so another page in the browser gets the GPU. */
-		pauseLoop: ( on ) => { paused = !! on; },
+		pauseLoop: ( on ) => { held = !! on; },
 		/** The current state as a share URL hash (`#state=…`), and opening one. */
 		shareHash: () => app.actions.shareHash(),
 		openShare: async ( hash ) => { const p = parseShareHash( hash ); if ( ! p ) throw new Error( 'not a share hash' ); await app.actions.openShare( p.kind, p.text ); await nextFrames(); },
