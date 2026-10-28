@@ -5,10 +5,11 @@ import { createTune } from './tune.js';
 import { createSceneTab } from './scenetab.js';
 import { createRecipeTab } from './recipe.js';
 import { createPartsTab } from './parts.js';
+import { createPlayTab } from './play.js';
 import { paramCard, PIPELINE_CARD, showMe, bindLearnLinks } from './learn.js';
 import { h } from './dom.js';
 
-const TABS = [ [ 'look', 'Look' ], [ 'parts', 'Parts' ], [ 'scene', 'Scene' ], [ 'tune', 'Tune' ], [ 'learn', 'Learn' ] ];
+const TABS = [ [ 'look', 'Look' ], [ 'parts', 'Parts' ], [ 'scene', 'Scene' ], [ 'play', 'Play' ], [ 'tune', 'Tune' ], [ 'learn', 'Learn' ] ];
 
 /**
  * @param {HTMLElement} root
@@ -29,6 +30,7 @@ export function createInspector( root, app, sceneOptions ) {
 	const sceneTab = createSceneTab( panes.scene, app, sceneOptions );
 	const recipeTab = createRecipeTab( panes.look, app, { toast: sceneOptions.toast, share: sceneOptions.share } );
 	const partsTab = createPartsTab( panes.parts, app, { toast: sceneOptions.toast } );
+	const playTab = createPlayTab( panes.play, app, { toast: sceneOptions.toast } );
 
 	function renderLearn() {
 
@@ -45,6 +47,7 @@ export function createInspector( root, app, sceneOptions ) {
 		for ( const [ id, el ] of Object.entries( panes ) ) el.hidden = id !== tab;
 		if ( tab === 'look' ) recipeTab.render();
 		if ( tab === 'parts' ) partsTab.render();
+		if ( tab === 'play' ) { playTab.render(); playTab.start(); }
 		if ( tab === 'learn' ) renderLearn();
 		if ( tab === 'scene' ) sceneTab.render();
 
@@ -70,11 +73,12 @@ export function createInspector( root, app, sceneOptions ) {
 		if ( tab === 'look' && [ 'look', 'scene', 'recipe', 'parts', 'library', 'transition' ].includes( type ) ) { if ( dragging( panes.look ) ) recipeTab.refreshWarnings(); else render(); }
 		if ( tab === 'look' && type === 'resolved' ) recipeTab.refreshWarnings();
 		if ( tab === 'parts' && [ 'parts', 'scope', 'isolate', 'scene', 'library', 'recipe' ].includes( type ) ) render();
+		if ( tab === 'play' && [ 'walk', 'physics', 'plan', 'modes', 'scene', 'library' ].includes( type ) && ! panes.play.contains( document.activeElement?.closest?.( 'input' ) ) ) render();
 		if ( tab === 'learn' && type === 'resolved' && ! document.activeElement?.closest?.( '.tab-pane[data-tab="learn"]' ) ) renderLearn();
 
 	} );
 
 	render();
-	return { render, openLearn, setTab, tune, sceneTab, recipeTab, partsTab };
+	return { render, openLearn, setTab, tune, sceneTab, recipeTab, partsTab, playTab };
 
 }

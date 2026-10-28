@@ -1,4 +1,4 @@
-// Scene library (design §6.1): the reference stage, Harbor Isle and the P1 set.
+// Scene library (design §6.1): the reference stage, Harbor Isle, the P1 set and the toybox.
 
 import lookdev from './lookdev.js';
 import harbor from './harbor.js';
@@ -10,13 +10,14 @@ import platforms from './platforms.js';
 import hangar from './hangar.js';
 import meadow from './meadow.js';
 import campsite from './campsite.js';
+import toybox from './toybox.js';
 import { TIERS, countTriangles } from './kit/core.js';
 
 export { TIERS, countTriangles };
 
 const countMeshes = ( root ) => { let n = 0; root.traverse( ( o ) => { if ( o.isMesh ) n ++; } ); return n; };
 
-export const SCENES = [ harbor, lookdev, garden, plaza, dungeon, kart, platforms, hangar, meadow, campsite ];
+export const SCENES = [ harbor, lookdev, garden, plaza, dungeon, kart, platforms, hangar, meadow, campsite, toybox ];
 
 /** Density multipliers for props (§6.2). */
 export const DENSITY = { min: 0.5, max: 4, default: 1 };

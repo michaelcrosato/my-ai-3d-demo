@@ -2,12 +2,68 @@
 // milestone first; earlier milestones stay available under a fold.
 // `actions` name panel handlers; each button is labeled with what it does (panel.js ACTION_LABELS).
 // `setup` is what "Set it up for me" loads: scene, look, tier, shot, Tune `params`, and
-// (M4) a `recipe`, `parts` and the inspector `tab` to open.
+// (M4) a `recipe`, `parts` and the inspector `tab` to open, (M5) `walk: true`.
 // `learn` is what the check teaches; `signoff: false` marks optional tour steps.
 
-export const CURRENT_MILESTONE = 'M4';
+export const CURRENT_MILESTONE = 'M5';
 
 export const CHECKS = [
+	{
+		id: 'M5-01', milestone: 'M5',
+		title: 'Every gamepad button responds in the tester',
+		steps: [ 'Connect a gamepad (USB or Bluetooth) and press any button so the browser sees it.', 'Play tab → Gamepad tester: press every button, both triggers slowly, and move both sticks in full circles.', 'Then try the real actions: LB / RB looks, D-pad scenes and complexity, hold X to compare, LT split, R3 next shot, Menu hides the UI.' ],
+		expected: 'Each button lights up under its own glyph (Xbox or PlayStation names, detected from the pad), triggers fill smoothly, and the tester says "standard mapping". Every action in the list does what it says. Report your pad model and any button that doesn\'t respond.',
+		learn: 'The standard gamepad layout every browser game can rely on, and why the glyphs follow the pad you hold.',
+		setup: { tab: 'play' },
+	},
+	{
+		id: 'M5-02', milestone: 'M5',
+		title: 'No stick drift at the default deadzone',
+		steps: [ 'Let go of both sticks and watch the tester\'s stick dots for ten seconds.', 'Walk mode (L3): let go of the stick and watch whether the character creeps or the camera turns by itself.' ],
+		expected: 'With the sticks released, the dots stay inside the dashed deadzone circle (gray, not green) and nothing moves in walk mode.',
+		learn: 'Deadzones: every analog stick rests slightly off center, so games ignore small values. Too small drifts; too big feels sluggish.',
+		setup: { scene: 'toybox', look: 'sea-breeze', tier: 1, tab: 'play' },
+	},
+	{
+		id: 'M5-03', milestone: 'M5',
+		title: 'Walking into a zone changes the look smoothly',
+		steps: [ 'This setup starts walk mode in the Torchlit Dungeon (WASD or the left stick, drag or the right stick to look).', 'Walk over the lava channel and up the stairs onto the dais at the back (the crypt), then into the east courtyard.', 'Play tab → Look zones shows each zone\'s weight while you walk.' ],
+		expected: 'Near the lava the grade warms; on the dais it darkens and cools; in the courtyard Golden Hour fades in. No sudden jumps while you walk (a short compile pause the first time a whole new look fades in is expected).',
+		learn: 'Look zones: how games change mood by place, like post-processing volumes in commercial engines.',
+		setup: { scene: 'dungeon', look: 'sea-breeze', tier: 1, tab: 'play', walk: true },
+	},
+	{
+		id: 'M5-04', milestone: 'M5',
+		title: 'Throwing props feels right',
+		steps: [ 'In the Physics Toybox, click in the view (or press RT) to throw balls at the block towers and the pyramid.', 'Walk in (Tab or L3) and push things over.' ],
+		expected: 'Balls fly where you click and bounce believably; towers topple and settle; nothing sinks through the floor or jitters at rest.',
+		learn: 'Physics as a style test: moving objects reveal whether lines and textures stick to surfaces.',
+		setup: { scene: 'toybox', look: 'graffiti-rush', tier: 1 },
+	},
+	{
+		id: 'M5-05', milestone: 'M5',
+		title: 'Lines and dither hold up in motion',
+		steps: [ 'In the toybox with this setup (ink lines and dither), throw balls and walk around while watching edges and flat areas.', 'Try Q / E for other looks with lines or patterns (Comic Ink, 1-Bit Dither, Sketchbook).' ],
+		expected: 'Lines stay attached to the moving blocks without flicker; dither and halftone patterns don\'t crawl or shimmer on moving objects (screen-fixed patterns sliding over motion is how they work).',
+		learn: 'Temporal stability: why some styles look great in stills and fall apart in motion.',
+		setup: { scene: 'toybox', look: 'one-bit', tier: 1 },
+	},
+	{
+		id: 'M5-06', milestone: 'M5', signoff: false,
+		title: 'Plan your levels and play the plan',
+		steps: [ 'Play tab → Level look plan: give two or three scenes a look and a transition (try Crossfade and Wipe).', 'Press ▶ Play plan and watch it tour the levels.' ],
+		expected: 'Each level arrives in its planned look with its transition. The plan is saved with your state and goes into the export in M6.',
+		learn: 'A level look plan: deciding a game\'s visual arc (calm hub, dark dungeon, colorful finale) before building it.',
+		setup: { tab: 'play' },
+	},
+	{
+		id: 'M5-07', milestone: 'M5', signoff: false,
+		title: 'Player visual modes',
+		steps: [ 'Play tab → Player visual modes: add the current look, pick another look and add it too, then press + Suggest High-contrast.', 'Press M (or View on a gamepad) to cycle, or ▶ Cycle demo.' ],
+		expected: 'Each press switches to the next mode. High-contrast adds heavier black lines, stronger value contrast and a color-blind-safe palette on top of your look.',
+		learn: 'Accessibility as a style feature: a high-contrast mode keeps the game readable for more players.',
+		setup: { scene: 'platforms', look: 'sea-breeze', tier: 1, tab: 'play' },
+	},
 	{
 		id: 'M4-01', milestone: 'M4',
 		title: 'Mix two looks you like',

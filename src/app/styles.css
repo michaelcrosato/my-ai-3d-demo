@@ -195,6 +195,30 @@ table.env td { padding: 2px 6px; vertical-align: top; border-bottom: 1px solid v
 table.env td:first-child { color: var(--muted); white-space: nowrap; }
 table.env code { word-break: break-all; }
 
+/* Play tab (M5): zone meters, plan table, player modes, gamepad tester. */
+.meter { display: inline-block; flex: 1; min-width: 60px; height: 6px; border-radius: 3px; background: var(--bg); overflow: hidden; vertical-align: middle; }
+.meter i { display: block; height: 100%; width: 0; background: var(--accent); }
+.zone { border-top: 1px solid var(--line); padding-top: 4px; margin-top: 6px; }
+.zone select { flex: 1; min-width: 0; }
+table.plan th { width: 110px; }
+table.plan td:last-child { width: 92px; }
+.mode input { flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; }
+.mode select { flex: 1; min-width: 0; }
+.mode.on input { border-color: var(--accent); }
+.pad-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 6px 0; }
+.pad-btn { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 2px; border: 1px solid var(--line); border-radius: 6px; text-align: center; }
+.pad-btn b { font-size: 13px; }
+.pad-btn span { font-size: 10px; color: var(--muted); line-height: 1.2; }
+.pad-btn.down { border-color: var(--ok); background: rgb(124 196 127 / 0.15); }
+.sticks { align-items: flex-start; gap: 14px; margin-bottom: 20px; }
+.stick { position: relative; width: 64px; height: 64px; border: 1px solid var(--line); border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.stick .dz { position: absolute; border: 1px dashed var(--muted); border-radius: 50%; }
+.stick i { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+.stick i.live { background: var(--ok); }
+.stick small { position: absolute; bottom: -16px; white-space: nowrap; color: var(--muted); font-size: 10px; }
+.triggers { flex: 1; display: flex; flex-direction: column; gap: 6px; padding-top: 10px; }
+.triggers div { display: flex; align-items: center; gap: 6px; }
+
 /* Narrow screens (§5.1): looks become a strip under the view, the inspector a toggled sheet. */
 @media (max-width: 900px) {
 	.build, .field.tier #tier-label { display: none; }

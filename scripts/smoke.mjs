@@ -2,7 +2,7 @@
 // checks for errors and a non-blank frame, and runs the spikes. CDN requests are
 // served from node_modules (same pinned versions), so it runs offline.
 //
-//   node scripts/smoke.mjs [--only <text>] [--no-spikes] [--rebuild-iterations N]
+//   node scripts/smoke.mjs [--only <text>] [--checks m1,m3,m4,m5] [--no-spikes] [--rebuild-iterations N]
 //
 // Needs Playwright with Chromium: `npm i -D playwright && npx playwright install chromium`
 // (already present in the cloud container). Headless WebGPU uses SwiftShader.
@@ -26,11 +26,14 @@ const distFile = pathToFileURL( path.join( ROOT, 'dist/style-lab.html' ) ).href;
 
 const RUNS = [
 	{ name: 'dev  · http · WebGL2', url: ( base ) => `${base}/index.html?backend=webgl`, backend: 'WebGL2' },
-	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2', m1: true, m3: true, m4: true, sweep: true, gallery: 'm4-gallery.png' },
-	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm4-webgpu.png', panel: true, m1: true, m3: true, m4: true, sweep: [ 'lookdev', 'harbor' ], sheet: 'm4-contact.png', effects: 'm3-effects.png' },
+	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2', m1: true, m3: true, m4: true, m5: true, sweep: true, gallery: 'm4-gallery.png' },
+	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm5-webgpu.png', panel: true, m1: true, m3: true, m4: true, m5: true, sweep: [ 'lookdev', 'harbor' ], sheet: 'm5-contact.png', effects: 'm3-effects.png' },
 	{ name: 'dist · file · WebGL2', url: () => `${distFile}?backend=webgl`, backend: 'WebGL2' },
 	{ name: 'dist · file · auto  ', url: () => distFile, backend: null },
 ].filter( ( r ) => ! value( '--only' ) || r.name.includes( value( '--only' ) ) );
+
+// --checks m4,m5 runs exactly those milestone checks on the selected runs (handy with --only dev).
+if ( value( '--checks' ) ) for ( const r of RUNS ) for ( const m of [ 'm1', 'm3', 'm4', 'm5' ] ) r[ m ] = value( '--checks' ).split( ',' ).includes( m );
 
 const MIME = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json' };
 
@@ -439,10 +442,178 @@ async function m4Checks( page, fail, run ) {
 
 }
 
+/** A scriptable standard-mapping pad (Xbox ids), installed before the app boots. */
+function fakeGamepad() {
+
+	const buttons = Array.from( { length: 17 }, () => ( { pressed: false, touched: false, value: 0 } ) );
+	const pad = { id: 'Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)', index: 0, connected: true, mapping: 'standard', timestamp: 0, axes: [ 0, 0, 0, 0 ], buttons, vibrationActuator: null };
+	window.__fakePad = pad;
+	navigator.getGamepads = () => [ pad, null, null, null ];
+
+}
+
+/**
+ * M5 acceptance checks (design §9 M5): the full gamepad map on a standard pad (and the
+ * tester), walking between zones morphs continuously (weights and values never jump,
+ * float-only zones never rebuild, and the walk lands exactly on the zone look), physics
+ * replays deterministically, the toybox throws, the plan player and player modes work.
+ */
+async function m5Checks( page, fail ) {
+
+	const out = await page.evaluate( async () => {
+
+		const s = window.__stylelab, app = s.app, pad = window.__fakePad;
+		const res = { checks: [] };
+		const check = ( name, pass, value ) => res.checks.push( { name, pass, value } );
+		const frames = ( n = 3 ) => new Promise( ( r ) => { let k = 0; const f = () => ( ++ k >= n ? r() : requestAnimationFrame( f ) ); requestAnimationFrame( f ); } );
+		const tap = async ( i, value = 1 ) => { pad.buttons[ i ] = { pressed: true, touched: true, value }; await frames( 3 ); pad.buttons[ i ] = { pressed: false, touched: false, value: 0 }; await frames( 3 ); };
+		const until = async ( fn, ms = 60000 ) => { const t0 = performance.now(); while ( ! fn() && performance.now() - t0 < ms ) await frames( 2 ); return fn(); };
+
+		// Gamepad: every mapped action responds on a standard pad.
+		await s.setScene( 'lookdev', { tier: 1 } );
+		await s.applyLook( 'sea-breeze' );
+		app.actions.setTransition( { type: 'cut' } );
+		const look0 = app.store.get().recipe.base;
+		await tap( 5 ); const afterRB = app.store.get().recipe.base;
+		await tap( 4 ); const afterLB = app.store.get().recipe.base;
+		check( 'pad: RB / LB step looks', afterRB !== look0 && afterLB === look0, [ look0, afterRB, afterLB ] );
+		await tap( 15 ); const sceneR = app.store.get().sceneId;
+		await tap( 14 ); const sceneL = app.store.get().sceneId;
+		check( 'pad: D-pad ← / → step scenes', sceneR !== 'lookdev' && sceneL === 'lookdev', [ sceneR, sceneL ] );
+		await tap( 12 ); const tierUp = app.store.get().tier;
+		await tap( 13 ); const tierDown = app.store.get().tier;
+		check( 'pad: D-pad ↑ / ↓ change complexity', tierUp === 2 && tierDown === 1, [ tierUp, tierDown ] );
+		pad.buttons[ 2 ] = { pressed: true, touched: true, value: 1 }; await frames( 3 );
+		const held = app.runtime.U.hold.value;
+		pad.buttons[ 2 ] = { pressed: false, touched: false, value: 0 }; await frames( 3 );
+		check( 'pad: hold X compares with plain', held === 1 && app.runtime.U.hold.value === 0, held );
+		pad.buttons[ 6 ] = { pressed: false, touched: true, value: 0.7 }; await frames( 3 );
+		const split = { mode: app.store.get().compare.mode, pos: app.store.get().compare.splitPos };
+		pad.buttons[ 6 ] = { pressed: false, touched: false, value: 0 }; await frames( 3 );
+		check( 'pad: LT drives the split divider', split.mode === 'split' && Math.abs( split.pos - 0.7 ) < 0.01 && app.store.get().compare.mode === 'off', split );
+		const shot0 = app.shotId();
+		await tap( 11 );
+		check( 'pad: R3 next shot', app.shotId() !== shot0, [ shot0, app.shotId() ] );
+		await tap( 9 ); const hidden = document.getElementById( 'app' ).classList.contains( 'ui-hidden' );
+		await tap( 9 );
+		check( 'pad: Menu hides the UI', hidden && ! document.getElementById( 'app' ).classList.contains( 'ui-hidden' ), hidden );
+		app.actions.addMode( 'Classic', 'sea-breeze' );
+		app.actions.addMode( 'Comic', 'comic-ink' );
+		app.actions.setMode( 0 );
+		await tap( 8 );
+		check( 'pad: View cycles player modes', app.store.get().mode === 1 && app.store.get().recipe.base === 'comic-ink', [ app.store.get().mode, app.store.get().recipe.base ] );
+
+		// Tester: the Play tab lights pressed buttons.
+		app.actions.setMode( 0 );
+		document.querySelector( 'nav.tabs button[data-tab="play"]' ).click();
+		pad.buttons[ 0 ] = { pressed: true, touched: true, value: 1 }; await frames( 4 );
+		const lit = document.querySelector( '.pad-btn[data-button="0"]' )?.classList.contains( 'down' );
+		pad.buttons[ 0 ] = { pressed: false, touched: false, value: 0 }; await frames( 3 );
+		check( 'pad tester shows pressed buttons', lit === true, lit );
+
+		// Walk mode via L3; the left stick moves the player; A jumps; a little stick noise doesn't drift.
+		await tap( 10 );
+		await until( () => app.walking );
+		check( 'pad: L3 starts walk mode', app.walking, app.walking );
+		if ( app.walking ) {
+
+			pad.axes = [ 0.08, - 0.1, 0.05, 0.06 ]; await frames( 4 );
+			check( 'no stick drift at the default deadzone', app.walkInput.padMove.every( ( v ) => v === 0 ) && app.walkInput.padLook.every( ( v ) => v === 0 ), app.walkInput.padMove );
+			const p0 = app.walk.position();
+			pad.axes = [ 0, - 1, 0, 0 ];
+			const t0 = performance.now();
+			await until( () => performance.now() - t0 > 1500 );
+			pad.axes = [ 0, 0, 0, 0 ]; await frames( 2 );
+			const p1 = app.walk.position();
+			const moved = Math.hypot( p1[ 0 ] - p0[ 0 ], p1[ 2 ] - p0[ 2 ] );
+			check( 'pad: left stick walks', moved > 0.5, moved );
+			pad.buttons[ 0 ] = { pressed: true, touched: true, value: 1 };
+			let peak = p1[ 1 ];
+			const t1 = performance.now();
+			while ( performance.now() - t1 < 800 ) { await frames( 1 ); peak = Math.max( peak, app.walk.position()[ 1 ] ); }
+			pad.buttons[ 0 ] = { pressed: false, touched: false, value: 0 };
+			check( 'pad: A jumps', peak > p1[ 1 ] + 0.3, [ p1[ 1 ], peak ] );
+			await tap( 10 );
+			check( 'pad: L3 ends walk mode', ! app.walking, app.walking );
+
+		}
+
+		// Zones: walk from the hall over the lava into the crypt in small steps.
+		s.freeze( 1 );
+		await s.setScene( 'dungeon', { tier: 1 } );
+		await s.applyLook( 'sea-breeze' );
+		await s.setWalk( true );
+		const ids = s.zones().map( ( z ) => z.id );
+		const path = [];
+		// Down the west side of the hall (clear of the courtyard), over the lava, up onto the dais.
+		for ( let i = 0; i <= 40; i ++ ) { const t = i / 40; path.push( t < 0.5 ? [ - 2, 0, 5 - t * 2 * 8 ] : [ - 2 + ( t - 0.5 ) * 2 * 5, 1, - 3 - ( t - 0.5 ) * 2 * 5 ] ); }
+		const before = s.info();
+		let prev = null, maxStep = 0, maxValue = 0, worst = null;
+		const NUMS = [ 'grade.exposure', 'grade.saturation', 'grade.temperature', 'lens.vignette.amount', 'lighting.practicals.intensity' ];
+		for ( const p of path ) {
+
+			await s.walkTo( p );
+			const w = Object.fromEntries( s.zones().map( ( z ) => [ z.id, z.weight ] ) );
+			const v = Object.fromEntries( NUMS.map( ( id ) => [ id, app.resolved.global[ id ] ] ) );
+			if ( prev ) for ( const id of ids ) maxStep = Math.max( maxStep, Math.abs( w[ id ] - prev.w[ id ] ) );
+			if ( prev ) for ( const id of NUMS ) { const d = Math.abs( v[ id ] - prev.v[ id ] ); if ( d > maxValue ) { maxValue = d; worst = id; } }
+			prev = { w, v };
+
+		}
+
+		const after = s.info();
+		check( 'zones: weights change continuously along the walk', maxStep < 0.35 && Object.values( prev.w ).some( ( x ) => x === 1 ), { maxStep, end: prev.w } );
+		check( 'zones: look values never jump (largest step under 0.25)', maxValue < 0.25, { maxValue, worst } );
+		check( 'zones: float-only zones never rebuild shaders', after.graphBuilds === before.graphBuilds && after.materialBuilds === before.materialBuilds, [ before.graphBuilds, after.graphBuilds ] );
+		const g = app.resolved.global;
+		check( 'zones: deep in the crypt the look is exactly the crypt look', g[ 'grade.exposure' ] === - 0.5 && g[ 'grade.temperature' ] === - 0.3 && g[ 'lens.vignette.amount' ] === 0.6 && prev.w.crypt === 1 && prev.w.lava === 0, [ g[ 'grade.exposure' ], g[ 'grade.temperature' ], g[ 'lens.vignette.amount' ], prev.w ] );
+		const crypt = await s.capture( { width: 240, height: 135 } );
+		await s.setWalk( false );
+		const hall = await s.capture( { width: 240, height: 135 } );
+		check( 'zones: leaving walk mode returns to the global look', app.resolved === app.target && s.diff( crypt.id, hall.id ).mae > 0.01, s.diff( crypt.id, hall.id ).mae );
+		res.zoneFrames = [ crypt.stats.meanLuma, hall.stats.meanLuma ];
+
+		s.freeze( null ); // physics runs only while the clock does
+
+		// Physics: deterministic replays; the toybox throws.
+		const r1 = await s.physicsReplay( 'toybox' ), r2 = await s.physicsReplay( 'toybox' );
+		check( 'physics replays deterministically', r1.hash === r2.hash && r1.moved >= 3, [ r1, r2 ] );
+		await s.setScene( 'toybox', { tier: 1 } );
+		await s.physicsReady();
+		const ok = s.throwBall( 0, 0 );
+		await frames( 20 );
+		const ball = app.physics?.dynamic.find( ( d ) => d.spare && d.object.visible );
+		check( 'toybox: a thrown ball flies', ok && !! ball && ball.object.position.distanceTo( app.camera.position ) > 2, ok );
+
+		// Level look plan: two levels, a cut then a crossfade.
+		app.actions.setPlanLevel( 'harbor', { look: 'noir', transition: 'cut' } );
+		app.actions.setPlanLevel( 'lookdev', { look: 'comic-ink', transition: 'crossfade' } );
+		app.actions.setPlanSeconds( 3 );
+		app.actions.playPlan();
+		const first = [ app.store.get().sceneId, app.store.get().recipe.base ];
+		s.tick( 3.1 );
+		const second = [ app.store.get().sceneId, app.store.get().recipe.base, !! app.transition ];
+		s.tick( 1 );
+		app.actions.stopPlan();
+		check( 'plan plays levels with their looks and transitions', first.join() === 'harbor,noir' && second.join() === 'lookdev,comic-ink,true' && ! app.transition, { first, second } );
+
+		// Player modes: a suggested high-contrast mode.
+		const hc = app.actions.addHighContrastMode();
+		check( 'high-contrast mode suggestion', !! hc && app.hasLook( hc.look ) && app.getLook( hc.look ).params[ 'lines.screen.thickness' ] >= 2.5, hc );
+		return res;
+
+	} );
+
+	for ( const c of out.checks ) if ( ! c.pass ) fail( `M5: ${c.name} (${JSON.stringify( c.value )})` );
+	return out;
+
+}
+
 async function smoke( browser, run, base ) {
 
 	const context = await browser.newContext( { viewport: { width: 1280, height: 720 } } );
 	await routeCdn( context );
+	if ( run.m5 ) await context.addInitScript( fakeGamepad );
 	const page = await context.newPage();
 	const consoleErrors = [];
 	page.on( 'pageerror', ( e ) => consoleErrors.push( String( e ) ) );
@@ -475,6 +646,7 @@ async function smoke( browser, run, base ) {
 		if ( run.m1 && ! flag( '--no-m1' ) ) result.m1 = await m1Checks( page, fail, run );
 		if ( run.m3 && ! flag( '--no-m3' ) ) result.m3 = await m3Checks( page, fail, run );
 		if ( run.m4 && ! flag( '--no-m4' ) ) result.m4 = await m4Checks( page, fail, run );
+		if ( run.m5 && ! flag( '--no-m5' ) ) result.m5 = await m5Checks( page, fail, run );
 
 		if ( ! flag( '--no-spikes' ) ) {
 
@@ -488,7 +660,7 @@ async function smoke( browser, run, base ) {
 		if ( run.panel ) {
 
 			await page.click( '#verify-btn' );
-			await page.click( '.check[data-id="M4-01"] [data-status="pass"]' );
+			await page.click( '.check[data-id="M5-01"] [data-status="pass"]' );
 			await page.click( '[data-tab="report"]' );
 			result.report = await page.inputValue( 'textarea.report' );
 			if ( ! result.report.includes( 'Checks: 1 pass' ) ) fail( 'Verify report does not record the clicked check' );

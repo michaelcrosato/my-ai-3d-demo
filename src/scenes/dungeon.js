@@ -27,6 +27,15 @@ export default {
 		'atmosphere.fog.color': '#151826',
 	},
 
+	// Look zones (§6.10): walk in and the look shifts. Params zones adjust whatever look is on.
+	zones: [
+		{ id: 'crypt', label: 'Crypt (the dais)', lookName: 'Darker, colder', shape: 'box', center: [ 3, 1.5, - 8 ], size: [ 12, 5, 6 ], blend: 3, priority: 1,
+			params: { 'grade.exposure': - 0.5, 'grade.saturation': 0.55, 'grade.temperature': - 0.3, 'lens.vignette.amount': 0.6, 'lighting.practicals.intensity': 2.2 } },
+		{ id: 'lava', label: 'Lava channel', lookName: 'Heat', shape: 'box', center: [ 0, 0, - 3 ], size: [ 22, 3, 1.8 ], blend: 3, priority: 0,
+			params: { 'grade.temperature': 0.5, 'grade.exposure': 0.25, 'grade.saturation': 1.2 } },
+		{ id: 'courtyard', label: 'East courtyard', shape: 'box', center: [ 6.5, 2, 6.5 ], size: [ 9, 5, 9 ], blend: 3, priority: 0, look: 'golden-hour' },
+	],
+
 	build( { tier = 0, seed = 44, density = 1 } = {} ) {
 
 		const rng = createRng( seed );

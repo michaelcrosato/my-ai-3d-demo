@@ -26,6 +26,14 @@ export default {
 		'atmosphere.fog.color': '#c77a8a',
 	},
 
+	// Look zones (§6.10): the fire warms the grade; the lakeshore is cool and misty.
+	zones: [
+		{ id: 'fireside', label: 'By the fire', lookName: 'Firelight', shape: 'sphere', center: [ 0, 0.5, 0 ], radius: 2.5, blend: 4, priority: 1,
+			params: { 'grade.temperature': 0.45, 'grade.exposure': 0.3, 'grade.saturation': 1.15, 'lighting.practicals.intensity': 1.8 } },
+		{ id: 'lakeshore', label: 'Lakeshore', lookName: 'Cool mist', shape: 'sphere', center: [ 14, 0.5, - 10 ], radius: 8, blend: 4, priority: 0,
+			params: { 'grade.temperature': - 0.35, 'grade.saturation': 0.85, 'atmosphere.fog.density': 0.02 } },
+	],
+
 	build( { tier = 0, seed = 99, density = 1 } = {} ) {
 
 		const rng = createRng( seed );

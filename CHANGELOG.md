@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.7.0 — M5: walk mode, physics, gamepad, zones and plans (2026-10-28)
+
+**What's new** (most of it in the new **Play** tab)
+- **Walk mode** (Tab, or L3 on a gamepad): the scene's hero becomes your character, with a Rapier character controller (collision, steps, slopes, jumps) and a third-person camera that never ends up behind a wall. WASD or the left stick moves, Shift or a full stick runs, Space or A jumps, drag or the right stick looks around.
+- **Physics Toybox**, a new scene: block towers, a pyramid and balls on a walled play mat. Click (or RT) to throw balls. Physics loads only when needed, steps at a fixed 1/60 s and replays deterministically.
+- **Look zones** in the Torchlit Dungeon (a dark, cold crypt; warm lava; a Golden Hour courtyard), the Dusk Campsite (firelight; a cool, misty lakeshore) and Harbor Isle (Sea Breeze on the dock, a dusky lighthouse hill, a cozy village). Walk in and the look fades in over each zone's blend distance; the Play tab shows the weights and lets you assign any look to a zone.
+- **Level look plan:** a look and a transition per scene; ▶ Play plan tours them.
+- **Player visual modes:** up to four looks a player could pick in your game (M or View cycles them), plus a suggested **High-contrast** mode (heavier black lines, more value contrast, a color-blind-safe palette).
+- **Full gamepad map** with Xbox and PlayStation glyphs (Appendix D of the design), and a **gamepad tester** that lights every button and shows both sticks against the deadzone.
+
+**What to test** (🧪 Verify → Checklist; about 20 minutes, a gamepad helps):
+1. **M5-01** Every gamepad button responds in the tester (tell us your pad model).
+2. **M5-02** No stick drift at the default deadzone.
+3. **M5-03** Walking into a zone changes the look smoothly.
+4. **M5-04** Throwing props feels right.
+5. **M5-05** Lines and dither hold up in motion.
+6. Optional tour: **M5-06** plan your levels and play the plan, **M5-07** player visual modes.
+7. Earlier checks you haven't done yet (M3, M4).
+
+Then Report → **Copy report** and paste it back.
+
+**Known**
+- Walk mode uses the scene's hero as the player; in the kart scene that is the lead kart, which walks rather than drives.
+- Physics colliders come from the Blockout (T0) geometry, so they match the layout but not every bevel at higher tiers.
+- Zones that switch whole looks (the dungeon courtyard, the harbor dock) compile the new look's shaders the first time you approach them.
+- The P2 scenes Tabletop Map and Noir Alley are not built yet.
+
 ## v0.6.0 — M4: look library, mixing and per-part styling (2026-10-28)
 
 **What's new**

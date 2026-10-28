@@ -2,6 +2,8 @@
 
 export const KEYS = [
 	[ 'Space (hold)', 'Compare with plain' ],
+	[ 'Tab', 'Walk mode (WASD, Shift runs, Space jumps)' ],
+	[ 'M', 'Cycle player visual mode' ],
 	[ 'C', 'Split wipe' ],
 	[ 'F', 'Flicker compare' ],
 	[ 'Q / E', 'Previous / next look' ],
@@ -25,6 +27,25 @@ export function bindKeyboard( app, ui ) {
 
 		if ( typing( e.target ) ) return;
 		const k = e.key;
+
+		// Walk mode: movement keys go to the player; Space jumps instead of comparing.
+		const walkKey = k.length === 1 ? k.toLowerCase() : k.toLowerCase();
+		if ( app.walking && [ 'w', 'a', 's', 'd', ' ', 'shift', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright' ].includes( walkKey ) && ! e.ctrlKey && ! e.metaKey ) {
+
+			e.preventDefault();
+			app.walkInput.keys.add( walkKey );
+			return;
+
+		}
+
+		if ( k === 'Tab' && ! e.ctrlKey && ! e.metaKey && ! e.altKey ) {
+
+			e.preventDefault();
+			if ( ! e.repeat ) app.actions.setWalk( ! app.walking ).catch( ( err ) => ui.toast?.( err.message ) );
+			return;
+
+		}
+
 		if ( ( e.ctrlKey || e.metaKey ) && ! e.altKey && k.toLowerCase() === 'z' ) { e.preventDefault(); if ( e.shiftKey ) app.actions.redo(); else app.actions.undo(); return; }
 		if ( ( e.ctrlKey || e.metaKey ) && ! e.altKey && k.toLowerCase() === 'y' ) { e.preventDefault(); app.actions.redo(); return; }
 		if ( e.ctrlKey || e.metaKey || e.altKey ) return;
@@ -44,6 +65,7 @@ export function bindKeyboard( app, ui ) {
 			'=': () => a.setTier( s.tier + 1 ),
 			'+': () => a.setTier( s.tier + 1 ),
 			n: () => a.nextShot(),
+			m: () => { const mode = a.cycleMode(); ui.toast?.( mode ? `Mode: ${mode.name}` : 'No player modes yet: add some in the Play tab.' ); },
 			t: () => a.setTurntable( ! s.turntable ),
 			h: () => ui.toggleHidden(),
 			l: () => ui.inspector.setTab( 'learn' ),
@@ -57,7 +79,12 @@ export function bindKeyboard( app, ui ) {
 
 	} );
 
-	window.addEventListener( 'keyup', ( e ) => { if ( e.key === ' ' ) app.actions.setHold( false ); } );
-	window.addEventListener( 'blur', () => app.actions.setHold( false ) );
+	window.addEventListener( 'keyup', ( e ) => {
+
+		app.walkInput.keys.delete( e.key.toLowerCase() );
+		if ( e.key === ' ' ) app.actions.setHold( false );
+
+	} );
+	window.addEventListener( 'blur', () => { app.actions.setHold( false ); app.walkInput.keys.clear(); } );
 
 }

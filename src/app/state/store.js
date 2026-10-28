@@ -17,6 +17,11 @@ const initial = () => ( {
 	userLooks: [], // My looks
 	transition: { type: 'morph', duration: 0.6 },
 	isolate: null,
+	// Level look plan (§6.10): per scene a look and the transition into it; zone looks.
+	plan: { levels: {}, zones: {}, seconds: 6 },
+	modes: [], // player-selectable visual modes: [{ name, look }]
+	mode: - 1,
+	deadzone: 0.15, // gamepad sticks (radial)
 	compare: { mode: 'off', splitPos: 0.5 },
 	ui: { tab: 'look', learn: null, hidden: false, inspectorOpen: false, scope: null },
 	tips: { seen: [] },
@@ -32,7 +37,7 @@ function load() {
 		// v0.5 and earlier stored one look id; it becomes the recipe's base.
 		const recipe = saved.recipe || ( saved.lookId ? { base: saved.lookId, modules: {}, morph: null } : base.recipe );
 		delete saved.lookId;
-		return { ...base, ...saved, recipe, isolate: null, compare: { ...base.compare, ...saved.compare, mode: 'off' }, ui: { ...base.ui, ...saved.ui, scope: null }, tips: { ...base.tips, ...saved.tips } };
+		return { ...base, ...saved, recipe, isolate: null, plan: { ...base.plan, ...saved.plan }, compare: { ...base.compare, ...saved.compare, mode: 'off' }, ui: { ...base.ui, ...saved.ui, scope: null }, tips: { ...base.tips, ...saved.tips } };
 
 	} catch {
 

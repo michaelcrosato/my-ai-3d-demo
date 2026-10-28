@@ -40,6 +40,15 @@ export default {
 		'atmosphere.fog.color': '#cfe6ff',
 	},
 
+	// Look zones (§6.10): the dock is Sea Breeze Toon; the lighthouse hill is dusky; the village is warm.
+	zones: [
+		{ id: 'dock', label: 'The dock', shape: 'box', center: [ 2, 1.5, 24 ], size: [ 4, 4, 14 ], blend: 3, priority: 1, look: 'sea-breeze' },
+		{ id: 'lighthouse', label: 'Lighthouse hill', lookName: 'Dusk', shape: 'sphere', center: [ - 6, 4, - 4 ], radius: 4, blend: 4, priority: 0,
+			params: { 'grade.temperature': 0.35, 'grade.exposure': - 0.3, 'lens.vignette.amount': 0.4 } },
+		{ id: 'village', label: 'Village', lookName: 'Cozy', shape: 'box', center: [ 6, 3, 5 ], size: [ 12, 8, 16 ], blend: 3, priority: 0,
+			params: { 'grade.saturation': 1.2, 'grade.temperature': 0.15 } },
+	],
+
 	build( { tier = 0, seed = 11, density = 1 } = {} ) {
 
 		const rng = createRng( seed );

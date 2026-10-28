@@ -9,12 +9,15 @@ import { resolveRecipe, blendResolved, lookValue, lookFromResolved, partRecipe, 
 import { validateLook } from '../runtime/look/validate.js';
 import { checkCoherence } from '../runtime/look/coherence.js';
 import { encodeShare, decodeShare } from '../runtime/look/share.js';
+import { zoneWeights, blendZones } from '../runtime/look/zones.js';
 import { byId, PARTS } from '../runtime/registry/index.js';
 import { LOOKS, lookById } from '../content/looks/index.js';
 import { SCENES, sceneById, buildScene, TIERS, DENSITY } from '../scenes/index.js';
 import { createStore } from './state/store.js';
 import { createHistory } from './state/history.js';
 import { importModel } from './import/glb.js';
+import { loadRapier, PhysicsWorld } from './physics/world.js';
+import { WalkController, findHero } from './physics/walk.js';
 import { LAYER_STYLED } from '../runtime/materials/factory.js';
 
 const sameValue = ( a, b ) => JSON.stringify( a ) === JSON.stringify( b );
@@ -45,6 +48,11 @@ export function createApp( { renderer, canvas, persist = true } ) {
 	let transition = null; // { from, to, t, duration, type }
 	let fov = 45;
 	let clock = 0, frozen = null;
+	// M5: physics (toybox and walk mode), look zones, the plan player and mode cycling.
+	let physics = null, physicsLoading = null, walk = null;
+	const walkInput = { keys: new Set(), padMove: [ 0, 0 ], padLook: [ 0, 0 ], padJump: false, padRun: false, mouse: [ 0, 0 ] };
+	let zoneCache = { target: null, map: new Map() }, zoneKey = '';
+	let playing = null, cycling = null;
 
 	const state = () => store.get();
 	const scene = () => ( state().sceneId === 'import' && imported ) || sceneById.get( state().sceneId ) || SCENES[ 0 ];
@@ -73,6 +81,37 @@ export function createApp( { renderer, canvas, persist = true } ) {
 
 	}
 
+	/** The current scene's zones, with the looks assigned in the plan. */
+	const zones = () => {
+
+		const assigned = state().plan.zones[ scene().id ] || {};
+		return ( scene().zones || [] ).map( ( z ) => ( assigned[ z.id ] ? { ...z, look: assigned[ z.id ], params: null } : z ) );
+
+	};
+
+	/** A zone's look: a library look, an inline look, or the current look plus the zone's params. */
+	function resolveZone( zone ) {
+
+		if ( zoneCache.target !== target ) zoneCache = { target, map: new Map() };
+		const key = `${zone.id}|${typeof zone.look === 'string' ? zone.look : ''}`;
+		if ( ! zoneCache.map.has( key ) ) {
+
+			let r;
+			if ( typeof zone.look === 'string' && hasLook( zone.look ) ) r = resolveRecipe( { recipe: { base: zone.look }, getLook, sceneParams: scene().params } );
+			else if ( zone.look && typeof zone.look === 'object' ) r = resolveRecipe( { recipe: { base: registerLook( zone.look ).id }, getLook, sceneParams: scene().params } );
+			else r = resolveRecipe( { recipe: state().recipe, getLook, parts: state().parts, sceneParams: scene().params, overrides: { ...overrides(), ...zone.params }, strength: state().strength } );
+			zoneCache.map.set( key, r );
+
+		}
+
+		return zoneCache.map.get( key );
+
+	}
+
+	const currentZoneWeights = () => ( walk ? zoneWeights( zones(), walk.position() ) : zones().map( ( zone ) => ( { zone, weight: 0 } ) ) );
+	/** `target` blended with the zones the player stands in (just `target` outside walk mode). */
+	const zoned = ( r ) => ( walk && zones().length ? blendZones( r, currentZoneWeights(), resolveZone ) : r );
+
 	/**
 	 * Resolves the state. With `animate`, a look change plays the current transition: a
 	 * morph blends the values; crossfade and wipe blend from a snapshot of the outgoing frame.
@@ -84,22 +123,58 @@ export function createApp( { renderer, canvas, persist = true } ) {
 
 		if ( animate && resolved && type !== 'cut' && duration > 0 ) {
 
-			if ( type === 'morph' ) {
-
-				transition = { from: resolved, to: target, t: 0, duration, type };
-				return show( blendResolved( resolved, target, 0 ) );
-
-			}
-
-			runtime.snapshot();
-			transition = { to: target, t: 0, duration, type };
-			runtime.setTransition( { mode: type, progress: 0 } );
-			return show( target );
+			if ( type !== 'morph' ) runtime.snapshot();
+			return startTransition( type, duration );
 
 		}
 
 		if ( transition ) { transition = null; runtime.setTransition( { mode: null } ); }
+		zoneKey = '';
+		return show( zoned( target ) );
+
+	}
+
+	/** Starts a transition from what is on screen (or `from`) to the current target. */
+	function startTransition( type, duration, from = resolved ) {
+
+		if ( type === 'cut' || duration <= 0 || ! from ) return show( zoned( target ) );
+		if ( type === 'morph' ) { transition = { from, to: target, t: 0, duration, type }; return show( blendResolved( from, target, 0 ) ); }
+		transition = { to: target, t: 0, duration, type };
+		runtime.setTransition( { mode: type, progress: 0 } );
 		return show( target );
+
+	}
+
+	async function ensurePhysics() {
+
+		if ( physics ) return physics;
+		if ( ! physicsLoading ) {
+
+			const id = scene().id, root = built.root;
+			physicsLoading = loadRapier().then( ( R ) => {
+
+				physicsLoading = null;
+				if ( built?.root !== root ) return null; // the scene changed while Rapier loaded
+				physics = new PhysicsWorld( R, { root, collisionRoot: buildScene( scene(), { tier: 0, density: state().density } ).root } );
+				emit( 'physics', { scene: id } );
+				return physics;
+
+			} );
+
+		}
+
+		return physicsLoading;
+
+	}
+
+	function stopPhysics() {
+
+		walk?.dispose();
+		walk = null;
+		physics?.dispose();
+		physics = null;
+		physicsLoading = null;
+		controls.enabled = true;
 
 	}
 
@@ -134,12 +209,17 @@ export function createApp( { renderer, canvas, persist = true } ) {
 	function loadScene( { moveCamera } ) {
 
 		const t0 = performance.now();
+		const wasWalking = !! walk;
+		stopPhysics();
 		built = buildScene( scene(), { tier: state().tier, density: state().density } );
 		runtime.setScene( built.root, scene() );
 		resolve();
 		if ( moveCamera ) goToShot();
 		runtime.setIsolate( state().isolate );
 		emit( 'scene', { scene: scene(), tier: state().tier, density: state().density, triangles: built.triangles, objects: built.objects, buildMs: performance.now() - t0 } );
+		if ( wasWalking ) actions.setWalk( true );
+		else if ( scene().spareBalls ) ensurePhysics();
+		else emit( 'walk', false );
 
 	}
 
@@ -185,6 +265,40 @@ export function createApp( { renderer, canvas, persist = true } ) {
 		return l;
 
 	};
+
+	/** Zones follow the player: re-blend only when a weight changes. */
+	function updateZones() {
+
+		if ( ! walk || transition || ! zones().length ) return;
+		const weights = currentZoneWeights();
+		const key = weights.map( ( w ) => w.weight.toFixed( 4 ) ).join( ',' );
+		if ( key === zoneKey ) return;
+		zoneKey = key;
+		show( blendZones( target, weights, resolveZone ), { quiet: true } );
+		emit( 'zones', weights );
+
+	}
+
+	/** The plan player: the next scene, with its planned look and transition. */
+	function nextLevel() {
+
+		if ( ! playing ) return;
+		playing.index = ( playing.index + 1 ) % SCENES.length;
+		playing.t = 0;
+		const s = SCENES[ playing.index ];
+		const lv = state().plan.levels[ s.id ] || {};
+		const type = lv.transition || 'morph';
+		const from = resolved;
+		if ( type === 'crossfade' || type === 'wipe' ) runtime.snapshot(); // the outgoing level's last frame
+		actions.setScene( s.id );
+		if ( lv.look && hasLook( lv.look ) ) store.set( { recipe: { base: lv.look, modules: {}, morph: null } } );
+		target = resolveTarget();
+		startTransition( type, state().transition.duration || 0.6, type === 'morph' ? from : resolved );
+		emit( 'look', look() );
+		emit( 'recipe', state().recipe );
+		emit( 'level', { index: playing.index, scene: s.id } );
+
+	}
 
 	const actions = {
 
@@ -536,6 +650,128 @@ export function createApp( { renderer, canvas, persist = true } ) {
 		/** Freezes the animation clock at `t` seconds (null resumes), for repeatable captures. */
 		freeze( t ) { frozen = t; },
 
+		// Walk mode, the toybox and zones (§6.10, §7.15)
+		/** Walk mode: the hero becomes the player (Rapier character controller, third-person camera). */
+		async setWalk( on ) {
+
+			if ( !! on === !! walk ) return !! walk;
+			if ( on ) {
+
+				const hero = built && findHero( built.root );
+				if ( ! hero ) throw new Error( 'This scene has no hero to walk with' );
+				const root = built.root;
+				await ensurePhysics();
+				if ( ! physics || built.root !== root || walk ) return !! walk;
+				walk = new WalkController( physics, { player: hero, camera } );
+				controls.enabled = false;
+				fov = Math.min( 110, 55 * ( resolved?.global[ 'lens.fovScale' ] ?? 1 ) );
+				camera.fov = fov;
+				camera.updateProjectionMatrix();
+				walk.sync( 0 );
+
+			} else {
+
+				walk.dispose();
+				walk = null;
+				controls.enabled = true;
+				goToShot();
+				zoneKey = '';
+				show( target );
+
+			}
+
+			emit( 'walk', !! walk );
+			return !! walk;
+
+		},
+
+		/** Moves the player to a point (tests, the plan player, falling out of the world). */
+		walkTo( p ) { if ( ! walk ) return; walk.teleport( p ); walk.sync( 0 ); updateZones(); },
+
+		/** Throws a ball from the camera through normalized device coordinates (default: the center). */
+		throwBall( x = 0, y = 0 ) {
+
+			if ( ! physics ) return null;
+			raycaster.setFromCamera( new THREE.Vector2( x, y ), camera );
+			const dir = raycaster.ray.direction.clone();
+			if ( walk ) dir.y += 0.12;
+			const origin = camera.position.clone().addScaledVector( dir, walk ? 1.2 : 0.8 );
+			const ball = physics.throwBall( origin, dir.normalize(), 17 );
+			emit( 'throw', ball );
+			return ball;
+
+		},
+
+		/** Assigns a look to a zone (null = the zone's own look). */
+		setZoneLook( sceneId, zoneId, lookId ) {
+
+			const zones = { ...state().plan.zones, [ sceneId ]: { ...state().plan.zones[ sceneId ], [ zoneId ]: lookId || undefined } };
+			store.set( { plan: { ...state().plan, zones: JSON.parse( JSON.stringify( zones ) ) } }, { replace: true } );
+			zoneKey = '';
+			emit( 'plan', state().plan );
+
+		},
+
+		// Level look plan (§6.10)
+		setPlanLevel( sceneId, patch ) {
+
+			const levels = { ...state().plan.levels, [ sceneId ]: { ...state().plan.levels[ sceneId ], ...patch } };
+			store.set( { plan: { ...state().plan, levels } }, { replace: true } );
+			emit( 'plan', state().plan );
+
+		},
+		setPlanSeconds( n ) { store.set( { plan: { ...state().plan, seconds: Math.max( 2, Math.min( 30, Number( n ) || 6 ) ) } }, { replace: true } ); emit( 'plan', state().plan ); },
+		/** Plays the plan: every scene in order, each with its look and transition. */
+		playPlan() { playing = { index: - 1, t: 0 }; nextLevel(); emit( 'plan', state().plan ); },
+		stopPlan() { playing = null; emit( 'plan', state().plan ); },
+
+		// Player-selectable visual modes (§6.10)
+		addMode( name, look ) {
+
+			if ( state().modes.length >= 4 ) return null;
+			const modes = [ ...state().modes, { name: String( name ).slice( 0, 24 ), look } ];
+			store.set( { modes, mode: state().mode < 0 ? 0 : state().mode } );
+			emit( 'modes', modes );
+			return modes.at( - 1 );
+
+		},
+		updateMode( i, patch ) { const modes = state().modes.map( ( m, k ) => ( k === i ? { ...m, ...patch } : m ) ); store.set( { modes } ); emit( 'modes', modes ); },
+		removeMode( i ) { const modes = state().modes.filter( ( _, k ) => k !== i ); store.set( { modes, mode: Math.min( state().mode, modes.length - 1 ) } ); emit( 'modes', modes ); },
+		setMode( i ) {
+
+			const m = state().modes[ i ];
+			if ( ! m || ! hasLook( m.look ) ) return null;
+			store.set( { mode: i } );
+			actions.setLook( m.look );
+			emit( 'modes', state().modes );
+			return m;
+
+		},
+		cycleMode() { const n = state().modes.length; return n ? actions.setMode( ( state().mode + 1 ) % n ) : null; },
+		setCycling( on ) { cycling = on && state().modes.length > 1 ? { t: 0 } : null; emit( 'modes', state().modes ); },
+		/**
+		 * Suggests an accessibility mode from the current look: heavier ink, more value
+		 * contrast and a palette safe for color-blind players (Okabe–Ito).
+		 */
+		addHighContrastMode() {
+
+			const base = target.global;
+			const hc = lookFromResolved( resolveTarget(), {
+				id: `high-contrast-${Date.now().toString( 36 ).slice( - 4 )}`, name: `${look().name.replace( / \(.*\)$/, '' )} · High-contrast`,
+				inspiredBy: [ 'Accessibility options in games' ], tags: [ 'accessibility' ], pillars: [ 'Silhouettes and value contrast carry the information, not hue.' ], mistakes: [],
+				description: 'Thicker lines, stronger value contrast and a color-blind-safe palette.', phone: look().phone,
+			} );
+			Object.assign( hc.params, {
+				'lines.screen.enabled': true, 'lines.screen.thickness': Math.min( 6, Math.max( 2.5, base[ 'lines.screen.thickness' ] * 1.6 ) ), 'lines.screen.color': '#000000',
+				'grade.contrast': Math.min( 1.6, Math.max( 1.25, base[ 'grade.contrast' ] ) ), 'palette.colors': [ '#000000', '#e69f00', '#56b4e9', '#009e73', '#f0e442', '#0072b2', '#d55e00', '#cc79a7', '#ffffff' ], 'palette.remap': 0.6,
+			} );
+			store.set( { userLooks: [ ...state().userLooks, hc ] } );
+			emit( 'library' );
+			return actions.addMode( 'High-contrast', hc.id );
+
+		},
+		setDeadzone( d ) { store.set( { deadzone: Math.max( 0.02, Math.min( 0.5, d ) ) } ); },
+
 	};
 
 	return {
@@ -545,6 +781,16 @@ export function createApp( { renderer, canvas, persist = true } ) {
 		get target() { return target; },
 		get transition() { return transition; },
 		get built() { return built; },
+		get physics() { return physics; },
+		get walk() { return walk; },
+		get walking() { return !! walk; },
+		get playing() { return !! playing; },
+		get cycling() { return !! cycling; },
+		walkInput,
+		zones,
+		zoneWeights: currentZoneWeights,
+		/** Waits for the toybox physics to load (tests). */
+		physicsReady: () => ensurePhysics(),
 		scene, look, getLook, hasLook, libraryLooks, overrides, shotId,
 		/** Library looks grouped by family (a look and its variants), in library order. */
 		lookFamilies: () => {
@@ -604,12 +850,31 @@ export function createApp( { renderer, canvas, persist = true } ) {
 				const k = ease( transition.t );
 				if ( transition.type === 'morph' ) show( transition.t >= 1 ? transition.to : blendResolved( transition.from, transition.to, k ), { quiet: transition.t < 1 } );
 				else runtime.setTransition( { progress: k } );
-				if ( transition.t >= 1 ) { if ( transition.type !== 'morph' ) runtime.setTransition( { mode: null } ); transition = null; emit( 'transitioned', resolved ); }
+				if ( transition.t >= 1 ) { if ( transition.type !== 'morph' ) runtime.setTransition( { mode: null } ); transition = null; zoneKey = ''; emit( 'transitioned', resolved ); }
 
 			}
 
+			// Walk mode input (keyboard, gamepad, mouse drag) → the controller; physics steps at 1/60 s.
+			if ( walk ) {
+
+				const k = walkInput.keys, clamp = ( v ) => Math.max( - 1, Math.min( 1, v ) );
+				walk.input.move = [ clamp( ( k.has( 'd' ) || k.has( 'arrowright' ) ? 1 : 0 ) - ( k.has( 'a' ) || k.has( 'arrowleft' ) ? 1 : 0 ) + walkInput.padMove[ 0 ] ), clamp( ( k.has( 'w' ) || k.has( 'arrowup' ) ? 1 : 0 ) - ( k.has( 's' ) || k.has( 'arrowdown' ) ? 1 : 0 ) + walkInput.padMove[ 1 ] ) ];
+				walk.input.jump = k.has( ' ' ) || walkInput.padJump;
+				walk.input.run = k.has( 'shift' ) || walkInput.padRun;
+				walk.input.look = [ walkInput.mouse[ 0 ] + walkInput.padLook[ 0 ] * dt * 2.4, walkInput.mouse[ 1 ] + walkInput.padLook[ 1 ] * dt * 1.6 ];
+				walkInput.mouse = [ 0, 0 ];
+
+			}
+
+			// A frozen clock (repeatable captures) freezes physics too.
+			if ( physics && dt > 0 && frozen === null ) physics.update( dt, walk ? ( step ) => walk.step( step ) : null );
+			if ( walk ) { walk.sync( dt ); updateZones(); }
+
+			if ( playing && dt > 0 && ( playing.t += dt ) >= state().plan.seconds ) nextLevel();
+			if ( cycling && dt > 0 && ( cycling.t += dt ) >= 2.5 ) { cycling.t = 0; actions.cycleMode(); }
+
 			if ( state().compare.mode === 'flicker' ) runtime.setCompare( { flicker: Math.floor( clock / 0.5 ) % 2 === 1 } );
-			controls.update( dt );
+			if ( ! walk ) controls.update( dt );
 			// Stepped animation ("on twos"): the clock is quantized, the camera stays smooth.
 			const fps = resolved?.global[ 'motion.stepped.fps' ] || 0;
 			const ta = fps > 0 ? Math.floor( t * fps + 1e-6 ) / fps : t;

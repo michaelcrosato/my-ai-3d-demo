@@ -18,7 +18,8 @@ import { bindKeyboard, KEYS } from './input/keyboard.js';
 import { createGamepad } from './input/gamepad.js';
 import { LOOKS } from '../content/looks/index.js';
 import { EFFECT_DEMOS, cellId } from '../content/effects.js';
-import { SCENES, TIERS } from '../scenes/index.js';
+import { SCENES, TIERS, sceneById } from '../scenes/index.js';
+import { loadRapier, replay } from './physics/world.js';
 import { timestampsSupported } from '../runtime/index.js';
 import { parseShareHash } from '../runtime/look/share.js';
 import { resolvedHash } from '../runtime/look/resolve.js';
@@ -169,13 +170,26 @@ async function boot() {
 
 	} );
 
-	let down = null;
-	canvas.addEventListener( 'pointerdown', ( e ) => { down = [ e.clientX, e.clientY ]; } );
+	// Click: pick a part (pick tool) or throw a ball (toybox). Drag in walk mode looks around.
+	let down = null, dragAt = null;
+	canvas.addEventListener( 'pointerdown', ( e ) => { down = dragAt = [ e.clientX, e.clientY ]; } );
+	canvas.addEventListener( 'pointermove', ( e ) => {
+
+		if ( ! dragAt || ! app.walking || ! e.buttons ) return;
+		app.walkInput.mouse[ 0 ] += ( e.clientX - dragAt[ 0 ] ) * 0.005;
+		app.walkInput.mouse[ 1 ] += ( e.clientY - dragAt[ 1 ] ) * 0.004;
+		dragAt = [ e.clientX, e.clientY ];
+
+	} );
 	canvas.addEventListener( 'pointerup', ( e ) => {
 
-		if ( ! down || ! inspector.sceneTab.picking || Math.hypot( e.clientX - down[ 0 ], e.clientY - down[ 1 ] ) > 5 ) return;
+		const click = down && Math.hypot( e.clientX - down[ 0 ], e.clientY - down[ 1 ] ) <= 5;
+		down = dragAt = null;
+		if ( ! click ) return;
 		const r = canvas.getBoundingClientRect();
-		app.actions.pick( ( e.clientX - r.left ) / r.width * 2 - 1, - ( ( e.clientY - r.top ) / r.height * 2 - 1 ) );
+		const x = ( e.clientX - r.left ) / r.width * 2 - 1, y = - ( ( e.clientY - r.top ) / r.height * 2 - 1 );
+		if ( inspector.sceneTab.picking ) app.actions.pick( x, y );
+		else if ( app.physics && app.scene().spareBalls ) app.actions.throwBall( x, y );
 
 	} );
 	const compareUI = createCompareUI( app );
@@ -185,6 +199,7 @@ async function boot() {
 		toggleHidden: () => appRoot.classList.toggle( 'ui-hidden' ),
 		showKeys: () => toast( KEYS.map( ( [ k, v ] ) => `${k}: ${v}` ).join( ' · ' ), 9000 ),
 		closePanels: () => { $( 'verify' ).hidden = true; appRoot.classList.remove( 'inspector-open', 'ui-hidden' ); },
+		toast,
 	};
 
 	$( 'inspector-btn' ).addEventListener( 'click', () => appRoot.classList.toggle( 'inspector-open' ) );
@@ -360,7 +375,9 @@ async function boot() {
 		if ( s.recipe ) app.actions.setRecipe( s.recipe );
 		if ( s.params ) for ( const [ id, value ] of Object.entries( s.params ) ) app.actions.setParam( id, value, { part: null } );
 		if ( s.tab ) { inspector.setTab( s.tab ); appRoot.classList.add( 'inspector-open' ); }
-		toast( 'Set up. Close this panel (✕ or Esc) to try it.' );
+		if ( s.walk ) app.actions.setWalk( true ).catch( ( e ) => toast( e.message ) );
+		else if ( app.walking ) app.actions.setWalk( false );
+		toast( s.walk ? 'Set up in walk mode: close this panel (✕ or Esc), then WASD or the left stick.' : 'Set up. Close this panel (✕ or Esc) to try it.' );
 
 	};
 
@@ -418,6 +435,15 @@ async function boot() {
 		coherence: () => app.coherence(),
 		/** Renders the gallery's look previews on the current scene. */
 		galleryPreviews: () => gallery.refresh(),
+		// M5: walk mode, physics, zones, plans, modes
+		setWalk: async ( on ) => { const r = await app.actions.setWalk( on ); await nextFrames(); return r; },
+		/** Moves the walking player's feet to [x, y, z]. */
+		walkTo: async ( p ) => { app.actions.walkTo( p ); await nextFrames(); },
+		throwBall: ( x, y ) => !! app.actions.throwBall( x, y ),
+		physicsReady: () => app.physicsReady(),
+		/** Replays a scene's physics from scratch with scripted throws: { hash, moved, steps }. */
+		physicsReplay: async ( sceneId = 'toybox', seed ) => replay( await loadRapier(), sceneById.get( sceneId ), { seed } ),
+		zones: () => app.zoneWeights().map( ( { zone, weight } ) => ( { id: zone.id, weight } ) ),
 		undo: () => app.actions.undo(),
 		redo: () => app.actions.redo(),
 		setScene: async ( id, opts ) => { app.actions.setScene( id, opts ); await nextFrames(); },
