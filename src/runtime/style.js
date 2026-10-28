@@ -32,6 +32,10 @@ export class StyleRuntime {
 
 		this.renderer = renderer;
 		this.camera = camera;
+		// The look's light rigs cast soft shadow maps; the plain baseline is ACES like an agent's default.
+		renderer.shadowMap.enabled = true;
+		renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+		renderer.toneMapping = THREE.ACESFilmicToneMapping;
 		// The styled set renders with its own copy, so pixel looks can widen its frustum
 		// to whole texels without touching the baseline.
 		this.styledCamera = camera.clone();
@@ -96,23 +100,8 @@ export class StyleRuntime {
 		this.materials.register( root );
 		this.materials.blobs.setScene( root );
 
-		// Practical lights (torches, lamps, campfires): the styled set's lights follow the
-		// look's practical controls; a twin on the plain layer keeps the scene's own values.
 		this.practicals = [];
-		const lights = [];
-		root.traverse( ( o ) => { if ( o.isLight ) lights.push( o ); } );
-		for ( const light of lights ) {
-
-			light.castShadow = false;
-			light.layers.set( LAYER_STYLED );
-			const twin = light.clone();
-			twin.layers.set( LAYER_PLAIN );
-			twin.name = 'plain twin';
-			light.parent.add( twin );
-			const base = { intensity: light.intensity, flicker: light.userData.practical?.flicker ?? 0, seed: light.userData.practical?.seed ?? 0 };
-			this.practicals.push( { light, twin, base } );
-
-		}
+		this.adoptLights( root );
 
 		const hero = def.shots[ def.defaultShot ];
 		this.rigs.setFrame( { center: def.shadow.center, radius: def.shadow.radius, heroPos: hero.pos, heroTarget: hero.target } );
@@ -120,6 +109,42 @@ export class StyleRuntime {
 		this.camera.updateProjectionMatrix();
 		this.apply( this.resolved );
 		this.markCompile( 'scene' );
+
+	}
+
+	/**
+	 * Practical lights (torches, lamps, campfires): the styled set's lights follow the
+	 * look's practical controls; a twin on the plain layer keeps the scene's own values.
+	 */
+	adoptLights( root ) {
+
+		const lights = [];
+		root.traverse( ( o ) => { if ( o.isLight && ! o.userData.stylelabTwin && ! this.practicals.some( ( p ) => p.light === o ) ) lights.push( o ); } );
+		for ( const light of lights ) {
+
+			light.castShadow = false;
+			light.layers.set( LAYER_STYLED );
+			const twin = light.clone();
+			twin.layers.set( LAYER_PLAIN );
+			twin.name = 'plain twin';
+			twin.userData.stylelabTwin = true;
+			light.parent.add( twin );
+			const base = { intensity: light.intensity, flicker: light.userData.practical?.flicker ?? 0, seed: light.userData.practical?.seed ?? 0 };
+			this.practicals.push( { light, twin, base } );
+
+		}
+
+	}
+
+	/** Adds objects to the current scene after setScene (meshes need `userData.style`). */
+	add( object, parent = this.root ) {
+
+		if ( object.parent !== parent ) parent.add( object );
+		this.materials.register( object );
+		this.adoptLights( object );
+		this.materials.blobs.setScene( this.root );
+		this.apply( this.resolved );
+		this.markCompile( 'add' );
 
 	}
 

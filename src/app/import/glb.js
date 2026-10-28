@@ -5,6 +5,7 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { guessParts } from '../../runtime/parts/guess.js';
+import { describeMesh, styleFromMaterial } from '../../runtime/parts/convert.js';
 
 const RADIUS = 10; // imported models are scaled to this bounding radius, so looks' fog and lines behave
 
@@ -32,9 +33,6 @@ async function createLoader( buffer ) {
 	return loader;
 
 }
-
-const firstMaterial = ( m ) => ( Array.isArray( m.material ) ? m.material[ 0 ] : m.material ) || {};
-const emissiveStrength = ( mat ) => mat.emissive ? Math.max( mat.emissive.r, mat.emissive.g, mat.emissive.b ) * ( mat.emissiveIntensity ?? 1 ) : 0;
 
 /**
  * @param {ArrayBuffer} buffer
@@ -68,39 +66,14 @@ export async function importModel( buffer, name = 'model.glb' ) {
 	if ( meshes.some( ( m ) => m.morphTargetInfluences?.length ) ) warnings.push( 'Morph targets are not animated on the styled and plain twins yet.' );
 	if ( meshes.some( ( m ) => Array.isArray( m.material ) ) ) warnings.push( 'Meshes with several materials use their first material.' );
 
-	const descriptors = meshes.map( ( m ) => {
-
-		const mat = firstMaterial( m );
-		const box = new THREE.Box3().setFromObject( m );
-		const ancestors = [];
-		for ( let p = m.parent; p && p !== model.parent; p = p.parent ) if ( p.name ) ancestors.push( p.name );
-		return {
-			name: m.name, materialName: mat.name, ancestors, userData: m.userData,
-			emissive: emissiveStrength( mat ), color: mat.color ? [ mat.color.r, mat.color.g, mat.color.b ] : null,
-			box: { min: box.min.toArray(), max: box.max.toArray() },
-		};
-
-	} );
+	const descriptors = meshes.map( ( m ) => describeMesh( m, model.parent ) );
 
 	const guesses = guessParts( descriptors );
 
 	meshes.forEach( ( m, i ) => {
 
-		const mat = firstMaterial( m );
 		if ( ! m.geometry.getAttribute( 'normal' ) ) m.geometry.computeVertexNormals();
-		const em = emissiveStrength( mat );
-		m.userData.style = {
-			part: guesses[ i ].part,
-			color: mat.color ? `#${mat.color.getHexString()}` : '#cccccc',
-			roughness: mat.roughness ?? 0.8,
-			metalness: mat.metalness ?? 0,
-			emissive: em > 0.01 ? `#${mat.emissive.getHexString()}` : null,
-			emissiveIntensity: mat.emissiveIntensity ?? 1,
-			opacity: mat.transparent ? mat.opacity ?? 1 : 1,
-			doubleSided: mat.side === THREE.DoubleSide,
-			map: mat.map || null,
-			vertexColors: !! ( mat.vertexColors && m.geometry.getAttribute( 'color' ) ),
-		};
+		m.userData.style = styleFromMaterial( m, guesses[ i ].part );
 		m.userData.guess = guesses[ i ];
 		m.castShadow = m.receiveShadow = true;
 

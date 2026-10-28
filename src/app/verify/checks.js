@@ -5,9 +5,57 @@
 // (M4) a `recipe`, `parts` and the inspector `tab` to open, (M5) `walk: true`.
 // `learn` is what the check teaches; `signoff: false` marks optional tour steps.
 
-export const CURRENT_MILESTONE = 'M5';
+export const CURRENT_MILESTONE = 'M6';
 
 export const CHECKS = [
+	{
+		id: 'M6-01', milestone: 'M6',
+		title: 'Paste the brief into one of your agents and ask for a small scene',
+		steps: [ 'Pick a look you like (mix it if you want), then press "Open the brief" below (or 📝 Brief in the top bar, or B).', 'Choose who it is for (three.js + runtime is the default) and Standard length. Copy it.', 'In a new agent session, paste the brief and ask for something small, e.g. "a small harbor with a lighthouse, a dock and two characters, as one HTML file". If the agent can take files, give it stylelab-runtime.js, stylelab-kit.js and the look.json from the Files tab too.' ],
+		expected: 'The agent\'s scene follows the pillars (shading, shadow color, where the lines go) and builds its assets in code like the kit: part-tagged meshes, seeded variety, detail as geometry rather than textures. Report how close it got, what it missed, and paste a screenshot if you can.',
+		learn: 'How to hand an art direction to an AI agent: rules with reasons, exact values, and a working runtime, so the result looks like your choice instead of the agent\'s default.',
+		actions: [ 'openBrief' ],
+	},
+	{
+		id: 'M6-02', milestone: 'M6',
+		title: 'Open starter.html next to the tool and compare',
+		steps: [ 'Brief → Files: download starter.html, stylelab-runtime.js and stylelab-kit.js into one folder.', 'Serve that folder (for example `npx serve` or `python -m http.server` inside it) and open starter.html. Opening the file directly from disk is blocked by browsers for modules.', 'Move the capsule with WASD and switch looks with 1–9. Compare with the same look in the tool.' ],
+		expected: 'The starter shows a small scene in the same look as the tool: the same shading, lines, fog and grade. (The automated check renders a tool scene inside the starter and gets the identical image.)',
+		learn: 'What "drop-in runtime" means: the same engine that renders the tool renders your game.',
+		actions: [ 'openFiles' ],
+	},
+	{
+		id: 'M6-03', milestone: 'M6',
+		title: 'Try convertScene() on an existing agent-made game',
+		steps: [ 'Take a small three.js game an agent made for you (one that uses MeshStandardMaterial).', 'Add the import map from starter.html, then after building the scene: `const style = await createStyle( { renderer, scene, camera, looks: [ LOOK ] } );` and render with `style.render()` instead of `renderer.render( scene, camera )`.', 'Brief → Runtime has a copyable example.' ],
+		expected: 'The game takes on the look in one change: colors kept, parts guessed from names (ground, walls, trees, player), lines and grade applied. Report what was guessed wrong or what broke.',
+		learn: 'Retrofitting a style: why tagging meshes by part (terrain, architecture, characters…) is what lets one look style any game.',
+		actions: [ 'openFiles' ],
+	},
+	{
+		id: 'M6-04', milestone: 'M6', signoff: false,
+		title: 'One brief, three audiences',
+		steps: [ 'In the brief, switch "For" between three.js + runtime, three.js without the runtime, and Engine-agnostic. Try Short, Standard and Full.' ],
+		expected: 'The runtime brief has code; the no-runtime brief names the three.js building blocks per effect; the engine brief has no code and points to grade.cube and the palette. Short fits in a system prompt (under 300 words).',
+		learn: 'An art bible in miniature: pillars, palette by role, lighting, materials, lines, atmosphere, post chain, modeling rules, a checklist.',
+		actions: [ 'openBrief' ],
+	},
+	{
+		id: 'M6-05', milestone: 'M6', signoff: false,
+		title: 'Use grade.cube and the palette in another tool',
+		steps: [ 'Brief → Files: download grade.cube and palette.gpl.', 'Load grade.cube as a LUT in Photoshop (Color Lookup), DaVinci Resolve, Godot (a 3D texture for a color correction) or Unity/Unreal; load palette.gpl in GIMP, Krita or Aseprite.' ],
+		expected: 'A screenshot graded with the LUT looks like the tool\'s grade (tone mapping and exposure aren\'t in the LUT; it covers the display-space grade).',
+		learn: 'LUTs: how a whole color grade becomes one small file any tool can apply.',
+		actions: [ 'openFiles' ],
+	},
+	{
+		id: 'M6-06', milestone: 'M6', signoff: false,
+		title: 'Share a look by link or QR code',
+		steps: [ 'Brief → Share: copy the link, or scan the QR code with a phone that can reach the same file or site.' ],
+		expected: 'The phone opens the same scene, look and tweaks.',
+		learn: 'Sharing state without a server: everything lives in the link.',
+		actions: [ 'openShare' ],
+	},
 	{
 		id: 'M5-01', milestone: 'M5',
 		title: 'Every gamepad button responds in the tester',

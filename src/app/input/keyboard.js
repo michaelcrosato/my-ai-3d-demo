@@ -14,6 +14,7 @@ export const KEYS = [
 	[ 'N', 'Next camera shot' ],
 	[ 'T', 'Turntable' ],
 	[ 'H', 'Hide UI' ],
+	[ 'B', 'Brief and export' ],
 	[ 'L', 'Learn tab' ],
 	[ 'Esc', 'Close panels' ],
 	[ '?', 'Show these keys' ],
@@ -69,6 +70,7 @@ export function bindKeyboard( app, ui ) {
 			t: () => a.setTurntable( ! s.turntable ),
 			h: () => ui.toggleHidden(),
 			l: () => ui.inspector.setTab( 'learn' ),
+			b: () => ui.openBrief?.(),
 			'?': () => ui.showKeys(),
 			Escape: () => ui.closePanels(),
 		};

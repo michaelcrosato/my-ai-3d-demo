@@ -291,7 +291,8 @@ export class StyleMaterials {
 	register( root ) {
 
 		const meshes = [];
-		root.traverse( ( o ) => { if ( o.isMesh && o.userData.style ) meshes.push( o ); } );
+		const known = new Set( this.entries.map( ( e ) => e.mesh ) );
+		root.traverse( ( o ) => { if ( o.isMesh && o.userData.style && ! known.has( o ) ) meshes.push( o ); } );
 
 		for ( const mesh of meshes ) {
 
@@ -304,6 +305,7 @@ export class StyleMaterials {
 			if ( mesh.isSkinnedMesh ) { plain.bindMode = mesh.bindMode; plain.bind( mesh.skeleton, mesh.bindMatrix ); }
 			plain.frustumCulled = mesh.frustumCulled;
 			plain.name = 'plain twin';
+			plain.userData.stylelabTwin = true;
 			plain.layers.set( LAYER_PLAIN );
 			plain.castShadow = mesh.castShadow;
 			plain.receiveShadow = mesh.receiveShadow;
@@ -330,6 +332,7 @@ export class StyleMaterials {
 			if ( ! g.getAttribute( 'outlineNormal' ) ) computeOutlineNormals( g );
 			const hull = new THREE.Mesh( g, this.hullMaterial( entry.part ) );
 			hull.name = 'hull';
+			hull.userData.stylelabTwin = true;
 			hull.layers.set( LAYER_STYLED );
 			hull.castShadow = hull.receiveShadow = false;
 			entry.mesh.add( hull );

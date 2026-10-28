@@ -2,7 +2,7 @@
 // checks for errors and a non-blank frame, and runs the spikes. CDN requests are
 // served from node_modules (same pinned versions), so it runs offline.
 //
-//   node scripts/smoke.mjs [--only <text>] [--checks m1,m3,m4,m5] [--no-spikes] [--rebuild-iterations N]
+//   node scripts/smoke.mjs [--only <text>] [--checks m1,m3,m4,m5,m6] [--no-spikes] [--rebuild-iterations N]
 //
 // Needs Playwright with Chromium: `npm i -D playwright && npx playwright install chromium`
 // (already present in the cloud container). Headless WebGPU uses SwiftShader.
@@ -26,14 +26,14 @@ const distFile = pathToFileURL( path.join( ROOT, 'dist/style-lab.html' ) ).href;
 
 const RUNS = [
 	{ name: 'dev  · http · WebGL2', url: ( base ) => `${base}/index.html?backend=webgl`, backend: 'WebGL2' },
-	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2', m1: true, m3: true, m4: true, m5: true, sweep: true, gallery: 'm4-gallery.png' },
-	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm5-webgpu.png', panel: true, m1: true, m3: true, m4: true, m5: true, sweep: [ 'lookdev', 'harbor' ], sheet: 'm5-contact.png', effects: 'm3-effects.png' },
+	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2', m1: true, m3: true, m4: true, m5: true, m6: true, sweep: true, gallery: 'm4-gallery.png' },
+	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm6-webgpu.png', panel: true, m1: true, m3: true, m4: true, m5: true, m6: true, sweep: [ 'lookdev', 'harbor' ], sheet: 'm6-contact.png', effects: 'm3-effects.png' },
 	{ name: 'dist · file · WebGL2', url: () => `${distFile}?backend=webgl`, backend: 'WebGL2' },
 	{ name: 'dist · file · auto  ', url: () => distFile, backend: null },
 ].filter( ( r ) => ! value( '--only' ) || r.name.includes( value( '--only' ) ) );
 
 // --checks m4,m5 runs exactly those milestone checks on the selected runs (handy with --only dev).
-if ( value( '--checks' ) ) for ( const r of RUNS ) for ( const m of [ 'm1', 'm3', 'm4', 'm5' ] ) r[ m ] = value( '--checks' ).split( ',' ).includes( m );
+if ( value( '--checks' ) ) for ( const r of RUNS ) for ( const m of [ 'm1', 'm3', 'm4', 'm5', 'm6' ] ) r[ m ] = value( '--checks' ).split( ',' ).includes( m );
 
 const MIME = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json' };
 
@@ -609,6 +609,149 @@ async function m5Checks( page, fail ) {
 
 }
 
+/**
+ * M6 acceptance checks (design §9 M6): the brief and every export file, grade.cube (an
+ * identity LUT for the plain look, and an exact round trip through LUTCubeLoader for a
+ * graded look), the QR code, starter.html matching the tool's render, and convertScene()
+ * styling a plain three.js scene.
+ */
+async function m6Checks( page, fail, run, base ) {
+
+	const out = await page.evaluate( async () => {
+
+		const s = window.__stylelab;
+		const res = { checks: [] };
+		const check = ( name, pass, value ) => res.checks.push( { name, pass, value } );
+		s.freeze( 1 );
+		await s.setScene( 'lookdev', { tier: 1 } );
+		await s.applyLook( 'comic-ink' );
+
+		const text = await s.openBrief( 'brief' );
+		check( 'brief modal shows the brief', /Art direction: Comic Ink/.test( text ) && /Post chain/.test( text ), text.slice( 0, 80 ) );
+		const names = s.exportNames();
+		const expected = [ 'STYLE.md', 'comic-ink.look.json', 'looks.json', 'stylelab-runtime.js', 'stylelab-kit.js', 'starter.html', 'grade.cube', 'palette.gpl', 'palette.png', 'reference.png', 'contact-sheet.png', 'snapshot-snippet.js' ];
+		check( 'every export file is offered', expected.every( ( n ) => names.includes( n ) ), names );
+		const sizes = {};
+		for ( const n of names.filter( ( x ) => x !== 'contact-sheet.png' ) ) sizes[ n ] = ( await s.exportFile( n ) ).length;
+		check( 'export files are non-empty', Object.values( sizes ).every( ( n ) => n > 200 ), sizes );
+		const look = JSON.parse( await s.exportFile( 'look.json' ) );
+		check( 'look.json is a valid look', look.schema === 'stylelab.look@1' && look.id === 'comic-ink', look.id );
+		const starter = await s.exportFile( 'starter.html' );
+		check( 'starter.html carries the look', starter.includes( '"id":"comic-ink"' ) && starter.includes( 'createStyle' ), starter.length );
+
+		// grade.cube: identity for the plain look; exact round trip for a graded look.
+		await s.applyLook( 'plain' );
+		const id = await s.bakeGrade();
+		let idErr = 0;
+		for ( let b = 0; b < 33; b ++ ) for ( let g = 0; g < 33; g ++ ) for ( let r = 0; r < 33; r ++ ) {
+
+			const o = ( ( b * 33 + g ) * 33 + r ) * 4;
+			idErr = Math.max( idErr, Math.abs( id[ o ] - r / 32 ), Math.abs( id[ o + 1 ] - g / 32 ), Math.abs( id[ o + 2 ] - b / 32 ) );
+
+		}
+
+		check( 'grade.cube for the plain look is the identity', idErr < 2 / 255, idErr );
+		await s.applyLook( 'cinematic' );
+		const baked = await s.bakeGrade();
+		const { LUTCubeLoader } = await import( 'three/addons/loaders/LUTCubeLoader.js' );
+		const lut = new LUTCubeLoader().parse( await s.exportFile( 'grade.cube' ) );
+		const data = lut.texture3D.image.data;
+		let rt = 0, moved = 0;
+		for ( let i = 0; i < 33 ** 3; i ++ ) for ( let k = 0; k < 3; k ++ ) {
+
+			const v = data instanceof Uint8Array ? data[ i * 4 + k ] / 255 : data[ i * 4 + k ];
+			rt = Math.max( rt, Math.abs( v - baked[ i * 4 + k ] ) );
+			moved = Math.max( moved, Math.abs( baked[ i * 4 + k ] - id[ i * 4 + k ] ) );
+
+		}
+
+		check( '.cube round-trips through LUTCubeLoader with low error', rt < 1 / 255 + 1e-6 && moved > 0.05, { roundTrip: rt, gradeStrength: moved } );
+
+		await s.openBrief( 'share' );
+		const t0 = performance.now();
+		while ( ! document.querySelector( '#brief-modal .qr svg' ) && performance.now() - t0 < 20000 ) await new Promise( ( r ) => setTimeout( r, 100 ) );
+		check( 'share tab shows a QR code', !! document.querySelector( '#brief-modal .qr svg' ), null );
+		document.querySelector( '#brief-modal .close' ).click();
+		s.freeze( null );
+		return res;
+
+	} );
+
+	// starter.html renders the same frame as the tool (same runtime, look, scene and camera).
+	const backendQuery = run.backend === 'WebGL2' ? '&backend=webgl' : '';
+	for ( const [ look, scene ] of [ [ 'sea-breeze', 'lookdev' ], [ 'graffiti-rush', 'plaza' ] ] ) try {
+
+		const starter = await page.context().newPage();
+		const errors = [];
+		starter.on( 'pageerror', ( e ) => errors.push( String( e ) ) );
+		// The module awaits renderer init and the first compile (top-level await), which holds
+		// back even DOMContentLoaded: wait for the page's own ready flag instead.
+		await starter.goto( `${base}/dist/starter.html?scene=${scene}&look=${look}${backendQuery}`, { waitUntil: 'commit' } );
+		await starter.waitForFunction( () => window.__starterReady, null, { timeout: 180000 } );
+		const px = await starter.evaluate( () => window.__starter.capture( { width: 480, height: 270, time: 1 } ) );
+		const parity = await page.evaluate( async ( { look, scene, px } ) => {
+
+			const s = window.__stylelab;
+			await s.setScene( scene, { tier: 1 } );
+			await s.applyLook( look );
+			s.freeze( 1 );
+			const c = await s.capture( { width: 480, height: 270 } );
+			const img = await createImageBitmap( await ( await fetch( s.captureURL( c.id ) ) ).blob() );
+			const cv = document.createElement( 'canvas' ); cv.width = 480; cv.height = 270;
+			const ctx = cv.getContext( '2d' ); ctx.drawImage( img, 0, 0 );
+			const tp = ctx.getImageData( 0, 0, 480, 270 ).data;
+			let sum = 0;
+			for ( let i = 0; i < tp.length; i += 4 ) for ( let k = 0; k < 3; k ++ ) sum += Math.abs( tp[ i + k ] - px[ i + k ] );
+			s.freeze( null );
+			return sum / ( 480 * 270 * 3 ) / 255;
+
+		}, { look, scene, px } );
+		out.checks.push( { name: `starter.html matches the tool (${look} on ${scene})`, pass: parity < 0.004 && ! errors.length, value: { mae: parity, errors } } );
+
+		// convertScene(): a plain three.js scene, styled in one call.
+		if ( look === 'sea-breeze' ) {
+
+			const converted = await starter.evaluate( async () => {
+
+				const THREE = await import( 'three/webgpu' );
+				const { createStyle } = await import( './stylelab-runtime.js' );
+				const renderer = new THREE.WebGPURenderer( { canvas: document.createElement( 'canvas' ), forceWebGL: new URLSearchParams( location.search ).get( 'backend' ) === 'webgl' } );
+				await renderer.init();
+				renderer.setSize( 320, 180, false );
+				const scene = new THREE.Scene();
+				const add = ( name, geo, color, p ) => { const m = new THREE.Mesh( geo, new THREE.MeshStandardMaterial( { color } ) ); m.name = name; m.position.set( ...p ); scene.add( m ); return m; };
+				add( 'Ground', new THREE.PlaneGeometry( 30, 30 ).rotateX( - Math.PI / 2 ), '#7a9a5a', [ 0, 0, 0 ] );
+				add( 'House_Wall', new THREE.BoxGeometry( 3, 2.5, 3 ), '#e8d8b8', [ - 3, 1.25, 0 ] );
+				add( 'Oak_Leaves', new THREE.SphereGeometry( 1.2, 12, 8 ), '#4f8f3a', [ 3, 2.5, 0 ] );
+				add( 'Player', new THREE.CapsuleGeometry( 0.4, 1, 4, 8 ), '#3d7fd6', [ 0, 0.9, 2 ] );
+				scene.add( new THREE.DirectionalLight( '#ffffff', 2 ) );
+				const camera = new THREE.PerspectiveCamera( 50, 16 / 9, 0.1, 200 );
+				camera.position.set( 6, 5, 10 ); camera.lookAt( 0, 1, 0 );
+				const look = window.__starter.style.looks.get( 'sea-breeze' );
+				const style = await createStyle( { renderer, scene, camera, looks: [ look ] } );
+				style.render( 0 );
+				const parts = {};
+				scene.traverse( ( o ) => { if ( o.isMesh && o.userData.style ) parts[ o.name ] = o.userData.style.part; } );
+				return { parts, entries: style.runtime.materials.entries.length };
+
+			} );
+			out.checks.push( { name: 'convertScene() styles a plain three.js scene with sensible parts', pass: converted.parts.Ground === 'terrain' && converted.parts.House_Wall === 'architecture' && converted.parts.Oak_Leaves === 'foliage' && converted.parts.Player === 'hero' && converted.entries === 4, value: converted } );
+
+		}
+
+		await starter.close();
+
+	} catch ( e ) {
+
+		out.checks.push( { name: `starter.html (${look} on ${scene}) loads and renders`, pass: false, value: String( e.message || e ).split( '\n' )[ 0 ] } );
+
+	}
+
+	for ( const c of out.checks ) if ( ! c.pass ) fail( `M6: ${c.name} (${JSON.stringify( c.value )})` );
+	return out;
+
+}
+
 async function smoke( browser, run, base ) {
 
 	const context = await browser.newContext( { viewport: { width: 1280, height: 720 } } );
@@ -647,6 +790,7 @@ async function smoke( browser, run, base ) {
 		if ( run.m3 && ! flag( '--no-m3' ) ) result.m3 = await m3Checks( page, fail, run );
 		if ( run.m4 && ! flag( '--no-m4' ) ) result.m4 = await m4Checks( page, fail, run );
 		if ( run.m5 && ! flag( '--no-m5' ) ) result.m5 = await m5Checks( page, fail, run );
+		if ( run.m6 && ! flag( '--no-m6' ) ) result.m6 = await m6Checks( page, fail, run, base );
 
 		if ( ! flag( '--no-spikes' ) ) {
 
@@ -660,7 +804,7 @@ async function smoke( browser, run, base ) {
 		if ( run.panel ) {
 
 			await page.click( '#verify-btn' );
-			await page.click( '.check[data-id="M5-01"] [data-status="pass"]' );
+			await page.click( '.check[data-id="M6-01"] [data-status="pass"]' );
 			await page.click( '[data-tab="report"]' );
 			result.report = await page.inputValue( 'textarea.report' );
 			if ( ! result.report.includes( 'Checks: 1 pass' ) ) fail( 'Verify report does not record the clicked check' );

@@ -11,6 +11,9 @@ import { createVerifyPanel } from './verify/panel.js';
 import { createApp } from './app.js';
 import { createTopBar } from './ui/topbar.js';
 import { createGallery } from './ui/gallery.js';
+import { createBriefModal } from './ui/brief.js';
+import { exportFiles, briefText, looksJson } from './export/exports.js';
+import { bakeGradeLut } from './export/grade.js';
 import { createInspector } from './ui/inspector.js';
 import { createCompareUI } from './ui/compare.js';
 import { $, h, toast } from './ui/dom.js';
@@ -194,11 +197,18 @@ async function boot() {
 	} );
 	const compareUI = createCompareUI( app );
 
+	// Brief and export (§6.12).
+	const briefRoot = h( 'div.modal', { id: 'brief-modal', hidden: true } );
+	document.body.append( briefRoot );
+	const briefModal = createBriefModal( briefRoot, app, { share: shareURL, toast } );
+	$( 'brief-btn' ).addEventListener( 'click', () => briefModal.open( 'brief' ) );
+
 	const ui = {
+		openBrief: () => briefModal.open( 'brief' ),
 		inspector,
 		toggleHidden: () => appRoot.classList.toggle( 'ui-hidden' ),
 		showKeys: () => toast( KEYS.map( ( [ k, v ] ) => `${k}: ${v}` ).join( ' · ' ), 9000 ),
-		closePanels: () => { $( 'verify' ).hidden = true; appRoot.classList.remove( 'inspector-open', 'ui-hidden' ); },
+		closePanels: () => { $( 'verify' ).hidden = true; briefModal.close(); appRoot.classList.remove( 'inspector-open', 'ui-hidden' ); },
 		toast,
 	};
 
@@ -391,6 +401,9 @@ async function boot() {
 		setup,
 		names: Object.fromEntries( [ ...LOOKS, ...SCENES ].map( ( x ) => [ x.id, x.name ] ) ),
 		extraActions: {
+			openBrief: async () => { $( 'verify' ).hidden = true; briefModal.open( 'brief' ); },
+			openFiles: async () => { $( 'verify' ).hidden = true; briefModal.open( 'files' ); },
+			openShare: async () => { $( 'verify' ).hidden = true; briefModal.open( 'share' ); },
 			effectSheet: async () => {
 
 				toast( `Rendering ${EFFECT_DEMOS.length} effect cells…`, 60000 );
@@ -435,6 +448,15 @@ async function boot() {
 		coherence: () => app.coherence(),
 		/** Renders the gallery's look previews on the current scene. */
 		galleryPreviews: () => gallery.refresh(),
+		// M6: brief and exports
+		brief: ( opts ) => briefText( app, opts ),
+		looksJson: () => looksJson( app ),
+		/** One export file by name: its text, or a data URL for images. */
+		exportFile: async ( name ) => { const f = exportFiles( app, { share: shareURL } ).find( ( x ) => x.name === name || ( name === 'look.json' && x.name.endsWith( '.look.json' ) ) ); if ( ! f ) throw new Error( `no export ${name}` ); return f.make(); },
+		exportNames: () => exportFiles( app, { share: shareURL } ).map( ( f ) => f.name ),
+		/** The baked grade LUT (33³ RGBA floats, .cube order) for the current look. */
+		bakeGrade: async () => Array.from( await bakeGradeLut( renderer, app.target.global ) ),
+		openBrief: async ( tab ) => { briefModal.open( tab ); await nextFrames( 4 ); return document.querySelector( '#brief-modal .brief-body' )?.innerText || ''; },
 		// M5: walk mode, physics, zones, plans, modes
 		setWalk: async ( on ) => { const r = await app.actions.setWalk( on ); await nextFrames(); return r; },
 		/** Moves the walking player's feet to [x, y, z]. */
@@ -679,6 +701,34 @@ async function boot() {
 		},
 		report: () => panel.report(),
 	} );
+
+	// Export images: the current view, and the current state on every scene.
+	app.exportImages = {
+		reference: async () => api.captureURL( ( await api.capture( { width: 1280, height: 720 } ) ).id ),
+		contactSheet: async ( { cell = [ 320, 180 ], cols = 4 } = {} ) => {
+
+			const [ w, hgt ] = cell, pad = 18, s0 = app.store.get();
+			const sheet = document.createElement( 'canvas' );
+			sheet.width = w * cols; sheet.height = ( hgt + pad ) * Math.ceil( SCENES.length / cols );
+			const ctx = sheet.getContext( '2d' );
+			ctx.fillStyle = '#1b1b1c'; ctx.fillRect( 0, 0, sheet.width, sheet.height );
+			ctx.font = '12px system-ui, sans-serif';
+			for ( const [ i, sc ] of SCENES.entries() ) {
+
+				app.actions.setScene( sc.id, { tier: s0.tier } );
+				const px = captures.get( ( await api.capture( { width: w, height: hgt } ) ).id );
+				const x = ( i % cols ) * w, y = Math.floor( i / cols ) * ( hgt + pad );
+				ctx.putImageData( new ImageData( new Uint8ClampedArray( px.data ), w, hgt ), x, y + pad );
+				ctx.fillStyle = '#e6e6e6';
+				ctx.fillText( `${sc.name} · ${app.look().name}`, x + 6, y + 13 );
+
+			}
+
+			app.actions.setScene( s0.sceneId, { tier: s0.tier, shot: s0.shot ?? undefined } );
+			return sheet.toDataURL( 'image/png' );
+
+		},
+	};
 
 	// Share links (§6.12): `#state=` or `#look=` opens that state, then the hash is cleared
 	// (the state autosaves like any other).

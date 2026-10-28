@@ -4,7 +4,7 @@ import { CHECKS, CURRENT_MILESTONE } from './checks.js';
 import { formatReport } from './report.js';
 
 const STORE_KEY = 'stylelab.verify.v1';
-const ACTION_LABELS = { runSpikes: '▶ Run all spikes', reloadWebGL: '↻ Reload with WebGL2', effectSheet: '▦ Render the effects sheet' };
+const ACTION_LABELS = { runSpikes: '▶ Run all spikes', reloadWebGL: '↻ Reload with WebGL2', effectSheet: '▦ Render the effects sheet', openBrief: '📝 Open the brief', openFiles: '⇩ Open the export files', openShare: '🔗 Open the share link and QR' };
 
 function load() {
 

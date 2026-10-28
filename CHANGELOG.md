@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.8.0 — M6: agent brief and exports (2026-10-28)
+
+**What's new**
+- **📝 Brief** (top bar, or B): the art direction for your agent, generated from the look you're on (mixes, part looks and tweaks included). Three audiences: three.js with the Style Lab runtime, three.js without it (with the three.js building block for each effect), or engine-agnostic for Godot, Unity or Unreal. Three lengths: Short (under 300 words, for a system prompt), Standard (for CLAUDE.md or AGENTS.md) and Full (every value and per-part tables). Every brief has pillars, a palette by role, lighting, materials, lines, atmosphere, the post chain in order, modeling rules, motion, performance, your level plan and player modes, and a checklist.
+- **Procedural assets in the brief:** the brief tells the agent to build assets in code the way the kit does (part-tagged three.js geometry, seeded randomness, complexity tiers, detail as geometry rather than textures), and the kit ships as **stylelab-kit.js**, a starter library with every scene as a worked example.
+- **Files:** STYLE.md, look.json, looks.json (the look plus your plan, zones and modes), stylelab-runtime.js, stylelab-kit.js, **starter.html** (a small game wired to both, with your look), **grade.cube** (the grade as a 33³ LUT for other engines, baked by the tool's own grade code), palette.gpl and palette.png, reference.png, a contact sheet of your look on every scene, and snapshot-snippet.js (exports a game's scene as a part-tagged .glb for Style Lab). The built file carries the runtime and kit inside it, so exports work offline.
+- **The runtime API:** `createStyle( { renderer, scene, camera, looks } )` with `style.material()`, `style.tag()`, `style.add()`, `style.convertScene()` (retrofit an existing game in one call: colors kept, parts guessed), `style.setLook()` with transitions, `style.setZoneWeights()`, `style.setParam()` and `style.setQuality()`.
+- **🔗 Share:** the share link with a QR code.
+
+**What to test** (🧪 Verify → Checklist; about 30 minutes, most of it with your agent):
+1. **M6-01** Paste the brief into one of your agents and ask for a small scene. Report how close it gets and whether its assets follow the kit.
+2. **M6-02** Open starter.html next to the tool and compare.
+3. **M6-03** Try convertScene() on an existing agent-made game.
+4. Optional tour: **M6-04** one brief for three audiences, **M6-05** grade.cube and the palette in another tool, **M6-06** share by link or QR code.
+5. Earlier checks you haven't done yet (M3–M5).
+
+Then Report → **Copy report** and paste it back.
+
+**Known**
+- grade.cube covers the display-space grade (lift/gamma/gain, contrast, saturation, hue, split tone, selective color, LUT preset, gradient map). Exposure, white balance and tone mapping happen before it, in HDR, and are listed in the brief instead.
+- The no-runtime brief names three.js building blocks for each effect rather than generating TSL code.
+- starter.html needs a static server next to stylelab-runtime.js and stylelab-kit.js; browsers don't load modules from file:// pages.
+
 ## v0.7.0 — M5: walk mode, physics, gamepad, zones and plans (2026-10-28)
 
 **What's new** (most of it in the new **Play** tab)
