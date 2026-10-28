@@ -39,7 +39,7 @@ const autoQuality = () => ( globalThis.navigator?.userAgentData?.mobile ?? /Mobi
 
 export class Style {
 
-	constructor( { renderer, scene, camera, looks = [], quality = 'auto', sceneParams = {}, frame = null, convert = true } ) {
+	constructor( { renderer, scene, camera, looks = [], quality = 'auto', sceneParams = {}, frame = null, convert = true, lens = true } ) {
 
 		this.renderer = renderer;
 		this.scene = scene;
@@ -56,6 +56,10 @@ export class Style {
 		this.transition = null;
 		this.time = 0;
 		this.focus = new THREE.Vector3();
+		// The look's lens width (lens.fovScale) scales this FOV; set it when your game changes
+		// the camera's FOV, or pass lens: false to leave the camera alone.
+		this.baseFov = camera.fov;
+		this.lens = lens;
 
 		// The host's sun and sky lights would double the look's light rig: hide them.
 		// Point and spot lights become practicals (torches, lamps) that follow the look.
@@ -187,10 +191,28 @@ export class Style {
 
 		}
 
+		if ( this.lens && this.camera.isPerspectiveCamera ) this.applyLens();
 		const fps = this.resolved.global[ 'motion.stepped.fps' ] || 0;
 		const t = fps > 0 ? Math.floor( this.time * fps + 1e-6 ) / fps : this.time;
 		this.runtime.update( t, { focus: this.focus } );
 		this.runtime.render();
+
+	}
+
+	/**
+	 * The look's lens: the base FOV times lens.fovScale, with the camera dollied along its
+	 * view line so the focus keeps its size on screen (only the perspective changes), as in
+	 * Style Lab.
+	 */
+	applyLens() {
+
+		const cam = this.camera;
+		const next = Math.min( 110, this.baseFov * ( this.resolved.global[ 'lens.fovScale' ] ?? 1 ) );
+		if ( Math.abs( next - cam.fov ) < 1e-6 ) return;
+		const k = Math.tan( cam.fov * Math.PI / 360 ) / Math.tan( next * Math.PI / 360 );
+		cam.position.sub( this.focus ).multiplyScalar( k ).add( this.focus );
+		cam.fov = next;
+		cam.updateProjectionMatrix();
 
 	}
 

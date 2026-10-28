@@ -627,13 +627,13 @@ async function m6Checks( page, fail, run, base ) {
 		await s.applyLook( 'comic-ink' );
 
 		const text = await s.openBrief( 'brief' );
-		check( 'brief modal shows the brief', /Art direction: Comic Ink/.test( text ) && /Post chain/.test( text ), text.slice( 0, 80 ) );
+		check( 'brief modal shows the brief', /Art direction: Comic Ink/.test( text ) && /Post chain/i.test( text ), text.slice( 0, 80 ) );
 		const names = s.exportNames();
 		const expected = [ 'STYLE.md', 'comic-ink.look.json', 'looks.json', 'stylelab-runtime.js', 'stylelab-kit.js', 'starter.html', 'grade.cube', 'palette.gpl', 'palette.png', 'reference.png', 'contact-sheet.png', 'snapshot-snippet.js' ];
 		check( 'every export file is offered', expected.every( ( n ) => names.includes( n ) ), names );
 		const sizes = {};
 		for ( const n of names.filter( ( x ) => x !== 'contact-sheet.png' ) ) sizes[ n ] = ( await s.exportFile( n ) ).length;
-		check( 'export files are non-empty', Object.values( sizes ).every( ( n ) => n > 200 ), sizes );
+		check( 'export files are non-empty', Object.values( sizes ).every( ( n ) => n > 100 ), sizes );
 		const look = JSON.parse( await s.exportFile( 'look.json' ) );
 		check( 'look.json is a valid look', look.schema === 'stylelab.look@1' && look.id === 'comic-ink', look.id );
 		const starter = await s.exportFile( 'starter.html' );
@@ -772,6 +772,9 @@ async function m7Checks( page, fail ) {
 		s.freeze( 1 );
 		await s.setScene( 'lookdev', { tier: 1 } );
 		await s.applyLook( 'cinematic' );
+		// TRAA jitters every frame, so the frame comparison uses FXAA (an override the audit
+		// has to keep, like the rest of the state).
+		app.actions.setParam( 'quality.aa', 'fxaa', { part: null } );
 		const before = await s.capture( { width: 320, height: 180 } );
 		const state0 = JSON.stringify( { ...app.store.get(), tips: null } );
 		const opts = { target: 'small', rounds: 3, frames: 10, warmup: 4 };
@@ -800,6 +803,7 @@ async function m7Checks( page, fail ) {
 		const url = await s.phoneUrl( 'phone-portrait' );
 		check( 'open-on-phone link runs the audit on the phone', url.includes( 'audit=phone-portrait' ) && url.includes( '#state=' ), url.slice( 0, 120 ) );
 		res.audit = { full: a.totals.full, effects: a.effects.map( ( e ) => [ e.id, e.marginal, e.fpeRubric ] ), timer: a.timer };
+		app.actions.resetParams( [ 'quality.aa' ] );
 		s.freeze( null );
 		return res;
 

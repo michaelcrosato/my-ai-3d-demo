@@ -499,7 +499,16 @@ async function boot() {
 		exportNames: () => exportFiles( app, { share: shareURL } ).map( ( f ) => f.name ),
 		/** The baked grade LUT (33³ RGBA floats, .cube order) for the current look. */
 		bakeGrade: async () => Array.from( await bakeGradeLut( renderer, app.target.global ) ),
-		openBrief: async ( tab ) => { briefModal.open( tab ); await nextFrames( 4 ); return document.querySelector( '#brief-modal .brief-body' )?.innerText || ''; },
+		/** Opens the brief modal on a tab; returns its text, including the brief's textarea. */
+		openBrief: async ( tab ) => {
+
+			briefModal.open( tab );
+			const t0 = performance.now();
+			const body = () => document.querySelector( '#brief-modal .brief-body' );
+			do await nextFrames( 2 ); while ( /Preparing/.test( body()?.innerText || '' ) && performance.now() - t0 < 30000 );
+			return body() ? [ body().innerText, ...[ ...body().querySelectorAll( 'textarea' ) ].map( ( t ) => t.value ) ].join( '\n' ) : '';
+
+		},
 		// M7: performance audit
 		/** Runs the audit: { target: 'small' | 'desktop' | …, rounds, frames, warmup } → the report. */
 		audit: ( opts ) => runAuditNow( opts ),
@@ -543,6 +552,7 @@ async function boot() {
 		capture: ( { width = 512, height = 288, advance = 0, viewOffset = null } = {} ) => pausedWhile( async () => {
 
 			const cam = app.camera, aspect = cam.aspect;
+			const shutter = app.runtime.P.get( 'lens.motionBlur.shutter' ), shutter0 = shutter.value;
 			cam.aspect = width / height;
 			if ( viewOffset ) cam.setViewOffset( width, height, viewOffset[ 0 ], viewOffset[ 1 ], width, height );
 			cam.updateProjectionMatrix();
@@ -553,6 +563,9 @@ async function boot() {
 				const px = await withRendererSize( renderer, width, height, async () => {
 
 					app.tick( 0 );
+					// A still capture has no motion, so no motion blur: renders outside the animation
+					// loop would otherwise read stale previous-frame matrices in the velocity buffer.
+					if ( ! advance ) shutter.value = 0;
 					await renderToPixels( renderer, width, height, () => app.runtime.render() ); // warm-up: compiles after rebuilds
 					if ( advance && t0 !== null ) { app.actions.freeze( t0 + advance ); app.tick( 0 ); }
 					const pixels = await renderToPixels( renderer, width, height, () => app.runtime.render() );
@@ -572,6 +585,7 @@ async function boot() {
 			} finally {
 
 				if ( advance && t0 !== null ) app.actions.freeze( t0 );
+				shutter.value = shutter0;
 				if ( viewOffset ) cam.clearViewOffset();
 				cam.aspect = aspect;
 				cam.updateProjectionMatrix();

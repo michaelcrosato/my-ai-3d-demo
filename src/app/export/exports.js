@@ -15,6 +15,16 @@ const EMBEDDED = typeof __STYLELAB_FILES__ !== 'undefined' ? __STYLELAB_FILES__ 
 export async function embeddedFile( name ) {
 
 	if ( EMBEDDED ) return EMBEDDED[ name ];
+	// Dev (index.html): the runtime and kit come from the last build. The starter template
+	// comes from src, because the built starter.html already has its default looks filled in.
+	if ( name === 'starter.html' ) {
+
+		const res = await fetch( 'src/export/starter.html' ); // dev only: never reached in the build
+		const map = JSON.stringify( JSON.parse( document.querySelector( 'script[type="importmap"]' ).textContent ), null, '\t' );
+		return ( await res.text() ).replace( '/*IMPORTMAP*/', () => map );
+
+	}
+
 	const res = await fetch( `./dist/${name}` );
 	if ( ! res.ok ) throw new Error( `${name} isn't built yet: run npm run build` );
 	return res.text();
