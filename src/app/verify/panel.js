@@ -1,13 +1,13 @@
 // Verify panel (design §6.14, M9): the guided tour (every check in learning order, each with
 // "Set it up for me" and what it teaches), spikes, environment & errors, and the report.
 
-import { CHECKS, CURRENT_MILESTONE, REPORT_FROM } from './checks.js';
+import { CHECKS, CURRENT_MILESTONE, REPORT_FROM, milestoneNumber } from './checks.js';
 import { TOUR } from './tour.js';
 import { LESSONS } from '../../content/lessons.js';
 import { formatReport } from './report.js';
 
 const STORE_KEY = 'stylelab.verify.v1';
-const ACTION_LABELS = { runSpikes: '▶ Run all spikes', reloadWebGL: '↻ Reload with WebGL2', effectSheet: '▦ Render the effects sheet', openBrief: '📝 Open the brief', openFiles: '⇩ Open the export files', openShare: '🔗 Open the share link and QR', openAudit: '⚡ Open the audit', showWelcome: '👋 Show the welcome', showKeys: '⌨ Show the key map' };
+const ACTION_LABELS = { runSpikes: '▶ Run all spikes', reloadWebGL: '↻ Reload with WebGL2', effectSheet: '▦ Render the effects sheet', effectSheetP2: '▦ Render the new effects sheet', openBrief: '📝 Open the brief', openFiles: '⇩ Open the export files', openShare: '🔗 Open the share link and QR', openAudit: '⚡ Open the audit', showWelcome: '👋 Show the welcome', showKeys: '⌨ Show the key map' };
 const actionLabel = ( a ) => ACTION_LABELS[ a ] || ( a.startsWith( 'lesson:' ) ? `🎓 Start lesson ${a.slice( 7 )}` : a );
 
 function load() {
@@ -60,7 +60,7 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 	} );
 	// The report covers every check you marked, plus the sign-off checks still owed (from
 	// REPORT_FROM on), which it lists as not done.
-	const owed = ( c ) => c.signoff !== false && c.milestone >= REPORT_FROM && c.milestone <= CURRENT_MILESTONE;
+	const owed = ( c ) => c.signoff !== false && milestoneNumber( c.milestone ) >= milestoneNumber( REPORT_FROM ) && milestoneNumber( c.milestone ) <= milestoneNumber( CURRENT_MILESTONE );
 	const reported = () => checks().filter( ( c ) => c.status || owed( c ) );
 	const report = () => formatReport( { build, env: getEnv(), checks: reported(), spikeRuns: state.spikeRuns, log: log.entries, perf: getPerf() } );
 

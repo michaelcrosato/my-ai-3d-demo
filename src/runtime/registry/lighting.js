@@ -235,4 +235,43 @@ export default [
 		brief: 'Contact shadow darkness {value}.',
 		tags: [ 'shadow', 'contact' ],
 	} ),
+	// P2 (M10): baked vertex AO and screen-space GI.
+	p( {
+		id: 'lighting.vertexAo.enabled', scope: 'both', label: 'Baked vertex AO', type: 'bool', default: false, structural: true, cost: { ...CHEAP, fpe: 0.05 },
+		learn: {
+			what: 'Occlusion baked into every vertex once, when the scene builds: crevices, the undersides of overhangs and the bases of objects get darker. It costs nothing per frame.',
+			why: 'Contact darkening is what makes objects sit in the world. Baking it is how phone and stylized games get AO for free, and it never shimmers like screen-space AO.',
+			avoid: 'Expecting it between separate objects: each object is baked from its own shape and the ground it stands on, so nothing nearby (or moving) darkens it.',
+		},
+		brief: 'Baked per-vertex ambient occlusion (self-occlusion and ground contact).',
+		tags: [ 'ao', 'vertex colors', 'baked', 'grounding', 'phone' ],
+	} ),
+	p( {
+		id: 'lighting.vertexAo.strength', scope: 'both', label: 'Vertex AO strength', type: 'float', min: 0, max: 1, step: 0.01, default: 0.6, neutral: 0, enabledBy: 'lighting.vertexAo.enabled',
+		learn: { what: 'How dark the baked occlusion gets.', why: 'Subtle values ground objects; strong ones give the dioramic, "toy in a box" look.', typical: '0.4–0.8.' },
+		brief: 'Vertex AO strength {value}.',
+		tags: [ 'ao' ],
+	} ),
+	p( {
+		id: 'lighting.ssgi.enabled', label: 'Screen-space GI', type: 'bool', default: false, structural: true, cost: { ...HEAVY, fpe: 4 }, requires: [ 'depth', 'normal' ],
+		learn: {
+			what: 'Bounces light between visible surfaces: a red wall tints the floor next to it, and sunlit ground lifts the shadows above it. Computed every frame from the depth and normal buffers.',
+			why: 'Bounce light is what makes a space feel lit rather than painted in. Stylized games use a little of it for warmth in interiors and courtyards.',
+			avoid: 'Phones and drawn looks, and expecting light from off-screen surfaces: a screen-space effect only sees what is in the frame.',
+		},
+		brief: 'Screen-space global illumination (one bounce).',
+		tags: [ 'gi', 'bounce light', 'ssgi', 'realism' ],
+	} ),
+	p( {
+		id: 'lighting.ssgi.intensity', label: 'Bounce intensity', type: 'float', min: 0, max: 4, step: 0.01, default: 1, neutral: 0, enabledBy: 'lighting.ssgi.enabled',
+		learn: { what: 'How much bounced light is added.', why: 'Just enough to color the shadows; too much flattens the image like an overcast day.', typical: '0.5–1.5.' },
+		brief: 'Bounce intensity {value}.',
+		tags: [ 'gi' ],
+	} ),
+	p( {
+		id: 'lighting.ssgi.radius', label: 'Bounce radius', type: 'float', min: 1, max: 20, step: 0.1, unit: 'm', default: 6, enabledBy: 'lighting.ssgi.enabled',
+		learn: { what: 'How far light travels between surfaces, in meters.', why: 'Small radii give tight color bleeding at contacts; large ones a broad fill (and more noise).' },
+		brief: 'Bounce radius {value} m.',
+		tags: [ 'gi' ],
+	} ),
 ];

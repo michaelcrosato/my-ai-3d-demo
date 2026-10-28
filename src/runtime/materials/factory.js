@@ -10,9 +10,11 @@
 
 import * as THREE from 'three/webgpu';
 import * as TSL from 'three/tsl';
-import { uniform, vec3, vec4, mrt, output, fract, sin, cos, dot, floor, float, mix, step, smoothstep, modelWorldMatrix, modelViewProjection, positionLocal, positionWorld, positionView, materialColor, hue, mx_noise_float, mx_worley_noise_float, viewportDepthTexture, perspectiveDepthToViewZ, cameraNear, cameraFar, Fn } from 'three/tsl';
+import { uniform, vec2, vec3, vec4, mrt, output, fract, sin, cos, dot, floor, float, mix, step, smoothstep, select, modelWorldMatrix, modelViewProjection, positionLocal, positionWorld, positionView, materialColor, materialReference, texture, uv, varying, attribute, hue, mx_noise_float, mx_worley_noise_float, viewportDepthTexture, perspectiveDepthToViewZ, cameraNear, cameraFar, Fn } from 'three/tsl';
 import { StyleSurfaceMaterial, StyleStandardMaterial, createSurfaceUniforms } from './StyleLightingModel.js';
 import { createHullMaterial, computeOutlineNormals, snapClip } from './outline.js';
+import { matcapTexture } from './matcaps.js';
+import { bakeVertexAo } from './vertexAo.js';
 import { BlobShadows } from '../render/blobs.js';
 import { PARTS, PART_INDEX } from '../registry/index.js';
 import { adjustHex, remapToPalette, mixHex } from '../color/color.js';
@@ -29,13 +31,13 @@ export const objectIdNode = Fn( () => {
 
 } );
 
-/** Value written to the `ids` attachment: R = part id, G = object id. */
-export const idsNode = ( part ) => vec4( PART_INDEX[ part ] / 255, objectIdNode(), 0, 1 );
+/** Value written to the `ids` attachment: R = part id, G = object id, B = 1 for interactable objects. */
+export const idsNode = ( part, interactable = false ) => vec4( PART_INDEX[ part ] / 255, objectIdNode(), interactable ? 1 : 0, 1 );
 
 const deformKey = ( s, wind = s.wind ) => s.wave ? `wave:${s.wave.amplitude}/${s.wave.frequency}/${s.wave.falloff ?? 90}` : wind ? `wind:${wind.strength}/${wind.height}` : '';
 
 /** Everything about a kit mesh's style that needs its own material (colors are uniforms but cache by value). */
-const styleKey = ( s ) => [ s.color, s.emissive, s.emissiveIntensity, s.roughness, s.metalness ?? 0, s.opacity ?? 1, deformKey( s ), s.doubleSided, s.map?.uuid ?? '', s.vertexColors ? 'vc' : '' ].join( '|' );
+const styleKey = ( s ) => [ s.color, s.emissive, s.emissiveIntensity, s.roughness, s.metalness ?? 0, s.opacity ?? 1, deformKey( s ), s.doubleSided, s.map?.uuid ?? '', s.vertexColors ? 'vc' : '', s.interactable ? 'use' : '' ].join( '|' );
 
 /** Base color after the palette module: remap → tint → saturation/value/hue. */
 export function paletteColor( hex, v ) {
@@ -50,7 +52,9 @@ export function paletteColor( hex, v ) {
 /** A part's structural key: everything that changes its shaders. `blobs` = materials receive blob shadows. */
 const structKey = ( v, blobs ) => [
 	v[ 'surface.model' ], v[ 'surface.model' ] === 'pbr' ? 0 : v[ 'surface.bands' ], v[ 'surface.flatNormals' ] ? 'flat' : '',
-	v[ 'retro.vertexSnap.enabled' ] ? 'snap' : '',
+	v[ 'surface.model' ] === 'matcap' ? v[ 'surface.matcap.preset' ] : '',
+	v[ 'retro.vertexSnap.enabled' ] ? 'snap' : '', v[ 'retro.texture.filter' ] === 'bilinear' ? '' : v[ 'retro.texture.filter' ], v[ 'retro.affine.enabled' ] ? 'affine' : '',
+	v[ 'lighting.vertexAo.enabled' ] ? 'vao' : '',
 	v[ 'surface.halftone.enabled' ] ? `dots-${v[ 'surface.halftone.space' ]}` : '', v[ 'surface.hatching.enabled' ] ? `hatch-${v[ 'surface.hatching.space' ]}` : '', v[ 'surface.dither.enabled' ] ? 'dither' : '',
 	v[ 'surface.variation.enabled' ] ? `var-${v[ 'surface.variation.space' ]}` : '', v[ 'surface.gradient.enabled' ] ? 'grad' : '', v[ 'surface.wind.enabled' ] ? 'wind' : '',
 	blobs ? 'blob' : '',
@@ -67,11 +71,49 @@ const SURFACE_UNIFORMS = {
 	'surface.gradient.amount': 'gradientAmount', 'surface.gradient.height': 'gradientHeight',
 	'surface.water.depth': 'waterDepth', 'surface.water.bands': 'waterBands', 'surface.water.foam': 'waterFoam', 'surface.water.pattern': 'waterPattern',
 	'surface.wind.strength': 'windStrength', 'surface.wind.speed': 'windSpeed', 'surface.wind.gusts': 'windGusts',
+	'surface.gooch.strength': 'goochStrength', 'retro.affine.amount': 'affineAmount', 'lighting.vertexAo.strength': 'vertexAoStrength',
+	'atmosphere.fog.partAmount': 'fogAmount',
 };
 const SURFACE_COLORS = {
 	'surface.shadowTint': 'shadowTint', 'surface.rim.color': 'rimColor', 'surface.halftone.color': 'halftoneColor', 'surface.hatching.color': 'hatchColor',
 	'surface.water.shallow': 'waterShallow', 'surface.water.deep': 'waterDeep', 'surface.water.foamColor': 'waterFoamColor',
+	'surface.gooch.cool': 'goochCool', 'surface.gooch.warm': 'goochWarm',
 };
+
+/**
+ * A map sampled the way retro hardware did (§6.4 H): affine (perspective-incorrect) texture
+ * coordinates on the PS1, nearest texels without mipmaps on the PS1, three-point blending
+ * on the N64. `filter` and `affine` are structural; the warp amount is a uniform.
+ */
+export function retroMapSample( map, { filter, affine, amount } ) {
+
+	let coord = uv();
+	if ( affine ) {
+
+		// Interpolate uv·w and w linearly in screen space, then divide: the PS1's affine mapping.
+		const w = modelViewProjection.w;
+		coord = mix( coord, varying( uv().mul( w ) ).div( varying( w ) ), amount );
+
+	}
+
+	if ( filter === 'bilinear' ) return texture( map, coord );
+	const size = vec2( map.image?.width || 1, map.image?.height || 1 );
+	const at = ( texel ) => texture( map, texel.add( 0.5 ).div( size ) ).level( 0 );
+	if ( filter === 'nearest' ) return at( floor( coord.mul( size ) ) );
+
+	// N64 three-point: blend the three nearest texels of the triangle the sample falls in.
+	return Fn( () => {
+
+		const p = coord.mul( size ).sub( 0.5 );
+		const f = fract( p ).toVar(), base = floor( p ).toVar();
+		const A = at( base ), B = at( base.add( vec2( 1, 0 ) ) ), C = at( base.add( vec2( 0, 1 ) ) ), D = at( base.add( vec2( 1, 1 ) ) );
+		const lower = A.add( B.sub( A ).mul( f.x ) ).add( C.sub( A ).mul( f.y ) );
+		const upper = D.add( C.sub( D ).mul( f.x.oneMinus() ) ).add( B.sub( D ).mul( f.y.oneMinus() ) );
+		return select( f.x.add( f.y ).lessThanEqual( 1 ), lower, upper );
+
+	} )();
+
+}
 
 export class StyleMaterials {
 
@@ -102,11 +144,11 @@ export class StyleMaterials {
 
 	}
 
-	waveNode( wave ) {
+	waveNode( wave, time = this.time ) {
 
 		if ( ! wave ) return null;
 		const { amplitude, frequency, falloff = 90 } = wave;
-		const t = this.time;
+		const t = time;
 		// Waves fade out with distance from the mesh origin: far waves are invisible anyway,
 		// and at grazing angles their crests would read as ink lines.
 		const fade = smoothstep( falloff, falloff * 0.4, positionLocal.xz.length() );
@@ -123,7 +165,7 @@ export class StyleMaterials {
 	windNode( wind, u = null ) {
 
 		const { strength = 0.12, height = 0.5 } = wind;
-		const t = u ? this.time.mul( u.windSpeed ) : this.time;
+		const t = u ? u.time.mul( u.windSpeed ) : this.time;
 		const h = positionLocal.y.div( height ).clamp( 0, 1.5 ).pow( 2 );
 		const origin = modelWorldMatrix.element( 3 ).xz;
 		const phase = positionLocal.x.mul( 0.35 ).add( positionLocal.z.mul( 0.2 ) ).add( origin.x.mul( 0.13 ) ).add( origin.y.mul( 0.07 ) );
@@ -134,9 +176,10 @@ export class StyleMaterials {
 
 	}
 
+	/** Waves and wind; with a part's uniforms (`u`), on the part's own (stepped) clock. */
 	deformNode( style, wind = style.wind, u = null ) {
 
-		return style.wave ? this.waveNode( style.wave ) : wind ? this.windNode( wind, u ) : null;
+		return style.wave ? this.waveNode( style.wave, u ? u.time : this.time ) : wind ? this.windNode( wind, u ) : null;
 
 	}
 
@@ -165,7 +208,7 @@ export class StyleMaterials {
 			const k = mix( t, banded, step( 0.5, u.waterBands ) );
 			const base = mix( u.waterShallow, u.waterDeep, k );
 			const foam = smoothstep( u.waterFoam.mul( 0.7 ), u.waterFoam, depth ).oneMinus().mul( step( 0.001, u.waterFoam ) );
-			const cells = mx_worley_noise_float( vec3( positionWorld.xz.mul( 0.22 ), this.time.mul( 0.15 ) ) );
+			const cells = mx_worley_noise_float( vec3( positionWorld.xz.mul( 0.22 ), u.time.mul( 0.15 ) ) );
 			const lines = smoothstep( 0.62, 0.7, cells ).mul( u.waterPattern );
 			return mix( base, u.waterFoamColor, foam.max( lines ) );
 
@@ -173,13 +216,23 @@ export class StyleMaterials {
 
 	}
 
-	/** The styled base color: material (or toon water) → color variation → vertical gradient → blob shadows. */
-	colorNode( v, u, blobs ) {
+	/**
+	 * The styled base color: material (or toon water; a retro-sampled map) → color variation
+	 * → vertical gradient → baked vertex AO → blob shadows.
+	 */
+	colorNode( v, u, blobs, map = null, material = null ) {
 
 		const water = v[ 'surface.model' ] === 'toonWater';
 		const variation = v[ 'surface.variation.enabled' ], gradient = v[ 'surface.gradient.enabled' ];
-		if ( ! water && ! variation && ! gradient && ! blobs ) return null;
-		let c = water ? this.waterColorNode( u ) : materialColor.rgb;
+		const retroMap = map && ( v[ 'retro.texture.filter' ] !== 'bilinear' || v[ 'retro.affine.enabled' ] );
+		const vao = v[ 'lighting.vertexAo.enabled' ];
+		if ( ! water && ! variation && ! gradient && ! blobs && ! retroMap && ! vao ) return null;
+		// With a retro-sampled map the material has no map of its own: color × our sample. The
+		// references name the material: the shadow pass reads this node's alpha with its own material.
+		const texel = retroMap ? retroMapSample( map, { filter: v[ 'retro.texture.filter' ], affine: v[ 'retro.affine.enabled' ], amount: u.affineAmount } ) : null;
+		const base = retroMap ? materialReference( 'color', 'color', material ).mul( texel.rgb ) : materialColor.rgb;
+		const alpha = retroMap ? materialReference( 'opacity', 'float', material ).mul( texel.a ) : materialColor.a;
+		let c = water ? this.waterColorNode( u ) : base;
 
 		if ( variation ) {
 
@@ -197,8 +250,9 @@ export class StyleMaterials {
 
 		}
 
+		if ( vao ) c = c.mul( mix( 1, attribute( 'stylelabAo', 'float' ), u.vertexAoStrength ) );
 		if ( blobs ) c = c.mul( float( 1 ).sub( this.blobs.shade() ) );
-		return vec4( c, materialColor.a );
+		return vec4( c, alpha );
 
 	}
 
@@ -214,11 +268,35 @@ export class StyleMaterials {
 
 	}
 
+	/**
+	 * Bakes vertex AO into the entry's geometry when its part needs it (once per geometry).
+	 * The ground plane is where the mesh's asset stands: the origin of its top-level group
+	 * under the scene root, or that group's `userData.groundY` (world height; imports set 0).
+	 * Meshes directly under the root (terrain, floors, the sea) are the ground: no plane.
+	 */
+	prepareVertexAo( entry ) {
+
+		const mesh = entry.mesh;
+		if ( ! this.parts[ entry.part ].values[ 'lighting.vertexAo.enabled' ] || mesh.geometry.getAttribute( 'stylelabAo' ) ) return;
+		let asset = mesh;
+		while ( asset.parent && asset.parent !== this.sceneRoot && asset.parent.parent ) asset = asset.parent;
+		const isGround = asset === mesh && mesh.parent === this.sceneRoot;
+		asset.updateWorldMatrix( true, true );
+		const toAsset = new THREE.Matrix4().copy( asset.matrixWorld ).invert().multiply( mesh.matrixWorld );
+		const origin = new THREE.Vector3().setFromMatrixPosition( asset.matrixWorld );
+		const groundY = asset.userData.groundY ?? origin.y;
+		const ground = isGround ? null : asset.worldToLocal( new THREE.Vector3( origin.x, groundY, origin.z ) ).y;
+		const scale = new THREE.Vector3().setFromMatrixScale( asset.matrixWorld ).y || 1;
+		bakeVertexAo( mesh.geometry, { matrix: toAsset, ground, radius: 1.2 / scale } );
+
+	}
+
 	/** The styled material of a mesh entry ({ mesh, style, part }), cached by part structure and style. */
 	styledMaterial( entry ) {
 
 		const { style, part } = entry;
 		const pv = this.parts[ part ];
+		this.prepareVertexAo( entry );
 		const wind = this.effectiveWind( entry );
 		const key = `${part}|${pv.struct}|${styleKey( style )}|${deformKey( style, wind )}`;
 		let material = this.styled.get( key );
@@ -231,9 +309,15 @@ export class StyleMaterials {
 			dither: v[ 'surface.dither.enabled' ],
 		};
 		const surface = { model: v[ 'surface.model' ], bands: v[ 'surface.bands' ], uniforms: pv.surface, patterns };
-		material = surface.model === 'pbr'
-			? new StyleStandardMaterial( surface, this.keyDirection, { roughness: style.roughness, metalness: style.metalness ?? 0 } )
-			: new StyleSurfaceMaterial( surface );
+		if ( surface.model === 'pbr' ) material = new StyleStandardMaterial( surface, this.keyDirection, { roughness: style.roughness, metalness: style.metalness ?? 0 } );
+		else if ( surface.model === 'matcap' ) {
+
+			// Matcap: unlit, shaded by a painted sphere looked up by the view-space normal.
+			material = new THREE.MeshMatcapNodeMaterial( { matcap: matcapTexture( v[ 'surface.matcap.preset' ] ) } );
+			material.isStyleSurfaceMaterial = true;
+			material.surface = surface;
+
+		} else material = new StyleSurfaceMaterial( surface );
 
 		material.name = `style:${part}:${surface.model}`;
 		material.flatShading = v[ 'surface.flatNormals' ];
@@ -241,11 +325,13 @@ export class StyleMaterials {
 		material.positionNode = this.deformNode( style, wind, pv.surface );
 		// PS1 jitter: the final clip position (after skinning and wind) snaps to a coarse grid.
 		if ( v[ 'retro.vertexSnap.enabled' ] ) material.vertexNode = snapClip( TSL, modelViewProjection, pv.snapRows );
-		material.colorNode = this.colorNode( v, pv.surface, pv.struct.endsWith( 'blob' ) );
+		material.colorNode = this.colorNode( v, pv.surface, pv.struct.endsWith( 'blob' ), style.map, material );
+		// A retro-sampled map is read in colorNode; the material's own map would multiply it twice.
+		if ( style.map && ( v[ 'retro.texture.filter' ] !== 'bilinear' || v[ 'retro.affine.enabled' ] ) ) material.map = null;
 		// Toon water reads the depth behind it, so it renders after the opaque scene.
 		if ( surface.model === 'toonWater' ) { material.transparent = true; material.depthWrite = true; }
 		// `output` keeps the color attachment when the pass has no MRT (MRTNode skips unknown names).
-		material.mrtNode = mrt( { output, ids: idsNode( part ) } );
+		material.mrtNode = mrt( { output, ids: idsNode( part, style.interactable ) } );
 		material.userData = { sourceColor: style.color, part, key };
 		material.color.set( paletteColor( style.color, v ) );
 
@@ -280,6 +366,7 @@ export class StyleMaterials {
 		if ( material ) return material;
 		material = createHullMaterial( { THREE, TSL, color: pv.hullColor, thickness: pv.hullThickness, snapRows: snap ? pv.snapRows : null } );
 		material.name = `hull:${part}`;
+		material.userData.part = part;
 		material.mrtNode = mrt( { output, ids: idsNode( part ) } );
 		this.hulls.set( key, material );
 		this.built ++;
@@ -290,6 +377,7 @@ export class StyleMaterials {
 	/** Makes `root`'s kit meshes into twins. Call after apply() has run once. */
 	register( root ) {
 
+		this.sceneRoot ??= root;
 		const meshes = [];
 		const known = new Set( this.entries.map( ( e ) => e.mesh ) );
 		root.traverse( ( o ) => { if ( o.isMesh && o.userData.style && ! known.has( o ) ) meshes.push( o ); } );
@@ -304,6 +392,8 @@ export class StyleMaterials {
 			const plain = mesh.isSkinnedMesh ? new THREE.SkinnedMesh( mesh.geometry, this.plainMaterial( style ) ) : new THREE.Mesh( mesh.geometry, this.plainMaterial( style ) );
 			if ( mesh.isSkinnedMesh ) { plain.bindMode = mesh.bindMode; plain.bind( mesh.skeleton, mesh.bindMatrix ); }
 			plain.frustumCulled = mesh.frustumCulled;
+			// Morph targets: the twins share the parent's weights, so animation drives all three.
+			if ( mesh.morphTargetInfluences ) { plain.morphTargetInfluences = mesh.morphTargetInfluences; plain.morphTargetDictionary = mesh.morphTargetDictionary; }
 			plain.name = 'plain twin';
 			plain.userData.stylelabTwin = true;
 			plain.layers.set( LAYER_PLAIN );
@@ -331,6 +421,7 @@ export class StyleMaterials {
 			const g = entry.mesh.geometry;
 			if ( ! g.getAttribute( 'outlineNormal' ) ) computeOutlineNormals( g );
 			const hull = new THREE.Mesh( g, this.hullMaterial( entry.part ) );
+			if ( entry.mesh.morphTargetInfluences ) { hull.morphTargetInfluences = entry.mesh.morphTargetInfluences; hull.morphTargetDictionary = entry.mesh.morphTargetDictionary; }
 			hull.name = 'hull';
 			hull.userData.stylelabTwin = true;
 			hull.layers.set( LAYER_STYLED );
@@ -430,6 +521,7 @@ export class StyleMaterials {
 	/** Forgets the current scene's meshes (the caller disposes geometry). */
 	clearScene() {
 
+		this.sceneRoot = null;
 		for ( const e of this.entries ) { e.mesh.remove( e.plain ); if ( e.hull ) e.mesh.remove( e.hull ); }
 		this.entries = [];
 		this.disposeUnused();

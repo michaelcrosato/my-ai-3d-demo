@@ -32,9 +32,35 @@ test( 'build produces one self-contained HTML file plus the runtime module', () 
 
 		// Dependencies stay external (loaded via the import map), not bundled.
 		assert.match( html, /from "three\/webgpu"/ );
-		assert.ok( ! /const REVISION = ['"]\d+/.test( html ) && html.length < 1500 * 1024, 'three.js is not bundled in' );
+		// three.webgpu.js alone is over 1.7 MB unminified; the app (with the runtime and kit embedded
+		// as export files) stays well under that, so the size bound catches three being bundled.
+		assert.ok( ! /const REVISION = ['"]\d+/.test( html ) && html.length < 2200 * 1024, 'three.js is not bundled in' );
 		assert.match( runtime, /export \{/ );
 		assert.ok( ! /document\.|window\./.test( runtime ), 'runtime has no DOM access' );
+
+	} finally {
+
+		rmSync( out, { recursive: true, force: true } );
+
+	}
+
+} );
+
+test( '--offline adds one page with every dependency inlined and no import map', () => {
+
+	const out = mkdtempSync( path.join( tmpdir(), 'stylelab-offline-' ) );
+
+	try {
+
+		execFileSync( process.execPath, [ 'scripts/build.mjs', '--out', out, '--offline' ], { cwd: ROOT, stdio: 'pipe' } );
+		const html = readFileSync( path.join( out, 'style-lab-offline.html' ), 'utf8' );
+		// (The embedded starter.html export keeps its own import map, as text.)
+		assert.ok( ! html.split( '<script type="module">' )[ 0 ].includes( '<script type="importmap">' ), 'the page has no import map' );
+		assert.equal( ( html.match( /<\/script>/g ) || [] ).length, 1, 'one module script' );
+		assert.match( html, /offline build: dependencies inlined/ );
+		assert.ok( html.length > 3000 * 1024, 'three.js, Rapier, Tweakpane and uqr are bundled in' );
+		// The regular files are built too.
+		assert.ok( readFileSync( path.join( out, 'style-lab.html' ), 'utf8' ).includes( '<script type="importmap">' ) );
 
 	} finally {
 

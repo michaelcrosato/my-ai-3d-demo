@@ -27,7 +27,7 @@ export const RUBRIC = {
 	'grade.selective': { passes: 0, taps: 0, history: false, fpe: 0.1, note: 'fused math (OKLab)' },
 	'grade.lut': { passes: 0, taps: 1, history: false, fpe: 0.2, note: 'one 3D texture lookup' },
 	'grade.gradientMap': { passes: 0, taps: 0, history: false, fpe: 0.1, note: 'fused math' },
-	'media.kuwahara': { passes: 1, taps: 0, history: false, fpe: ( v ) => 0.6 + 0.12 * ( 2 * v[ 'media.kuwahara.radius' ] + 1 ) ** 2 / 4, note: '8 sectors over a (2r + 1)² window: cost grows with the radius squared' },
+	'media.kuwahara': { passes: 1, taps: 0, history: false, fpe: ( v ) => 0.6 + 0.12 * ( 2 * v[ 'media.kuwahara.radius' ] + 1 ) ** 2 / 4 + ( v[ 'media.kuwahara.anisotropic' ] ? 0.8 : 0 ), note: '8 sectors over a (2r + 1)² window: cost grows with the radius squared (anisotropic adds a structure-tensor pass)' },
 	'media.watercolor': { passes: 1, taps: 12, history: false, fpe: 1.2, note: 'edge darkening and granulation' },
 	'media.halftone': { passes: 0, taps: 0, history: false, fpe: ( v ) => ( v[ 'media.halftone.mode' ] === 'cmyk' ? 0.5 : 0.3 ), note: 'fused dot screens' },
 	'media.hatching': { passes: 0, taps: 0, history: false, fpe: 0.3, note: 'fused line screens' },
@@ -44,6 +44,18 @@ export const RUBRIC = {
 	'media.grain': { passes: 0, taps: 0, history: false, fpe: 0.05, note: 'fused' },
 	'lens.letterbox': { passes: 0, taps: 0, history: false, fpe: 0.02, note: 'fused' },
 	'retro.crt': { passes: 1, taps: 5, history: false, fpe: 0.6, note: 'curvature needs a texture boundary' },
+	// P2 (M10)
+	'lighting.ssgi': { passes: 2, taps: 32, history: false, fpe: 4, note: 'two slices × 8 steps of horizon search per pixel, plus smoothing' },
+	'lens.flare': { passes: 2, taps: 8, history: false, fpe: 1.2, note: 'ghosts at quarter resolution plus a texture boundary' },
+	'lens.anamorphic': { passes: 2, taps: 32, history: false, fpe: 1.5, note: 'a 32-tap horizontal streak at half resolution' },
+	'lens.afterimage': { passes: 2, taps: 2, history: true, fpe: 0.8, note: 'a history buffer blended every frame' },
+	'grade.sepia': { passes: 0, taps: 0, history: false, fpe: 0.05, note: 'fused math' },
+	'grade.bleach': { passes: 0, taps: 0, history: false, fpe: 0.05, note: 'fused math' },
+	'lines.sobel': { passes: 1, taps: 8, history: false, fpe: 0.6, note: 'a texture boundary plus a 3 × 3 kernel' },
+	'lines.highlight': { passes: 0, taps: 25, history: false, fpe: 0.6, note: '24 taps of the ids buffer (needs MRT)' },
+	'media.sharpen': { passes: 1, taps: 5, history: false, fpe: 0.4, note: 'a texture boundary plus five taps' },
+	'motion.speedLines': { passes: 0, taps: 0, history: false, fpe: 0.1, note: 'fused procedural pattern' },
+	'retro.vhs': { passes: 1, taps: 5, history: false, fpe: 0.6, note: 'a texture boundary plus a horizontal chroma smear' },
 };
 
 /** Extra render-target attachments cost bandwidth on tile-based GPUs. */
@@ -103,6 +115,9 @@ export function mobileSubstitutions( global, parts ) {
 	if ( global[ 'lens.motionBlur.enabled' ] ) set( 'lens.motionBlur.enabled', false, 'Motion blur off (needs a velocity buffer).' );
 	if ( global[ 'atmosphere.godRays.enabled' ] ) set( 'atmosphere.godRays.enabled', false, 'God rays off (a 32-tap radial blur).' );
 	if ( global[ 'lens.tiltShift.enabled' ] ) set( 'lens.tiltShift.enabled', false, 'Tilt-shift off.' );
+	if ( global[ 'lighting.ssgi.enabled' ] ) set( 'lighting.ssgi.enabled', false, 'Screen-space GI off (the heaviest light effect).' );
+	if ( global[ 'lens.anamorphic.enabled' ] ) set( 'lens.anamorphic.enabled', false, 'Anamorphic streaks off (a 32-tap streak pass).' );
+	if ( global[ 'media.kuwahara.anisotropic' ] ) set( 'media.kuwahara.anisotropic', false, 'Painterly strokes without edge following (no structure pass).' );
 	if ( [ 'traa', 'smaa' ].includes( global[ 'quality.aa' ] ) ) set( 'quality.aa', 'fxaa', 'TRAA / SMAA → FXAA (one pass, no history).' );
 	if ( global[ 'lens.bloom.enabled' ] && global[ 'lens.bloom.source' ] !== 'emissive' ) set( 'lens.bloom.source', 'emissive', 'Bloom only from emissive surfaces.' );
 	if ( global[ 'media.kuwahara.enabled' ] && global[ 'media.kuwahara.radius' ] > 2 ) { set( 'media.kuwahara.radius', 2, 'Painterly radius 2 (cost grows with the radius squared)…' ); set( 'quality.resolution', Math.min( global[ 'quality.resolution' ], 0.5 ), '…at half render scale.' ); }

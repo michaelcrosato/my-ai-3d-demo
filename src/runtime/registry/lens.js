@@ -205,4 +205,83 @@ export default [
 		brief: 'Letterbox bars {value}.',
 		tags: [ 'letterbox' ],
 	} ),
+	// P2 (M10): lens flare, anamorphic streaks, afterimage trails.
+	p( {
+		id: 'lens.flare.enabled', label: 'Lens flare', type: 'bool', default: false, structural: true, cost: { ...MEDIUM, fpe: 1.2 },
+		learn: {
+			what: 'Ghost reflections of the brightest lights, mirrored through the center of the frame, as light bounces between the glass elements of a camera lens.',
+			why: 'A flare says "a camera filmed this, looking into the light". It makes the sun and neon read as blinding and gives racing and sci-fi shots their cinematic polish.',
+			avoid: 'Flares from everything (a low threshold), and flares in a drawn or painted look: a painting has no lens.',
+		},
+		brief: 'Lens flare: ghosts of the brightest highlights mirrored through the center.',
+		tags: [ 'lens', 'flare', 'cinematic', 'sun' ],
+	} ),
+	p( {
+		id: 'lens.flare.intensity', label: 'Flare intensity', type: 'float', min: 0, max: 3, step: 0.01, default: 0.6, neutral: 0, enabledBy: 'lens.flare.enabled',
+		learn: { what: 'How bright the ghosts are.', why: 'A faint flare reads as a real lens; a strong one is a stylized accent.', typical: '0.3–0.8.' },
+		brief: 'Flare intensity {value}.',
+		tags: [ 'flare' ],
+	} ),
+	p( {
+		id: 'lens.flare.threshold', label: 'Flare threshold', type: 'float', min: 0, max: 4, step: 0.01, default: 1.2, enabledBy: 'lens.flare.enabled',
+		learn: { what: 'HDR brightness above which a highlight throws ghosts.', why: 'Keep it above the brightest lit surface, so only light sources flare.', typical: '1–2.' },
+		brief: 'Flare threshold {value} (HDR luminance).',
+		tags: [ 'flare' ],
+	} ),
+	p( {
+		id: 'lens.flare.spacing', label: 'Ghost spacing', type: 'float', min: 0.05, max: 0.6, step: 0.01, default: 0.25, enabledBy: 'lens.flare.enabled',
+		learn: { what: 'How far apart the ghosts sit along the line through the center of the frame.', why: 'Wide spacing spreads ghosts across the frame like a zoom lens; tight spacing clusters them near the light.' },
+		brief: 'Ghost spacing {value}.',
+		tags: [ 'flare' ],
+	} ),
+	p( {
+		id: 'lens.anamorphic.enabled', label: 'Anamorphic streaks', type: 'bool', default: false, structural: true, cost: { ...MEDIUM, fpe: 1.5 },
+		learn: {
+			what: 'Long horizontal streaks through bright highlights, like the stretched flares of anamorphic cinema lenses.',
+			why: 'The horizontal blue streak is shorthand for night-city and sci-fi cinema. It makes lights feel hot and the frame feel wide-screen.',
+			avoid: 'Streaks in daylight looks or on many small highlights: the frame fills with lines.',
+		},
+		brief: 'Anamorphic streaks through bright highlights.',
+		tags: [ 'lens', 'anamorphic', 'flare', 'cinematic', 'sci-fi' ],
+	} ),
+	p( {
+		id: 'lens.anamorphic.intensity', label: 'Streak intensity', type: 'float', min: 0, max: 3, step: 0.01, default: 0.6, neutral: 0, enabledBy: 'lens.anamorphic.enabled',
+		learn: { what: 'How bright the streaks are.', why: 'Subtle streaks add a cinematic sheen; strong ones become a graphic element.', typical: '0.3–1.' },
+		brief: 'Streak intensity {value}.',
+		tags: [ 'anamorphic' ],
+	} ),
+	p( {
+		id: 'lens.anamorphic.threshold', label: 'Streak threshold', type: 'float', min: 0, max: 4, step: 0.01, default: 1, enabledBy: 'lens.anamorphic.enabled',
+		learn: { what: 'HDR brightness above which a pixel streaks.', why: 'High thresholds keep streaks to lamps and neon.', typical: '0.8–1.5.' },
+		brief: 'Streak threshold {value} (HDR luminance).',
+		tags: [ 'anamorphic' ],
+	} ),
+	p( {
+		id: 'lens.anamorphic.length', label: 'Streak length', type: 'float', min: 1, max: 8, step: 0.1, default: 3, enabledBy: 'lens.anamorphic.enabled',
+		learn: { what: 'How far the streaks stretch sideways.', why: 'Long streaks cross the frame like a movie poster; short ones stay a glint.' },
+		brief: 'Streak length {value}.',
+		tags: [ 'anamorphic' ],
+	} ),
+	p( {
+		id: 'lens.anamorphic.tint', label: 'Streak color', type: 'color', default: '#5f8dff', enabledBy: 'lens.anamorphic.enabled',
+		learn: { what: 'The color of the streaks.', why: 'Real anamorphic coatings streak blue; matching the streak to the neon ties it into the palette.' },
+		brief: 'Streaks tinted {value}.',
+		tags: [ 'anamorphic' ],
+	} ),
+	p( {
+		id: 'lens.afterimage.enabled', label: 'Afterimage trails', type: 'bool', default: false, structural: true, cost: { ...MEDIUM, fpe: 0.8 },
+		learn: {
+			what: 'Blends each frame with a fading copy of the frames before it, so anything that moves leaves a ghostly trail.',
+			why: 'Trails read as speed, dizziness or a dream: the screen remembers where things were. Rhythm games, dream sequences and old phosphor screens use it.',
+			avoid: 'Gameplay where players must track fast objects: the trail hides where things are now.',
+		},
+		brief: 'Afterimage trails (frame feedback).',
+		tags: [ 'lens', 'trails', 'afterimage', 'motion', 'dream' ],
+	} ),
+	p( {
+		id: 'lens.afterimage.damping', label: 'Trail length', type: 'float', min: 0, max: 0.97, step: 0.01, default: 0.8, neutral: 0, enabledBy: 'lens.afterimage.enabled',
+		learn: { what: 'How much of the previous frames stays: higher values leave longer trails.', why: 'Short trails read as speed; long ones as a dream or intoxication.', typical: '0.6–0.9.' },
+		brief: 'Trail persistence {value} per frame.',
+		tags: [ 'afterimage' ],
+	} ),
 ];

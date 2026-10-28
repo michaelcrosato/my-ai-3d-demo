@@ -1,5 +1,6 @@
-// Analyze tab (design §6.13): designer views, the critic, the extracted palette on a hue
-// wheel, the luminance histogram, and the pipeline strip with the buffers the shaders read.
+// Analyze tab (design §6.13): designer views, the critic, "what changed" against the plain
+// baseline, the extracted palette on a hue wheel, the luminance histogram, and the pipeline
+// strip with the buffers the shaders read.
 // The critic reads a 160 × 90 readback every couple of seconds while the tab is open.
 
 import { VIEWS } from '../../runtime/post/views.js';
@@ -9,9 +10,11 @@ import { extractPalette } from '../analysis/critic.js';
 import { oklabToHex } from '../../runtime/color/color.js';
 import { esc } from './dom.js';
 
-export function createAnalyzeTab( pane, app, { analyze, setView, openLearn } ) {
+export function createAnalyzeTab( pane, app, { analyze, whatChanged, setView, openLearn } ) {
 
-	let result = null, timer = 0, busy = false;
+	let result = null, timer = 0, busy = false, changed = null;
+	// The latest compare summary (main.js measures one after you release hold-to-compare).
+	app.on( ( type, d ) => { if ( type === 'changed' ) { changed = d; const c = pane.querySelector( '[data-changed]' ); if ( c ) c.innerHTML = changes(); } } );
 
 	function wheel( palette ) {
 
@@ -45,6 +48,11 @@ export function createAnalyzeTab( pane, app, { analyze, setView, openLearn } ) {
 				<div data-critic>${critic()}</div>
 			</article>
 			<article class="card">
+				<h4>What changed vs. plain</h4>
+				<div data-changed>${changes()}</div>
+				<button data-measure-changes>Measure now</button>
+			</article>
+			<article class="card">
 				<h4>Palette and hue wheel</h4>
 				<div class="row wheel-row" data-wheel>${result ? `${wheel( result.palette )}<div class="swatch-list">${result.palette.map( ( p ) => `<span><i style="background:${oklabToHex( p.lab )}"></i>${Math.round( p.share * 100 )}%</span>` ).join( '' )}</div>` : '<p class="hint">Measuring…</p>'}</div>
 				<p class="hint">The colors the frame really uses (k-means in OKLab), placed by hue and chroma. A clear scheme has a dominant color (about 60%), a secondary (30%) and an accent (10%).</p>
@@ -74,6 +82,14 @@ export function createAnalyzeTab( pane, app, { analyze, setView, openLearn } ) {
 
 	}
 
+	function changes() {
+
+		if ( ! changed ) return '<p class="hint">Hold compare (Space) and let go, or press Measure now: the summary says how this look moves the frame away from the plain baseline.</p>';
+		const fmt = ( c, v ) => ( c.kind === 'percent' ? `${Math.round( v * 100 )}%` : c.kind === 'count' ? String( v ) : v.toFixed( 3 ) );
+		return `<p>${esc( changed.summary )}</p><table class="changes">${changed.changes.map( ( c ) => `<tr class="${c.weight >= 1 ? '' : 'hint'}"><td>${esc( c.label )}</td><td>${fmt( c, c.from )} → ${fmt( c, c.to )}</td></tr>` ).join( '' )}</table>`;
+
+	}
+
 	async function measure() {
 
 		if ( busy || pane.hidden || ! pane.isConnected ) return;
@@ -94,6 +110,7 @@ export function createAnalyzeTab( pane, app, { analyze, setView, openLearn } ) {
 		const t = ev.target.closest( 'button' );
 		if ( ! t ) return;
 		if ( t.dataset.view !== undefined ) { setView( t.dataset.view || null ); render(); }
+		if ( t.dataset.measureChanges !== undefined && whatChanged ) whatChanged();
 		if ( t.dataset.fix ) { const tip = result?.tips.find( ( x ) => x.id === t.dataset.fix ); if ( tip ) { app.actions.applyOverrides( tip.fix ); setTimeout( measure, 300 ); } }
 		if ( t.dataset.learnEffect ) { const id = byId.has( `${t.dataset.learnEffect}.enabled` ) ? `${t.dataset.learnEffect}.enabled` : [ ...byId.keys() ].find( ( k ) => k.startsWith( t.dataset.learnEffect ) ) || 'grade.toneMapping'; openLearn( id ); }
 

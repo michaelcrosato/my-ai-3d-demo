@@ -48,6 +48,16 @@ export default [
 		tags: [ 'kuwahara' ],
 	} ),
 	p( {
+		id: 'media.kuwahara.anisotropic', label: 'Strokes follow edges', type: 'bool', default: false, structural: true, enabledBy: 'media.kuwahara.enabled', cost: { ...MEDIUM, fpe: 0.8 },
+		learn: {
+			what: 'Anisotropic Kuwahara: each brush neighborhood is stretched along the local edge direction, so strokes follow the forms instead of being round patches.',
+			why: 'Painters drag the brush along a shape. Following the edge direction keeps thin features (branches, rails, ropes) and reads as oil paint rather than mosaic.',
+			avoid: 'Phones: it adds a structure pass and turns the kernel into an ellipse per pixel.',
+		},
+		brief: 'Brush strokes follow the edge direction (anisotropic Kuwahara).',
+		tags: [ 'kuwahara', 'anisotropic', 'painterly' ],
+	} ),
+	p( {
 		id: 'media.watercolor.enabled', scope: 'mask', label: 'Watercolor', type: 'bool', default: false, structural: true, cost: MEDIUM,
 		learn: {
 			what: 'Imitates watercolor on paper: pigment pools and darkens at the edges of each shape, granulates in the dips of the paper, and the image wobbles and bleeds slightly.',
@@ -229,5 +239,28 @@ export default [
 		learn: { what: 'Size of the paper grain.', why: 'Match it to the medium: fine for pen, coarse for paint.' },
 		brief: 'Paper grain ×{value}.',
 		tags: [ 'paper' ],
+	} ),
+	// P2 (M10): sharpen.
+	p( {
+		id: 'media.sharpen.enabled', label: 'Sharpen', type: 'bool', default: false, structural: true, cost: { ...CHEAP, fpe: 0.4 },
+		learn: {
+			what: 'An unsharp mask: it subtracts a blurred copy of the image, so edges and fine texture stand out.',
+			why: 'A touch of sharpening restores the crispness that anti-aliasing, upscaling or a lower render scale take away; a lot of it gives a crunchy, illustrated edge.',
+			avoid: 'High amounts with grain or dither (it sharpens the noise too), and the bright halos it draws along high-contrast edges.',
+		},
+		brief: 'Unsharp-mask sharpening.',
+		tags: [ 'sharpen', 'media', 'detail' ],
+	} ),
+	p( {
+		id: 'media.sharpen.amount', label: 'Sharpen amount', type: 'float', min: 0, max: 2, step: 0.01, default: 0.5, neutral: 0, enabledBy: 'media.sharpen.enabled',
+		learn: { what: 'How much of the detail (image minus blur) is added back.', why: 'Small amounts recover lost crispness; above 1 it becomes a visible style.', typical: '0.3–0.8.' },
+		brief: 'Sharpen amount {value}.',
+		tags: [ 'sharpen' ],
+	} ),
+	p( {
+		id: 'media.sharpen.radius', label: 'Sharpen radius', type: 'float', min: 0.5, max: 3, step: 0.05, unit: 'px@1080p', default: 1, enabledBy: 'media.sharpen.enabled',
+		learn: { what: 'The size of the blur the detail is measured against, in pixels at 1080p.', why: 'A small radius sharpens fine texture; a larger one boosts local contrast around shapes.' },
+		brief: 'Sharpen radius {value} px at 1080p.',
+		tags: [ 'sharpen' ],
 	} ),
 ];

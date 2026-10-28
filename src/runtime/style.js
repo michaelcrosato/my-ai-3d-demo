@@ -8,7 +8,8 @@
 import * as THREE from 'three/webgpu';
 import { mrt, output, normalView, directionToColor, vec4, velocity, emissive, texture } from 'three/tsl';
 import { StyleMaterials, LAYER_STYLED, LAYER_PLAIN, idsNode } from './materials/factory.js';
-import { createAtmosphereUniforms, createFogNode, createSkyDomes, FOG_TYPES } from './atmosphere/atmosphere.js';
+import { createAtmosphereUniforms, createFogNode, createSkyDomes, setSkyModel, FOG_TYPES } from './atmosphere/atmosphere.js';
+import { createParticles } from './atmosphere/particles.js';
 import { createPostUniforms, createPostLists, applyPostValues, buildGraph, disposeOwned, graphKey, passRequirements, activeEffects, withPartMasks } from './post/graph.js';
 import { ParamUniforms } from './post/params.js';
 import { StylePassNode, pixelGrid } from './render/passes.js';
@@ -48,12 +49,14 @@ export class StyleRuntime {
 		this.lists = createPostLists();
 		this.atmos = createAtmosphereUniforms();
 		this.atmos.time = this.U.time;
-		this.scene.fogNode = createFogNode( this.atmos );
 		this.materials = new StyleMaterials( { time: this.U.time, keyDirection: this.atmos.sunDirection } );
+		this.skyModel = null; // 'gradient' | 'physical': the fog node and the dome are built for it
 		this.rigs = new Rigs( this.scene );
 
 		this.domes = createSkyDomes( this.atmos, { layerStyled: LAYER_STYLED, layerPlain: LAYER_PLAIN, idsNode: idsNode( 'sky' ) } );
 		this.scene.add( this.domes.styled, this.domes.plain );
+		this.particles = createParticles( { time: this.U.time, layer: LAYER_STYLED } );
+		this.scene.add( this.particles.object );
 
 		this.post = new THREE.PostProcessing( renderer );
 		this.post.outputColorTransform = false;
@@ -68,7 +71,7 @@ export class StyleRuntime {
 		this.practicals = [];
 		this.focus = new THREE.Vector3();
 		this.values = null;
-		this.info = { materialBuilds: 0, graphBuilds: 0, passBuilds: 0, lastRebuild: null, lastCompileMs: null };
+		this.info = { materialBuilds: 0, graphBuilds: 0, passBuilds: 0, skyBuilds: 0, lastRebuild: null, lastCompileMs: null };
 		this.pendingCompile = null;
 
 		// Transitions (§6.10): crossfade and wipe blend from a still of the outgoing look.
@@ -78,6 +81,14 @@ export class StyleRuntime {
 		this.U.snapshot = texture( this.snapshots[ 0 ].texture );
 		this.isolate = null; // part name dimmed-around in the Parts tab
 		this.view = null; // designer view id (Analyze tab)
+
+		// Low frame-rate rendering (motion.lowFps.fps): frames are drawn into `held` and shown
+		// from it until the clock enters the next 1/fps slot.
+		this.held = new THREE.RenderTarget( 1, 1 );
+		this.heldPost = new THREE.PostProcessing( renderer, texture( this.held.texture ) );
+		this.heldPost.outputColorTransform = false;
+		this.heldKey = null;
+		this.clock = 0; // the unstepped time of the last update()
 
 		this.apply( resolveLook( { look: { baseline: true, params: {} } } ) );
 
@@ -184,6 +195,22 @@ export class StyleRuntime {
 
 		const parts = this.materials.apply( resolved.parts, v );
 
+		// The sky model is structural: the dome's material and the fog node (fog takes the sky's
+		// color) are built for the gradient or the physical sky.
+		let skyRebuilt = false;
+		if ( v[ 'atmosphere.sky.model' ] !== this.skyModel ) {
+
+			skyRebuilt = this.skyModel !== null;
+			this.skyModel = v[ 'atmosphere.sky.model' ];
+			const physical = this.skyModel === 'physical';
+			setSkyModel( this.domes.styled.material, this.atmos, physical );
+			this.scene.fogNode = createFogNode( this.atmos, { physical, amountFor: ( m ) => this.materials.parts[ m?.userData?.part ]?.surface.fogAmount ?? null } );
+			if ( skyRebuilt ) this.info.skyBuilds ++;
+
+		}
+
+		this.particles.apply( v );
+
 		const dir = this.rigs.apply( v );
 		const a = this.atmos;
 		a.sunDirection.value.copy( dir );
@@ -213,6 +240,8 @@ export class StyleRuntime {
 		a.cloudSpeed.value = v[ 'atmosphere.clouds.speed' ];
 		a.cloudColor.value.set( v[ 'atmosphere.clouds.color' ] );
 		a.cloudShade.value.set( v[ 'atmosphere.clouds.shade' ] );
+		a.turbidity.value = v[ 'atmosphere.sky.turbidity' ];
+		a.rayleigh.value = v[ 'atmosphere.sky.rayleigh' ];
 
 		applyPostValues( this.U, this.P, this.lists, v, resolved.parts );
 		this.U.isolate.value = this.isolate === null ? - 1 : PART_INDEX[ this.isolate ];
@@ -261,8 +290,8 @@ export class StyleRuntime {
 		}
 
 		this.info.materialBuilds += this.materials.built - before;
-		const rebuilt = { parts, pass: passRebuilt, graph: graphRebuilt };
-		if ( parts.length || passRebuilt || graphRebuilt ) { this.info.lastRebuild = rebuilt; this.markCompile( 'rebuild' ); }
+		const rebuilt = { parts, pass: passRebuilt, graph: graphRebuilt, sky: skyRebuilt };
+		if ( parts.length || passRebuilt || graphRebuilt || skyRebuilt ) { this.info.lastRebuild = rebuilt; this.markCompile( 'rebuild' ); }
 		return rebuilt;
 
 	}
@@ -351,17 +380,31 @@ export class StyleRuntime {
 	}
 
 	/**
-	 * Per-frame state: time (freezable and steppable by the host), the styled camera
-	 * and pixel grid, dome placement, depth range, the sun's screen position, the
+	 * Animation time `t` on the stepped clock ("animate on twos", §6.4 I): the global value,
+	 * or a part's own when `part` is given. The camera is never stepped.
+	 */
+	steppedTime( t, part = null ) {
+
+		const fps = ( part ? this.resolved?.parts[ part ]?.[ 'motion.stepped.fps' ] : this.resolved?.global[ 'motion.stepped.fps' ] ) || 0;
+		return fps > 0 ? Math.floor( t * fps + 1e-6 ) / fps : t;
+
+	}
+
+	/**
+	 * Per-frame state: time (freezable by the host; stepped here, per part), the styled
+	 * camera and pixel grid, dome placement, depth range, the sun's screen position, the
 	 * focus distance for depth of field, practical lights and blob shadows.
-	 * @param {number} t - animation time in seconds
+	 * @param {number} t - animation time in seconds (unstepped)
 	 * @param {object} [o] - { focus: Vector3 } the point the camera looks at
 	 */
 	update( t, { focus } = {} ) {
 
 		const v = this.values;
 		const U = this.U;
-		U.time.value = t;
+		this.clock = t;
+		U.time.value = this.steppedTime( t );
+		for ( const part of PARTS ) this.materials.parts[ part ].surface.time.value = this.steppedTime( t, part );
+		t = U.time.value;
 		if ( focus ) this.focus.copy( focus );
 
 		this.syncStyledCamera( v );
@@ -440,6 +483,41 @@ export class StyleRuntime {
 
 	render() {
 
+		const fps = this.values?.[ 'motion.lowFps.fps' ] || 0;
+		if ( fps > 0 ) return this.renderHeld( fps );
+		this.heldKey = null;
+		this.renderNow();
+
+	}
+
+	/**
+	 * Low frame-rate rendering: a new frame is drawn into the held target only when the clock
+	 * enters a new 1/fps slot (or the compare state, the graph or the size changed, so holding
+	 * Space still swaps at once); every call shows the held frame, camera included.
+	 */
+	renderHeld( fps ) {
+
+		const r = this.renderer;
+		r.getDrawingBufferSize( _size );
+		const U = this.U;
+		const key = [ Math.floor( this.clock * fps + 1e-6 ), U.hold.value, U.split.value, U.splitPos.value, U.flicker.value, this.graphKey, _size.x, _size.y ].join( '|' );
+		if ( key !== this.heldKey ) {
+
+			this.held.setSize( Math.max( 1, _size.x ), Math.max( 1, _size.y ) );
+			const previous = r.getRenderTarget();
+			r.setRenderTarget( this.held );
+			this.renderNow();
+			r.setRenderTarget( previous );
+			this.heldKey = key;
+
+		}
+
+		this.heldPost.render();
+
+	}
+
+	renderNow() {
+
 		if ( this.pendingCompile ) {
 
 			// The first frame after a rebuild compiles the new pipelines; show how long it took.
@@ -463,6 +541,10 @@ export class StyleRuntime {
 		this.styledPass?.dispose();
 		this.plainPass.dispose();
 		for ( const rt of this.snapshots ) rt.dispose();
+		this.held.dispose();
+		this.heldPost.dispose();
+		this.particles.object.material.dispose();
+		this.particles.object.geometry.dispose();
 		this.post.dispose();
 		this.rigs.dispose();
 

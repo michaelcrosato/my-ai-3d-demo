@@ -133,4 +133,64 @@ export default [
 		brief: 'Flicker {value}.',
 		tags: [ 'crt', 'motion' ],
 	} ),
+	// P2 (M10): VHS, texture filtering emulation, affine texture warp.
+	p( {
+		id: 'retro.vhs.enabled', label: 'VHS', type: 'bool', default: false, structural: true, cost: { ...MEDIUM, fpe: 0.8 },
+		learn: {
+			what: 'Imitates a worn videotape: color bleeds sideways, the picture shakes and tears where the tracking slips, and bands of noise roll through.',
+			why: 'VHS is the texture of home video in the 80s and 90s: found footage, analog horror, retrowave. Its flaws date an image as surely as a palette does.',
+			avoid: 'Strong tracking jitter during gameplay: it moves the whole image under the player.',
+		},
+		brief: 'VHS tape simulation.',
+		tags: [ 'retro', 'vhs', 'analog', 'horror', 'display' ],
+	} ),
+	p( {
+		id: 'retro.vhs.bleed', label: 'Chroma bleed', type: 'float', min: 0, max: 1, step: 0.01, default: 0.5, neutral: 0, enabledBy: 'retro.vhs.enabled',
+		learn: { what: 'How far color smears sideways from the edges. Tape stores color at a fraction of the brightness resolution.', why: 'Smeared color with sharp brightness is the single most recognizable VHS trait.' },
+		brief: 'Chroma bleed {value}.',
+		tags: [ 'vhs' ],
+	} ),
+	p( {
+		id: 'retro.vhs.noise', label: 'Tape noise', type: 'float', min: 0, max: 1, step: 0.01, default: 0.3, neutral: 0, enabledBy: 'retro.vhs.enabled',
+		learn: { what: 'Snow and a rolling band of noise.', why: 'Noise says the tape has been played many times.' },
+		brief: 'Tape noise {value}.',
+		tags: [ 'vhs' ],
+	} ),
+	p( {
+		id: 'retro.vhs.jitter', label: 'Tracking jitter', type: 'float', min: 0, max: 1, step: 0.01, default: 0.3, neutral: 0, enabledBy: 'retro.vhs.enabled',
+		learn: { what: 'Rows of the picture slip sideways, most in a tear near the bottom of the frame.', why: 'Tracking errors make the image feel physical and fragile.' },
+		brief: 'Tracking jitter {value}.',
+		tags: [ 'vhs' ],
+	} ),
+	p( {
+		id: 'retro.texture.filter', scope: 'both', label: 'Texture filtering', type: 'enum', default: 'bilinear', structural: true,
+		options: [
+			{ value: 'bilinear', label: 'Bilinear (smooth)' },
+			{ value: 'nearest', label: 'Nearest (PS1, blocky texels)' },
+			{ value: 'n64', label: 'N64 three-point' },
+		],
+		learn: {
+			what: 'How textures are sampled up close: smooth bilinear, blocky nearest-neighbor texels (PS1), or the N64\'s three-point filter, which blends only three texels and leaves faint diamond shapes.',
+			why: 'Texture filtering is a hardware signature: crunchy texels say PlayStation, soft wobbly blending says N64. Only textured surfaces show it (imported models, the alley\'s bricks and cobbles).',
+			avoid: 'Nearest filtering on detailed, high-resolution textures far away: they shimmer as the camera moves.',
+		},
+		brief: 'Texture filtering: {label}.',
+		tags: [ 'retro', 'ps1', 'n64', 'texture', 'filtering' ],
+	} ),
+	p( {
+		id: 'retro.affine.enabled', scope: 'both', label: 'Affine texture warp', type: 'bool', default: false, structural: true, cost: CHEAP,
+		learn: {
+			what: 'Interpolates texture coordinates without perspective correction, like the PS1: textures bend along triangle edges and swim as the camera moves.',
+			why: 'The PS1 had no perspective-correct texturing, so its walls and floors warp. Together with vertex snapping it is the core of the PS1 look. Only textured surfaces show it.',
+			avoid: 'Big, single-triangle floors close to the camera if you want it subtle: the warp grows with the triangle size.',
+		},
+		brief: 'Affine (perspective-incorrect) texture mapping, as on the PS1.',
+		tags: [ 'retro', 'ps1', 'texture', 'warp' ],
+	} ),
+	p( {
+		id: 'retro.affine.amount', scope: 'both', label: 'Warp amount', type: 'float', min: 0, max: 1, step: 0.01, default: 1, neutral: 0, enabledBy: 'retro.affine.enabled',
+		learn: { what: 'Blends between perspective-correct (0) and fully affine (1) texture coordinates.', why: 'Full warp is authentic; half keeps the wobble without making floors unreadable.' },
+		brief: 'Affine warp {value}.',
+		tags: [ 'ps1' ],
+	} ),
 ];

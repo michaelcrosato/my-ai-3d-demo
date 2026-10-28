@@ -56,6 +56,7 @@ export function validateLook( look ) {
 	if ( typeof look.id !== 'string' || ! /^[a-z0-9-]+$/.test( look.id ) ) errors.push( 'id must be kebab-case' );
 	if ( typeof look.name !== 'string' || ! look.name ) errors.push( 'name is required' );
 	checkParams( look.params, 'params', errors );
+	if ( look.lut !== undefined && ! ( look.lut && Number.isInteger( look.lut.size ) && look.lut.size >= 2 && typeof look.lut.rgb === 'string' ) ) errors.push( 'lut must be { title, size, rgb (base64) } (an imported .cube)' );
 
 	for ( const [ part, def ] of Object.entries( look.parts || {} ) ) {
 

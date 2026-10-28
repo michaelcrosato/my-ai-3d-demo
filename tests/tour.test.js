@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CHECKS, CURRENT_MILESTONE, REPORT_FROM } from '../src/app/verify/checks.js';
+import { CHECKS, CURRENT_MILESTONE, REPORT_FROM, milestoneNumber } from '../src/app/verify/checks.js';
 import { TOUR, sectionOf } from '../src/app/verify/tour.js';
 import { LESSONS } from '../src/content/lessons.js';
 import { lookById } from '../src/content/looks/index.js';
@@ -58,14 +58,16 @@ test( 'sign-off checks are marked apart, and every milestone has some', () => {
 	const milestones = new Set( CHECKS.map( ( c ) => c.milestone ) );
 	for ( const m of milestones ) assert.ok( CHECKS.some( ( c ) => c.milestone === m && c.signoff !== false ), `${m} has a sign-off check` );
 	assert.ok( CHECKS.some( ( c ) => c.signoff === false ), 'some steps are optional' );
-	assert.equal( CURRENT_MILESTONE, 'M9' );
-	assert.ok( REPORT_FROM <= CURRENT_MILESTONE );
+	assert.equal( CURRENT_MILESTONE, 'M10' );
+	assert.ok( milestoneNumber( REPORT_FROM ) <= milestoneNumber( CURRENT_MILESTONE ) );
+	assert.ok( milestoneNumber( 'M10' ) > milestoneNumber( 'M9' ) && milestoneNumber( 'M10' ) > milestoneNumber( 'M3' ), 'M10 sorts after M9 (not as text)' );
 
 } );
 
 test( 'the report lists the sign-offs still owed', () => {
 
-	const owed = CHECKS.filter( ( c ) => c.signoff !== false && c.milestone >= REPORT_FROM );
+	const owed = CHECKS.filter( ( c ) => c.signoff !== false && milestoneNumber( c.milestone ) >= milestoneNumber( REPORT_FROM ) );
+	assert.ok( owed.some( ( c ) => c.milestone === 'M10' ), 'M10 sign-offs are owed too' );
 	const checks = [ { ...owed[ 0 ], status: 'pass', note: 'fine' }, ...owed.slice( 1 ) ];
 	const text = formatReport( { build: { version: '1.0.0', commit: 'abc' }, env: { userAgent: '', backend: 'WebGPU', protocol: 'http:' }, checks, date: '2026-10-28T00:00:00Z' } );
 	assert.match( text, /Checks: 1 pass · 0 fail · 0 unsure · \d+ not done/ );

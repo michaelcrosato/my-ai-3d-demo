@@ -1,20 +1,26 @@
 // GRADE stage (design §7.7), in display space after the output transform:
 // CDL lift/gamma/gain → contrast → saturation and vibrance → hue → split tone
-// → selective color → LUT → gradient map.
+// → selective color → LUT → gradient map → sepia → bleach bypass.
 
 import * as THREE from 'three/webgpu';
-import { Fn, vec3, float, int, mix, smoothstep, abs, atan, floor, fract, min, luminance, saturation, vibrance, hue, cdl, texture3D, uniform, uniformArray } from 'three/tsl';
+import { Fn, vec3, vec4, float, int, mix, smoothstep, abs, atan, floor, fract, min, luminance, saturation, vibrance, hue, cdl, texture3D, uniform, uniformArray } from 'three/tsl';
+import { sepia } from 'three/addons/tsl/display/Sepia.js';
+import { bleach } from 'three/addons/tsl/display/BleachBypass.js';
 import { displayToOklab } from './colorspace.js';
-import { bakeLut, LUT_PRESETS } from '../color/lut.js';
+import { bakeLut, LUT_PRESETS, customLut } from '../color/lut.js';
 import { hexToRgb } from '../color/color.js';
 
 const LUT_SIZE = 33;
 const lutCache = new Map();
 
-/** One generated LUT texture per preset, built on first use and kept (they are tiny). */
+/**
+ * One generated LUT texture per preset, built on first use and kept (they are tiny). The
+ * 'custom' (imported .cube) texture is rebuilt when a new LUT is loaded.
+ */
 export function lutTexture( preset ) {
 
 	let t = lutCache.get( preset );
+	if ( preset === 'custom' && t && t.userData.version !== ( customLut()?.version ?? 0 ) ) { t.dispose(); t = null; }
 	if ( t ) return t;
 	t = new THREE.Data3DTexture( bakeLut( preset, LUT_SIZE ), LUT_SIZE, LUT_SIZE, LUT_SIZE );
 	t.format = THREE.RGBAFormat;
@@ -23,6 +29,7 @@ export function lutTexture( preset ) {
 	t.wrapS = t.wrapT = t.wrapR = THREE.ClampToEdgeWrapping;
 	t.unpackAlignment = 1;
 	t.needsUpdate = true;
+	t.userData.version = preset === 'custom' ? customLut()?.version ?? 0 : 0;
 	lutCache.set( preset, t );
 	return t;
 
@@ -122,5 +129,24 @@ export const GRADE = [
 
 		},
 	},
-];
+	{
+		id: 'grade.sepia', label: 'Sepia', stage: 'grade',
+		enabled: ( v ) => v[ 'grade.sepia.enabled' ],
+		requires: () => [],
+		build( c, ctx ) {
 
+			return mix( c, sepia( vec4( c, 1 ) ).rgb.min( 1 ), ctx.P.get( 'grade.sepia.amount' ) );
+
+		},
+	},
+	{
+		id: 'grade.bleach', label: 'Bleach bypass', stage: 'grade',
+		enabled: ( v ) => v[ 'grade.bleach.enabled' ],
+		requires: () => [],
+		build( c, ctx ) {
+
+			return bleach( vec4( c, 1 ), ctx.P.get( 'grade.bleach.amount' ) ).rgb;
+
+		},
+	},
+];

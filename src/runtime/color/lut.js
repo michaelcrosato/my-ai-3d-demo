@@ -41,10 +41,12 @@ export const LUT_PRESETS = {
 
 /**
  * Bakes a preset into an RGBA8 3D table (`size`³ texels, red fastest), the layout of
- * THREE.Data3DTexture and of a .cube file.
+ * THREE.Data3DTexture and of a .cube file. 'custom' is the imported .cube (identity when
+ * none is loaded).
  */
 export function bakeLut( preset, size = 33 ) {
 
+	if ( preset === 'custom' ) return custom && size === custom.size ? custom.rgba.slice() : bakeLut( custom ? ( c ) => sampleLut( custom, c ) : ( c ) => c, size );
 	const f = typeof preset === 'function' ? preset : LUT_PRESETS[ preset ];
 	if ( ! f ) throw new Error( `Unknown LUT preset ${preset}` );
 	const data = new Uint8Array( size * size * size * 4 );
@@ -92,5 +94,98 @@ export function bayerMatrix( n ) {
 	}
 
 	return out;
+
+}
+
+// Imported .cube LUTs (design §6.4 F "import .cube"). One slot: the 'custom' preset.
+
+let custom = null; // { title, size, rgba: Uint8Array (size³ × 4), version }
+let customVersion = 0;
+
+/**
+ * Parses Adobe/Resolve `.cube` text: TITLE, LUT_3D_SIZE, DOMAIN_MIN / DOMAIN_MAX and
+ * `r g b` rows (red fastest). Returns { title, size, data: Float32Array RGB in 0–1 }.
+ * 1D LUTs and malformed files throw with a message that says why.
+ */
+export function parseCube( text ) {
+
+	let title = '', size = 0, min = [ 0, 0, 0 ], max = [ 1, 1, 1 ];
+	const rows = [];
+	for ( const raw of text.split( /\r?\n/ ) ) {
+
+		const line = raw.trim();
+		if ( ! line || line.startsWith( '#' ) ) continue;
+		const [ key, ...rest ] = line.split( /\s+/ );
+		if ( key === 'TITLE' ) title = line.slice( 5 ).trim().replace( /^"|"$/g, '' );
+		else if ( key === 'LUT_3D_SIZE' ) size = parseInt( rest[ 0 ], 10 );
+		else if ( key === 'LUT_1D_SIZE' ) throw new Error( 'This is a 1D LUT; Style Lab imports 3D LUTs (LUT_3D_SIZE).' );
+		else if ( key === 'DOMAIN_MIN' ) min = rest.map( Number );
+		else if ( key === 'DOMAIN_MAX' ) max = rest.map( Number );
+		else if ( /^[-+.\d]/.test( key ) ) rows.push( [ key, ...rest ].slice( 0, 3 ).map( Number ) );
+
+	}
+
+	if ( ! ( size >= 2 && size <= 128 ) ) throw new Error( 'Not a 3D .cube LUT (LUT_3D_SIZE missing or out of range).' );
+	if ( rows.length !== size ** 3 ) throw new Error( `The .cube file has ${rows.length} entries; LUT_3D_SIZE ${size} needs ${size ** 3}.` );
+	const data = new Float32Array( size ** 3 * 3 );
+	rows.forEach( ( row, i ) => { for ( let k = 0; k < 3; k ++ ) data[ i * 3 + k ] = clamp01( ( row[ k ] - min[ k ] ) / ( max[ k ] - min[ k ] || 1 ) ); } );
+	return { title: title || 'Imported LUT', size, data };
+
+}
+
+/** Trilinear lookup of a parsed or stored LUT ({ size, data | rgba }) at display color c. */
+export function sampleLut( lut, c ) {
+
+	const n = lut.size, get = lut.data ? ( i, k ) => lut.data[ i * 3 + k ] : ( i, k ) => lut.rgba[ i * 4 + k ] / 255;
+	const p = c.map( ( x ) => clamp01( x ) * ( n - 1 ) );
+	const i0 = p.map( ( x ) => Math.min( n - 2, Math.floor( x ) ) ), f = p.map( ( x, k ) => x - i0[ k ] );
+	const out = [ 0, 0, 0 ];
+	for ( let dz = 0; dz < 2; dz ++ ) for ( let dy = 0; dy < 2; dy ++ ) for ( let dx = 0; dx < 2; dx ++ ) {
+
+		const w = ( dx ? f[ 0 ] : 1 - f[ 0 ] ) * ( dy ? f[ 1 ] : 1 - f[ 1 ] ) * ( dz ? f[ 2 ] : 1 - f[ 2 ] );
+		const i = ( ( i0[ 2 ] + dz ) * n + i0[ 1 ] + dy ) * n + i0[ 0 ] + dx;
+		for ( let k = 0; k < 3; k ++ ) out[ k ] += get( i, k ) * w;
+
+	}
+
+	return out;
+
+}
+
+/**
+ * Loads a LUT into the 'custom' slot, resampled to `size`³ (the grade stage's 33³), or clears
+ * it with null. Accepts parseCube() output or a stored { title, size, rgba } (look files).
+ */
+export function setCustomLut( lut, size = 33 ) {
+
+	customVersion ++;
+	if ( ! lut ) { custom = null; return null; }
+	const rgba = lut.rgba && lut.size === size ? lut.rgba : bakeLut( ( c ) => sampleLut( lut, c ), size );
+	custom = { title: lut.title || 'Imported LUT', size, rgba, version: customVersion };
+	return custom;
+
+}
+
+/** The loaded custom LUT ({ title, size, rgba, version }) or null. */
+export const customLut = () => custom;
+
+/** A custom LUT for a look file: RGB bytes, base64 (no alpha), and back. */
+export function encodeLut( lut ) {
+
+	const rgb = new Uint8Array( lut.size ** 3 * 3 );
+	for ( let i = 0; i < lut.size ** 3; i ++ ) for ( let k = 0; k < 3; k ++ ) rgb[ i * 3 + k ] = lut.rgba[ i * 4 + k ];
+	let bin = '';
+	for ( let i = 0; i < rgb.length; i += 0x8000 ) bin += String.fromCharCode( ...rgb.subarray( i, i + 0x8000 ) );
+	return { title: lut.title, size: lut.size, rgb: btoa( bin ) };
+
+}
+
+export function decodeLut( { title, size, rgb } ) {
+
+	const bin = atob( rgb );
+	if ( bin.length !== size ** 3 * 3 ) throw new Error( 'The look\'s LUT data is cut off.' );
+	const rgba = new Uint8Array( size ** 3 * 4 );
+	for ( let i = 0; i < size ** 3; i ++ ) { for ( let k = 0; k < 3; k ++ ) rgba[ i * 4 + k ] = bin.charCodeAt( i * 3 + k ); rgba[ i * 4 + 3 ] = 255; }
+	return { title, size, rgba };
 
 }

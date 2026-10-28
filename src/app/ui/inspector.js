@@ -33,7 +33,7 @@ export function createInspector( root, app, sceneOptions ) {
 	const recipeTab = createRecipeTab( panes.look, app, { toast: sceneOptions.toast, share: sceneOptions.share } );
 	const partsTab = createPartsTab( panes.parts, app, { toast: sceneOptions.toast } );
 	const playTab = createPlayTab( panes.play, app, { toast: sceneOptions.toast } );
-	const analyzeTab = createAnalyzeTab( panes.analyze, app, { analyze: sceneOptions.analyze, setView: ( id ) => app.actions.setView( id ), openLearn: ( id ) => openLearn( id ) } );
+	const analyzeTab = createAnalyzeTab( panes.analyze, app, { analyze: sceneOptions.analyze, whatChanged: sceneOptions.whatChanged, setView: ( id ) => app.actions.setView( id ), openLearn: ( id ) => openLearn( id ) } );
 	const learnTab = createLearnTab( panes.learn, app, { startLesson: ( l ) => sceneOptions.startLesson( l ) } );
 
 	const renderLearn = () => learnTab.render();

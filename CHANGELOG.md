@@ -1,5 +1,47 @@
 # Changelog
 
+## v1.1.0 — M10: the P2 stretch scope (2026-10-28)
+
+Everything the design marked P2 ("stretch") and left unbuilt in v1.0.
+
+**What's new**
+- **Two scenes.** **Tabletop Map** (inspired by Civilization, Townscaper, Bad North): a hex board of terrain tiles on a wooden table, with forests, mountains, villages, a castle, two armies and dice, seen from a tilted top-down camera. **Noir Alley** (noir detective games): a wet night alley between brick walls, with neon, a street lamp, fire escapes, rain, a detective, and two look zones. Both build at four complexity tiers. The alley's bricks and cobbles and the table's planks are textured, so the retro texture filters show there.
+- **23 new effects and options**, each with registry entries (Learn text, brief line, cost), a rubric entry and a contact-sheet cell:
+  - Shading: **Gooch** (cool to warm) and **matcap** (clay, toon, chrome, pearl) shading models.
+  - Light: **baked vertex AO** (per vertex, once per geometry, from the object's shape and its ground) and **screen-space GI**.
+  - Atmosphere: a **physical (Preetham) sky**, **ambient particles** (dust, pollen, embers, snow, rain) and **per-part fog amount**.
+  - Lens: **lens flare**, **anamorphic streaks**, **afterimage trails**.
+  - Grade: **sepia**, **bleach bypass**, and **.cube LUT import** (Tune → Import .cube, or drop the file).
+  - Media: **sharpen**, and **anisotropic Kuwahara** (strokes follow edges).
+  - Lines: **image-space Sobel edges** (lesson L2 now shows why geometry-aware ink wins) and the **interactable highlight** (coins, chests and item blocks are tagged; `userData.style.interactable` tags yours).
+  - Retro: **texture filtering** (PS1 nearest, N64 three-point), the **affine texture warp**, and **VHS**. Retro Console · PS1 now uses nearest texels and the warp.
+  - Motion: **low frame-rate rendering** (the whole frame holds, camera included; hold-to-compare still swaps at once), **speed lines**, and **per-part stepped animation**.
+- **What changed:** let go of hold-to-compare and a toast says how the look moved the frame away from plain ("raised silhouette contrast 2.3× and reduced dominant hues from 9 to 4"); the Analyze tab keeps the numbers.
+- **🎲 Randomize** (Tune): new values for the effects the look uses, within the library's ranges; never rebuilds, one Ctrl+Z undoes it.
+- **Touch stick** for walk mode on phones and tablets (and `?touch=1` anywhere), with a Jump button.
+- **Gamepad:** a short rumble on look change (Play → Gamepad tester can turn it off), and **D-pad focus navigation** in open panels (↑/↓ move, ←/→ change sliders and lists, A presses, B closes).
+- **⇩ Download all (.zip)** in Brief → Files: a store-only zip writer, no dependency.
+- **Offline build:** `npm run build:offline` writes `dist/style-lab-offline.html` with three.js, Rapier, Tweakpane and uqr inlined (about 5 MB, not committed).
+- **.glb import:** **KTX2** textures (KHR_texture_basisu: Basis transcoded, uncompressed KTX2 as is) and **morph targets** (the styled, plain and hull twins share the weights, so morph animation plays on all three).
+- Two coherence rules (two kinds of ink; bleach bypass twice), nine glossary terms, and a Verify milestone (M10) with eleven checks in the tour.
+
+**What to test** (🧪 Verify → Tour, the M10 checks; about 30 minutes):
+1. **M10-01** The new effects contact sheet (cells E63 on).
+2. **M10-02** Tabletop Map and Noir Alley read as their genres.
+3. **M10-04** PS1 textures: nearest, N64, the affine warp.
+4. **M10-05** Effects in motion: speed lines, afterimage, VHS, low frame rate.
+5. **M10-09** Touch stick on a phone; the gamepad in panels and the rumble.
+6. Optional: M10-03, M10-06, M10-07, M10-08, M10-10, M10-11.
+
+Then Report → **Copy report** and paste it back.
+
+**Known**
+- Snow, rain and dust are screen-light sprites: their extra MRT outputs are invisible, so ink lines, masks and AO ignore them. They don't receive shadows.
+- Screen-space GI sees only what is on screen and is noisy on SwiftShader; it is the heaviest effect (4 FPE) and the phone-friendly variant turns it off.
+- There is no screen-space reflection effect: the alley's puddles are glossy, so PBR looks catch the neon as highlights, not reflections.
+- The custom LUT slot holds one imported .cube at a time; share links name it but don't carry it (look files do).
+- The Tabletop Map has no hero, so walk mode says so there.
+
 ## v1.0.0 — M9: the guided tour, onboarding and release (2026-10-28)
 
 **What's new**

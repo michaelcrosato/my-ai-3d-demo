@@ -30,7 +30,8 @@ export const LESSONS = [
 			{ caption: 'Screen-space ink finds edges from depth, normals and object ids, so it also draws folds (creases) and contact lines.', setup: { params: { 'lines.hull.enabled': false, 'lines.screen.enabled': true, 'lines.screen.thickness': 2, 'lines.screen.crease': 0.5 } } },
 			{ caption: 'Illustrators draw silhouettes heavier than inner folds. Crease weight down, silhouette weight up.', setup: { params: { 'lines.screen.crease': 0.25, 'lines.screen.silhouette': 1 } } },
 			{ caption: 'Detailed geometry plus thin, crease-heavy ink turns into line noise.', setup: { tier: 3, params: { 'lines.screen.crease': 1, 'lines.screen.creaseAngle': 20 } } },
-			{ caption: 'Fade lines with distance, as illustrators simplify what is far away.', task: { text: 'Turn on line distance fade (Tune → Lines → Fade with distance).', done: ( app ) => app.target.global[ 'lines.screen.fade' ] > 0.5, solve: ( app ) => app.actions.setParam( 'lines.screen.fade', 1 ) } },
+			{ caption: 'Why ink reads geometry: image-space Sobel inks wherever brightness changes. Shadows and highlights get lines, and an object as bright as its background loses its outline.', setup: { tier: 1, params: { 'lines.screen.enabled': false, 'lines.sobel.enabled': true, 'lines.sobel.thickness': 1.5 } } },
+			{ caption: 'Back to geometry-aware ink. Fade lines with distance, as illustrators simplify what is far away.', setup: { params: { 'lines.sobel.enabled': false, 'lines.screen.enabled': true } }, task: { text: 'Turn on line distance fade (Tune → Lines → Fade with distance).', done: ( app ) => app.target.global[ 'lines.screen.fade' ] > 0.5, solve: ( app ) => app.actions.setParam( 'lines.screen.fade', 1 ) } },
 		],
 	},
 	{

@@ -1,8 +1,10 @@
 // MEDIUM stage (design §7.7): Kuwahara → watercolor → halftone / hatching → ink lines
-// → pixel edges → anti-aliasing → misregistration → paper. Lines come after the media,
-// so a painted look never smears its ink; paper comes last, so ink takes its texture.
+// → image (Sobel) edges → interactable highlight → pixel edges → anti-aliasing → sharpen
+// → misregistration → paper. Lines come after the media, so a painted look never smears
+// its ink; paper comes last, so ink takes its texture.
 
-import { Fn, vec2, vec3, vec4, float, int, max, min, mix, step, smoothstep, floor, fract, sin, cos, dot, pow, length, select, luminance, Loop, colorToDirection, perspectiveDepthToViewZ, screenCoordinate, mx_noise_float, mx_worley_noise_float } from 'three/tsl';
+import { Fn, vec2, vec3, vec4, float, int, max, min, mix, step, smoothstep, floor, fract, sin, cos, dot, pow, abs, round, length, select, luminance, Loop, colorToDirection, perspectiveDepthToViewZ, screenCoordinate, mx_noise_float, mx_worley_noise_float } from 'three/tsl';
+import { PART_INDEX } from '../registry/index.js';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 import { screenLines } from './lines.js';
@@ -14,26 +16,56 @@ const cells = ( ctx, size, angle ) => rotate2( ctx.coord.add( 0.5 ).div( size.mu
 /** Smooth value noise in [0, 1] over screen pixels. */
 const noise = ( p ) => mx_noise_float( p ).mul( 0.5 ).add( 0.5 );
 
+/** Structure tensor (E, F, G) of the color texture: Sobel gradients summed over the channels. */
+function structureTensor( tex, ctx ) {
+
+	const at = ( x, y ) => tex.sample( ctx.uv.add( vec2( x, y ).mul( ctx.texel ) ) ).rgb;
+	const gx = at( 1, - 1 ).add( at( 1, 0 ).mul( 2 ) ).add( at( 1, 1 ) ).sub( at( - 1, - 1 ).add( at( - 1, 0 ).mul( 2 ) ).add( at( - 1, 1 ) ) ).mul( 0.25 );
+	const gy = at( - 1, 1 ).add( at( 0, 1 ).mul( 2 ) ).add( at( 1, 1 ) ).sub( at( - 1, - 1 ).add( at( 0, - 1 ).mul( 2 ) ).add( at( 1, - 1 ) ) ).mul( 0.25 );
+	return vec3( dot( gx, gx ), dot( gx, gy ), dot( gy, gy ) );
+
+}
+
 export const MEDIUM = [
 	{
 		id: 'media.kuwahara', label: 'Painterly (Kuwahara)', stage: 'medium', neighborhood: true,
 		enabled: ( v ) => v[ 'media.kuwahara.enabled' ],
 		requires: () => [],
+		key: ( v ) => ( v[ 'media.kuwahara.anisotropic' ] ? 'aniso' : '' ),
 		build( c, ctx ) {
 
 			// Generalized Kuwahara: eight overlapping, soft sectors in a disc around each pixel.
 			// Each sector's mean is weighted by an inverse power of its variance, so the
 			// calmest sector wins: edges stay sharp while flat areas turn into strokes.
+			// Anisotropic: a structure-tensor pass gives each pixel its edge direction, and the
+			// disc becomes an ellipse stretched along it, so strokes follow the forms.
 			const P = ctx.P;
 			const tex = ctx.texture( c );
 			const step1080 = ctx.texel.mul( ctx.gridSize.y.div( 1080 ).max( 1 ) );
 			const dirs = Array.from( { length: 8 }, ( _, k ) => vec2( Math.cos( k * Math.PI / 4 ), Math.sin( k * Math.PI / 4 ) ) );
+			const tensor = ctx.v[ 'media.kuwahara.anisotropic' ] ? ctx.texture( structureTensor( tex, ctx ) ) : null;
 
 			return Fn( () => {
 
 				const rf = P.get( 'media.kuwahara.radius' );
 				const r = int( rf );
 				const m = dirs.map( () => vec3( 0 ).toVar() ), sq = dirs.map( () => vec3( 0 ).toVar() ), n = dirs.map( () => float( 0 ).toVar() );
+				// Kernel offset → texture offset: identity, or rotate into the edge frame and stretch.
+				let offset = ( k ) => k.mul( step1080 );
+				if ( tensor ) {
+
+					const T = vec3( 0 ).toVar();
+					for ( const [ x, y ] of [ [ - 1, - 1 ], [ 0, - 1 ], [ 1, - 1 ], [ - 1, 0 ], [ 0, 0 ], [ 1, 0 ], [ - 1, 1 ], [ 0, 1 ], [ 1, 1 ] ] ) T.addAssign( tensor.sample( ctx.uv.add( vec2( x, y ).mul( ctx.texel ).mul( 2 ) ) ).rgb );
+					const E = T.x, F = T.y, G = T.z;
+					const root = E.sub( G ).mul( E.sub( G ) ).add( F.mul( F ).mul( 4 ) ).sqrt();
+					const l1 = E.add( G ).add( root ).mul( 0.5 ), l2 = E.add( G ).sub( root ).mul( 0.5 );
+					const t = vec2( l1.sub( E ), F.negate() );
+					const dir = select( dot( t, t ).greaterThan( 1e-10 ), t.normalize(), vec2( 1, 0 ) ).toVar();
+					const A = l1.sub( l2 ).div( l1.add( l2 ).max( 1e-6 ) ).toVar();
+					const along = A.add( 1 ), across = float( 1 ).div( A.add( 1 ) );
+					offset = ( k ) => dir.mul( k.x.mul( along ) ).add( vec2( dir.y.negate(), dir.x ).mul( k.y.mul( across ) ) ).mul( step1080 );
+
+				}
 
 				Loop( { start: r.negate(), end: r, type: 'int', condition: '<=', name: 'kx' }, ( { kx } ) => {
 
@@ -42,7 +74,7 @@ export const MEDIUM = [
 						const v = vec2( float( kx ), float( ky ) ).div( rf.max( 1 ) );
 						const d2 = dot( v, v );
 						const g = smoothstep( 0.7, 1.0, d2.sqrt() ).oneMinus().mul( step( d2, 1 ) ).mul( d2.mul( - 1.5 ).exp() );
-						const s = tex.sample( ctx.uv.add( vec2( float( kx ), float( ky ) ).mul( step1080 ) ) ).rgb;
+						const s = tex.sample( ctx.uv.add( offset( vec2( float( kx ), float( ky ) ) ) ) ).rgb;
 						const s2 = s.mul( s );
 						const dir = v.div( d2.sqrt().max( 1e-4 ) );
 						const center = step( d2, 1e-6 ).mul( 0.125 );
@@ -185,6 +217,70 @@ export const MEDIUM = [
 		},
 	},
 	{
+		id: 'lines.sobel', label: 'Image edges (Sobel)', stage: 'medium', neighborhood: true,
+		enabled: ( v ) => v[ 'lines.sobel.enabled' ],
+		requires: () => [],
+		build( c, ctx ) {
+
+			// A 3 × 3 Sobel operator on the brightness of the image so far: lines wherever
+			// brightness changes, whatever caused it (shadow, texture, silhouette).
+			const P = ctx.P;
+			const tex = ctx.texture( c );
+			const o = ctx.texel.mul( P.get( 'lines.sobel.thickness' ).mul( ctx.lineScale ).max( 0.75 ) );
+			const L = ( x, y ) => luminance( tex.sample( ctx.uv.add( vec2( x, y ).mul( o ) ) ).rgb );
+			const tl = L( - 1, - 1 ), t = L( 0, - 1 ), tr = L( 1, - 1 ), l = L( - 1, 0 ), r = L( 1, 0 ), bl = L( - 1, 1 ), b = L( 0, 1 ), br = L( 1, 1 );
+			const gx = tr.add( r.mul( 2 ) ).add( br ).sub( tl.add( l.mul( 2 ) ).add( bl ) );
+			const gy = bl.add( b.mul( 2 ) ).add( br ).sub( tl.add( t.mul( 2 ) ).add( tr ) );
+			const th = P.get( 'lines.sobel.threshold' );
+			const edge = smoothstep( th, th.mul( 1.6 ).add( 0.02 ), vec2( gx, gy ).length() );
+			return mix( c, P.get( 'lines.sobel.color' ), edge.mul( P.get( 'lines.sobel.amount' ) ) );
+
+		},
+	},
+	{
+		id: 'lines.highlight', label: 'Interactable highlight', stage: 'medium',
+		enabled: ( v ) => v[ 'lines.highlight.enabled' ],
+		requires: () => [ 'ids' ],
+		build( c, ctx ) {
+
+			// The ids buffer carries the part (R) and, in B, whether the object is tagged
+			// interactable. The outline is the target's mask dilated over two rings of taps.
+			const P = ctx.P;
+			const ids = ctx.tex( 'ids' );
+			const target = P.get( 'lines.highlight.target' );
+			const part = select( target.lessThan( 1.5 ), float( PART_INDEX.hero ), select( target.lessThan( 2.5 ), float( PART_INDEX.characters ), select( target.lessThan( 3.5 ), float( PART_INDEX.props ), float( PART_INDEX.vfx ) ) ) );
+			const mask = ( uv ) => {
+
+				const id = ids.sample( uv );
+				const p = round( id.r.mul( 255 ) );
+				const isPart = step( abs( p.sub( part ) ), 0.5 ).max( step( 2.5, target ).oneMinus().mul( step( 1.5, target ) ).mul( step( abs( p.sub( PART_INDEX.hero ) ), 0.5 ) ) );
+				return select( target.lessThan( 0.5 ), step( 0.5, id.b ), isPart );
+
+			};
+
+			return Fn( () => {
+
+				const here = mask( ctx.uv ).toVar();
+				const radius = ctx.texel.mul( P.get( 'lines.highlight.thickness' ).mul( ctx.lineScale ).max( 1 ) );
+				const ring = float( 0 ).toVar();
+				for ( let k = 0; k < 12; k ++ ) {
+
+					const a = k / 12 * Math.PI * 2;
+					const d = vec2( Math.cos( a ), Math.sin( a ) );
+					ring.assign( max( ring, max( mask( ctx.uv.add( d.mul( radius ) ) ), mask( ctx.uv.add( d.mul( radius ).mul( 0.5 ) ) ) ) ) );
+
+				}
+
+				const pulse = mix( 1, sin( ctx.U.time.mul( Math.PI * 2 ) ).mul( 0.5 ).add( 0.5 ).mul( 0.6 ).add( 0.4 ), P.get( 'lines.highlight.pulse' ) );
+				const color = P.get( 'lines.highlight.color' );
+				const filled = mix( c, color, here.mul( P.get( 'lines.highlight.fill' ) ).mul( pulse ) );
+				return mix( filled, color, ring.mul( here.oneMinus() ).mul( pulse ) );
+
+			} )();
+
+		},
+	},
+	{
 		id: 'retro.pixel', label: 'Pixelation and pixel edges', stage: 'medium',
 		enabled: ( v ) => v[ 'retro.pixel.enabled' ],
 		requires: () => [ 'depth', 'normal' ],
@@ -242,6 +338,22 @@ export const MEDIUM = [
 		build( c, ctx ) {
 
 			return vec3( ctx.own( smaa( vec4( c, 1 ) ) ).rgb );
+
+		},
+	},
+	{
+		id: 'media.sharpen', label: 'Sharpen', stage: 'medium', neighborhood: true,
+		enabled: ( v ) => v[ 'media.sharpen.enabled' ],
+		requires: () => [],
+		build( c, ctx ) {
+
+			// Unsharp mask: the image plus (image − blur). Four bilinear diagonal taps make the blur.
+			const P = ctx.P;
+			const tex = ctx.texture( c );
+			const o = ctx.texel.mul( P.get( 'media.sharpen.radius' ).mul( ctx.lineScale ).max( 0.5 ) );
+			const blur = tex.sample( ctx.uv.add( o ) ).rgb.add( tex.sample( ctx.uv.sub( o ) ).rgb ).add( tex.sample( ctx.uv.add( vec2( o.x, o.y.negate() ) ) ).rgb ).add( tex.sample( ctx.uv.sub( vec2( o.x, o.y.negate() ) ) ).rgb ).mul( 0.25 );
+			const base = tex.sample( ctx.uv ).rgb;
+			return base.add( base.sub( blur ).mul( P.get( 'media.sharpen.amount' ) ) ).max( 0 );
 
 		},
 	},

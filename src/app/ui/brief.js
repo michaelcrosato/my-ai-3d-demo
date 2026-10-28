@@ -2,7 +2,7 @@
 // export bundle file by file, the runtime API at a glance, and the share link with a QR code.
 
 import { BRIEF_TARGETS, BRIEF_LENGTHS } from '../../runtime/brief/brief.js';
-import { briefText, exportFiles, download, exportState } from '../export/exports.js';
+import { briefText, exportFiles, exportZip, download, exportState } from '../export/exports.js';
 import { h, esc } from './dom.js';
 
 const TABS = [ [ 'brief', '📝 Brief' ], [ 'files', '⇩ Files' ], [ 'runtime', '⟨⟩ Runtime' ], [ 'share', '🔗 Share' ] ];
@@ -65,6 +65,7 @@ export function createBriefModal( root, app, { share, toast } ) {
 		if ( tab === 'files' ) {
 
 			body.innerHTML = `<p class="hint">Hand these to your agent with the brief. The runtime and kit are the same code this tool runs.</p>
+				<div class="row"><button class="primary" data-zip>⇩ Download all (.zip)</button></div>
 				<table class="files">${exportFiles( app, { share } ).map( ( f, i ) => `<tr><td><code>${esc( f.name )}</code><br><span class="hint">${esc( f.about )}</span></td><td><button data-file="${i}">⇩</button></td></tr>` ).join( '' )}</table>`;
 
 		}
@@ -116,6 +117,14 @@ export function createBriefModal( root, app, { share, toast } ) {
 		if ( t.dataset.save !== undefined ) download( 'STYLE.md', text, 'text/markdown' );
 		if ( t.dataset.copyCode !== undefined ) copy( RUNTIME_SAMPLE( exportState( app ).look ), 'Example' );
 		if ( t.dataset.copyUrl !== undefined ) copy( url, 'Link' );
+		if ( t.dataset.zip !== undefined ) {
+
+			t.disabled = true;
+			t.textContent = 'Packing…';
+			try { const z = await exportZip( app, { share } ); download( `${exportState( app ).look.id}-style.zip`, z.bytes, 'application/zip' ); toast( `Downloaded ${z.names.length} files as one .zip.` ); } catch ( e ) { toast( `Zip: ${e.message}`, 6000 ); } finally { t.disabled = false; t.textContent = '⇩ Download all (.zip)'; }
+
+		}
+
 		if ( t.dataset.file !== undefined ) {
 
 			const f = exportFiles( app, { share } )[ Number( t.dataset.file ) ];

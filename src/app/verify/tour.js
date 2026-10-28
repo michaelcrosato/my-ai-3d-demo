@@ -28,26 +28,26 @@ export const TOUR = [
 	},
 	{
 		id: 'scenes', title: 'Scenes, shots and your own models',
-		intro: 'Eight genre scenes to judge a style on, each with its genre\'s camera, plus your own .glb files.',
-		checks: [ 'M2-01', 'M2-06', 'M2-02', 'M2-04', 'M2-05', 'M2-03' ],
+		intro: 'Eleven genre scenes and a physics toybox to judge a style on, each with its genre\'s camera, plus your own .glb files.',
+		checks: [ 'M2-01', 'M2-06', 'M2-02', 'M2-04', 'M2-05', 'M2-03', 'M10-02', 'M10-11' ],
 	},
 	{
 		id: 'effects', title: 'Effects: light, lens, grade, retro and media',
 		intro: 'The building blocks looks are made of, one at a time.',
 		lesson: 'L4',
-		checks: [ 'M3-01', 'M3-05', 'M3-07', 'M3-04', 'M3-06', 'M3-02', 'M3-03', 'M3-09', 'M3-10', 'M3-12', 'M3-08' ],
+		checks: [ 'M3-01', 'M3-05', 'M3-07', 'M3-04', 'M3-06', 'M3-02', 'M3-03', 'M3-09', 'M3-10', 'M3-12', 'M3-08', 'M10-01', 'M10-03', 'M10-04', 'M10-05' ],
 	},
 	{
 		id: 'mixing', title: 'Make it yours: mixing and parts',
 		intro: 'Combine looks module by module, style parts of the scene differently, and keep the result coherent.',
 		lesson: 'L8',
-		checks: [ 'M4-05', 'M4-06', 'M4-01', 'M4-07', 'M4-02', 'M4-09', 'M4-03', 'M4-08', 'M4-04' ],
+		checks: [ 'M4-05', 'M4-06', 'M4-01', 'M4-07', 'M4-02', 'M4-09', 'M4-03', 'M4-08', 'M4-04', 'M10-06', 'M10-07' ],
 	},
 	{
 		id: 'play', title: 'Play it',
 		intro: 'A style has to survive motion: walk the scenes, throw things, cross look zones.',
 		lesson: 'L9',
-		checks: [ 'M5-01', 'M5-02', 'M5-03', 'M5-04', 'M5-05', 'M5-06', 'M5-07' ],
+		checks: [ 'M5-01', 'M5-02', 'M5-03', 'M5-04', 'M5-05', 'M5-06', 'M5-07', 'M10-09' ],
 	},
 	{
 		id: 'eye', title: 'Train your eye',
@@ -65,7 +65,7 @@ export const TOUR = [
 		id: 'handoff', title: 'Hand it to an agent',
 		intro: 'The brief, the runtime and the files that carry your style into a game.',
 		lesson: 'L11',
-		checks: [ 'M6-04', 'M6-02', 'M6-05', 'M6-06', 'M6-01', 'M6-03' ],
+		checks: [ 'M6-04', 'M6-02', 'M6-05', 'M6-06', 'M6-01', 'M6-03', 'M10-08', 'M10-10' ],
 	},
 	{
 		id: 'anywhere', title: 'On other screens',

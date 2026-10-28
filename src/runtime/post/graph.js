@@ -157,7 +157,7 @@ export function activeEffects( v ) {
 export function graphKey( v, passKey ) {
 
 	const ctx = { samples: passKey.startsWith( '0|' ) ? 0 : 4 };
-	return [ passKey, v[ '@isolate' ] ? 'isolate' : '', v[ '@view' ] ? `view:${v[ '@view' ]}` : '', ...EFFECTS.filter( ( e ) => e.enabled( v, ctx ) ).map( ( e ) => `${e.id}${e.key ? ':' + e.key( v ) : ''}${e.mask && v[ `@partial:${e.mask}` ] ? '@mask' : ''}` ) ].join( '|' );
+	return [ passKey, v[ '@isolate' ] ? 'isolate' : '', v[ '@view' ] ? `view:${v[ '@view' ]}` : '', ...EFFECTS.filter( ( e ) => e.enabled( v, ctx ) ).map( ( e ) => `${e.id}${e.key?.( v ) ? ':' + e.key( v ) : ''}${e.mask && v[ `@partial:${e.mask}` ] ? '@mask' : ''}` ) ].join( '|' );
 
 }
 

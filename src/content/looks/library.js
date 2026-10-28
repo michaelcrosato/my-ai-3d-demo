@@ -101,13 +101,14 @@ export const retroPs1 = look( {
 	inspiredBy: [ 'Fifth-generation consoles' ],
 	tags: [ 'retro', 'pixel', 'phone-safe' ],
 	phone: 'cheap',
-	description: '240p with nearest-neighbor pixels, jittery vertex snapping, 15-bit color with Bayer dither and short dark fog.',
+	description: '240p with nearest-neighbor pixels, jittery vertex snapping, swimming affine textures with blocky texels, 15-bit color with Bayer dither and short dark fog.',
 	pillars: RETRO_PILLARS,
 	mistakes: RETRO_MISTAKES,
-	bestScenes: [ 'dungeon', 'campsite', 'hangar' ],
+	bestScenes: [ 'dungeon', 'alley', 'campsite', 'hangar' ],
 	params: {
 		'retro.pixel.enabled': true, 'retro.pixel.height': 240, 'retro.pixel.edges': 0,
 		'retro.vertexSnap.enabled': true, 'retro.vertexSnap.grid': 120,
+		'retro.texture.filter': 'nearest', 'retro.affine.enabled': true, 'retro.affine.amount': 0.8,
 		'retro.quantize.mode': 'posterize', 'retro.quantize.levels': 32, 'retro.dither.amount': 0.7, 'retro.dither.pattern': 'bayer4',
 		'surface.model': 'toon', 'surface.bands': 1,
 		'atmosphere.fog.type': 'linear', 'atmosphere.fog.start': 14, 'atmosphere.fog.end': 60, 'atmosphere.fog.color': '#262636', 'atmosphere.fog.skyTint': 0,
@@ -243,7 +244,7 @@ export const miniature = look( {
 	description: 'A sharp band of focus, punchy saturated color and soft occlusion turn the scene into a model on a table.',
 	pillars: [ 'Look down on it.', 'A thin band of focus.', 'Toy-like saturation and contrast.', 'Soft contact shadows.' ],
 	mistakes: [ 'Low camera angles: the illusion needs a view from above.', 'A wide focus band.', 'Realistic, muted color.' ],
-	bestScenes: [ 'garden', 'kart', 'harbor' ],
+	bestScenes: [ 'tabletop', 'garden', 'kart', 'harbor' ],
 	params: {
 		'lighting.key.elevation': 50, 'lighting.key.intensity': 3.2, 'lighting.shadows.softness': 1.5,
 		'lighting.ao.enabled': true, 'lighting.ao.intensity': 0.6, 'lighting.ao.radius': 0.4,
@@ -287,7 +288,7 @@ export const synthwave = look( {
 	description: 'A dark purple world under a sunset gradient, neon outlines and lights with strong selective glow, scanlines and color fringing.',
 	pillars: [ 'Dark purple base, neon accents.', 'Only light sources glow.', 'A huge sunset sun.', 'Lines are light, not ink.' ],
 	mistakes: [ 'Bloom on everything (lose the darkness).', 'Daylight colors.', 'Black ink lines.' ],
-	bestScenes: [ 'kart', 'plaza', 'hangar' ],
+	bestScenes: [ 'kart', 'plaza', 'alley', 'hangar' ],
 	params: {
 		'lighting.key.elevation': 6, 'lighting.key.azimuth': 175, 'lighting.key.color': '#ff4fa3', 'lighting.key.intensity': 1.2,
 		'lighting.ambient.sky': '#5a2a9a', 'lighting.ambient.ground': '#1a0b3d', 'lighting.ambient.intensity': 0.6,
@@ -315,7 +316,7 @@ export const noir = look( {
 	description: 'Black and white with one red, hard low light and rim, deep blacks, heavy grain and a dark vignette.',
 	pillars: [ 'Black and white, with a single spot color.', 'Hard light, deep black shadows.', 'Rim light carves silhouettes out of the dark.', 'Heavy grain.' ],
 	mistakes: [ 'Gray, low-contrast images.', 'More than one spot color.', 'Soft, frontal light.' ],
-	bestScenes: [ 'plaza', 'dungeon', 'hangar' ],
+	bestScenes: [ 'alley', 'plaza', 'dungeon', 'hangar' ],
 	params: {
 		'lighting.key.elevation': 32, 'lighting.key.color': '#f2f4ff', 'lighting.key.intensity': 3.5, 'lighting.ambient.intensity': 0.15, 'lighting.shadows.softness': 0,
 		'surface.model': 'pbr', 'surface.rim.intensity': 1, 'surface.rim.width': 0.25,

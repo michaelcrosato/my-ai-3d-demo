@@ -47,6 +47,17 @@ const THREE_HINTS = {
 	'quality.fxaa': 'FXAANode', 'quality.smaa': 'SMAANode',
 	'retro.quantize': 'posterize or nearest-palette in OKLab, Bayer dither before quantizing',
 	'retro.crt': 'scanlines, aperture mask, barrel curvature',
+	'lighting.ssgi': 'SSGINode (three/addons/tsl/display/SSGINode.js) on the depth and normal MRT',
+	'lens.flare': 'LensflareNode (three/addons/tsl/display/LensflareNode.js) on the HDR image, softened',
+	'lens.anamorphic': 'AnamorphicNode (three/addons/tsl/display/AnamorphicNode.js) at half resolution',
+	'lens.afterimage': 'AfterImageNode-style feedback (blend toward the previous frame)',
+	'grade.sepia': 'sepia() (three/addons/tsl/display/Sepia.js)',
+	'grade.bleach': 'bleach() (three/addons/tsl/display/BleachBypass.js)',
+	'lines.sobel': 'a 3 × 3 Sobel kernel on luminance (SobelOperatorNode as a reference)',
+	'lines.highlight': 'dilate a mask of tagged objects from an ids MRT (OutlineNode as an alternative)',
+	'media.sharpen': 'unsharp mask: image + (image − 4-tap blur) × amount',
+	'motion.speedLines': 'angular cells around a center, re-randomized 12 times a second',
+	'retro.vhs': 'row jitter, horizontal chroma smear on a luma/chroma split, rolling noise',
 };
 
 /** Whether a param says something: not the registry default, and its switch (if any) is on. */

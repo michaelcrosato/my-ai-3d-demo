@@ -2,7 +2,7 @@
 // checks for errors and a non-blank frame, and runs the spikes. CDN requests are
 // served from node_modules (same pinned versions), so it runs offline.
 //
-//   node scripts/smoke.mjs [--only <text>] [--checks m1,m3,m4,m5,m6,m7,m8,m9] [--no-spikes] [--rebuild-iterations N]
+//   node scripts/smoke.mjs [--only <text>] [--checks m1,m3,m4,m5,m6,m7,m8,m9,m10] [--no-spikes] [--rebuild-iterations N]
 //
 // Needs Playwright with Chromium: `npm i -D playwright && npx playwright install chromium`
 // (already present in the cloud container). Headless WebGPU uses SwiftShader.
@@ -13,6 +13,7 @@ import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { startServer, ROOT } from './serve.mjs';
 import { localFileFor } from './importmap.mjs';
+import { testGlb } from './fixtures.mjs';
 
 const { chromium } = createRequire( import.meta.url )( 'playwright' );
 
@@ -23,17 +24,21 @@ const value = ( name ) => { const i = argv.indexOf( name ); return i >= 0 ? argv
 const ARTIFACTS = path.join( ROOT, 'artifacts' );
 const CHROMIUM_ARGS = [ '--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--use-angle=swiftshader', '--enable-unsafe-swiftshader' ];
 const distFile = pathToFileURL( path.join( ROOT, 'dist/style-lab.html' ) ).href;
+// Built by `npm run smoke` (build --offline); not committed.
+const offlineFile = pathToFileURL( path.join( ROOT, 'dist/style-lab-offline.html' ) ).href;
 
 const RUNS = [
 	{ name: 'dev  · http · WebGL2', url: ( base ) => `${base}/index.html?backend=webgl`, backend: 'WebGL2' },
-	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2', m1: true, m3: true, m4: true, m5: true, m6: true, m7: true, m8: true, m9: true, sweep: true, gallery: 'm4-gallery.png' },
-	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm9-webgpu.png', panel: true, m1: true, m3: true, m4: true, m5: true, m6: true, m7: true, m8: true, m9: true, sweep: [ 'lookdev', 'harbor' ], sheet: 'm9-contact.png', effects: 'm3-effects.png' },
+	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2', m1: true, m3: true, m4: true, m5: true, m6: true, m7: true, m8: true, m9: true, m10: true, sweep: true, gallery: 'm4-gallery.png' },
+	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm9-webgpu.png', panel: true, m1: true, m3: true, m4: true, m5: true, m6: true, m7: true, m8: true, m9: true, m10: true, sweep: [ 'lookdev', 'harbor', 'tabletop', 'alley' ], sheet: 'm9-contact.png', effects: 'm3-effects.png' },
 	{ name: 'dist · file · WebGL2', url: () => `${distFile}?backend=webgl`, backend: 'WebGL2' },
 	{ name: 'dist · file · auto  ', url: () => distFile, backend: null },
+	// The offline build (P2): every CDN request is refused, so it must start without the network.
+	{ name: 'offline · file · WebGL2', url: () => `${offlineFile}?backend=webgl`, backend: 'WebGL2', offline: true },
 ].filter( ( r ) => ! value( '--only' ) || r.name.includes( value( '--only' ) ) );
 
 // --checks m4,m5 runs exactly those milestone checks on the selected runs (handy with --only dev).
-if ( value( '--checks' ) ) for ( const r of RUNS ) for ( const m of [ 'm1', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9' ] ) r[ m ] = value( '--checks' ).split( ',' ).includes( m );
+if ( value( '--checks' ) ) for ( const r of RUNS ) for ( const m of [ 'm1', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'm10' ] ) r[ m ] = value( '--checks' ).split( ',' ).includes( m );
 
 const MIME = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json' };
 
@@ -446,9 +451,201 @@ async function m4Checks( page, fail, run ) {
 function fakeGamepad() {
 
 	const buttons = Array.from( { length: 17 }, () => ( { pressed: false, touched: false, value: 0 } ) );
-	const pad = { id: 'Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)', index: 0, connected: true, mapping: 'standard', timestamp: 0, axes: [ 0, 0, 0, 0 ], buttons, vibrationActuator: null };
+	// The actuator records effects, so the rumble on look change can be checked (M10).
+	window.__rumbles = [];
+	const vibrationActuator = { type: 'dual-rumble', playEffect: ( type ) => { window.__rumbles.push( type ); return Promise.resolve( 'complete' ); } };
+	const pad = { id: 'Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)', index: 0, connected: true, mapping: 'standard', timestamp: 0, axes: [ 0, 0, 0, 0 ], buttons, vibrationActuator };
 	window.__fakePad = pad;
 	navigator.getGamepads = () => [ pad, null, null, null ];
+
+}
+
+
+/**
+ * M10 acceptance checks (the P2 scope, v1.1): the new scenes render at every tier and the
+ * alley's rain stays out of the baseline; the new sliders are uniforms and the new switches
+ * rebuild only what they affect; low frame-rate rendering holds frames within a slot while
+ * hold-to-compare still swaps at once; per-part fog and stepping; .cube import; what
+ * changed; randomize; the zip; touch controls; rumble and D-pad focus in panels; and a
+ * .glb with a KTX2 texture and an animated morph target.
+ */
+async function m10Checks( page, fail ) {
+
+	const glb = Buffer.from( await testGlb() ).toString( 'base64' );
+	const out = await page.evaluate( async ( glb64 ) => {
+
+		const s = window.__stylelab, app = s.app, pad = window.__fakePad;
+		const res = { checks: [] };
+		const check = ( name, pass, value ) => res.checks.push( { name, pass, value } );
+		const progress = ( text ) => console.log( `[progress] M10 ${text}` );
+		const frames = ( n = 3 ) => new Promise( ( r ) => { let k = 0; const f = () => ( ++ k >= n ? r() : requestAnimationFrame( f ) ); requestAnimationFrame( f ); } );
+		const cap = ( w = 320, h = 180 ) => s.capture( { width: w, height: h } );
+		const rebuilds = ( i ) => [ i.materialBuilds, i.graphBuilds, i.passBuilds, i.skyBuilds ];
+		s.freeze( 1 );
+
+		progress( 'scenes' );
+		for ( const id of [ 'tabletop', 'alley' ] ) for ( const tier of [ 0, 3 ] ) {
+
+			await s.setScene( id, { tier } );
+			await s.applyLook( 'sea-breeze' );
+			const a = await cap();
+			check( `${id} T${tier}: renders`, a.stats.lumaStd > 0.03 && a.stats.meanLuma > 0.04 && a.stats.meanLuma < 0.96, a.stats );
+
+		}
+
+		await s.setScene( 'alley', { tier: 1 } );
+		await s.applyLook( 'plain' );
+		check( 'alley: the plain baseline has no rain', ! app.runtime.particles.object.visible );
+		await s.applyLook( 'noir' );
+		check( 'alley: a styled look has the scene\'s rain', app.runtime.particles.object.visible && app.runtime.particles.object.count > 1000, app.runtime.particles.object.count );
+
+		progress( 'uniforms and rebuilds' );
+		await s.setScene( 'lookdev', { tier: 1 } );
+		await s.applyLook( 'golden-hour' );
+		for ( const id of [ 'lens.flare.enabled', 'lens.anamorphic.enabled', 'lens.afterimage.enabled', 'grade.sepia.enabled', 'grade.bleach.enabled', 'media.sharpen.enabled', 'retro.vhs.enabled', 'motion.speedLines.enabled', 'lines.sobel.enabled', 'lines.highlight.enabled', 'atmosphere.particles.enabled', 'lighting.vertexAo.enabled' ] ) s.setParam( id, true );
+		await cap();
+		const i0 = s.info();
+		for ( const [ k, v ] of Object.entries( {
+			'lens.flare.intensity': 1.2, 'lens.flare.threshold': 0.8, 'lens.anamorphic.length': 5, 'lens.anamorphic.tint': '#ff8844', 'lens.afterimage.damping': 0.5, 'grade.sepia.amount': 0.5, 'grade.bleach.amount': 0.4,
+			'media.sharpen.amount': 1, 'retro.vhs.jitter': 0.7, 'motion.speedLines.amount': 0.3, 'motion.speedLines.centerX': 0.4, 'lines.sobel.threshold': 0.4, 'lines.highlight.thickness': 5, 'lines.highlight.target': 'hero',
+			'atmosphere.particles.density': 0.8, 'atmosphere.particles.type': 'snow', 'lighting.vertexAo.strength': 0.3, 'surface.gooch.strength': 0.2, 'atmosphere.fog.partAmount': 0.5, 'atmosphere.sky.turbidity': 8, 'motion.lowFps.fps': 12, 'motion.stepped.fps': 6,
+		} ) ) s.setParam( k, v );
+		await cap();
+		const i1 = s.info();
+		check( 'M10 sliders never rebuild', JSON.stringify( rebuilds( i0 ) ) === JSON.stringify( rebuilds( i1 ) ), [ rebuilds( i0 ), rebuilds( i1 ) ] );
+		const sky = s.setParam( 'atmosphere.sky.model', 'physical' );
+		check( 'the sky model rebuilds only the sky and fog', sky.sky && ! sky.graph && ! sky.pass && sky.parts.length === 0, sky );
+		const physical = await cap();
+		check( 'the physical sky renders', physical.stats.lumaStd > 0.03, physical.stats );
+		const gooch = s.setParam( 'surface.model', 'gooch' );
+		check( 'Gooch rebuilds only materials', gooch.parts.length > 0 && ! gooch.graph && ! gooch.pass, gooch );
+		const aniso = s.setParam( 'media.kuwahara.enabled', true ) && s.setParam( 'media.kuwahara.anisotropic', true );
+		check( 'anisotropic Kuwahara rebuilds only the post graph', aniso.graph && aniso.parts.length === 0, aniso );
+		app.actions.resetParams();
+
+		progress( 'low frame rate' );
+		await s.setScene( 'kart', { tier: 1, shot: 'gameplay' } );
+		await s.applyLook( 'sea-breeze' );
+		s.setParam( 'motion.lowFps.fps', 4 );
+		s.freeze( 1.02 ); const a = await cap();
+		s.freeze( 1.2 ); const b = await cap();
+		s.freeze( 1.3 ); const c = await cap();
+		check( 'low frame rate: the frame holds within a 1/4 s slot', a.hash === b.hash, [ a.hash, b.hash ] );
+		check( 'low frame rate: the next slot draws a new frame', s.diff( b.id, c.id ).mae > 0.0003, s.diff( b.id, c.id ).mae );
+		s.compare( 'hold', { on: true } );
+		const held = await cap();
+		s.compare( 'hold', { on: false } );
+		check( 'low frame rate: hold-to-compare still swaps at once', s.diff( c.id, held.id ).mae > 0.01, s.diff( c.id, held.id ).mae );
+		app.actions.resetParams();
+		s.freeze( 1 );
+
+		progress( 'per part' );
+		await s.setScene( 'harbor', { tier: 1 } );
+		await s.applyLook( 'sea-breeze' );
+		s.setParam( 'atmosphere.fog.density', 0.02 );
+		const fogged = await cap();
+		app.actions.setParam( 'atmosphere.fog.partAmount', 0, { part: 'terrain' } );
+		const clear = await cap();
+		check( 'per-part fog: clearing the terrain changes the frame', s.diff( fogged.id, clear.id ).mae > 0.003, s.diff( fogged.id, clear.id ).mae );
+		app.actions.setParam( 'motion.stepped.fps', 4, { part: 'props' } );
+		check( 'per-part stepping: props step, terrain stays smooth', app.runtime.steppedTime( 1.3, 'props' ) === 1.25 && app.runtime.steppedTime( 1.3, 'terrain' ) === 1.3, [ app.runtime.steppedTime( 1.3, 'props' ), app.runtime.steppedTime( 1.3, 'terrain' ) ] );
+		for ( const part of [ 'terrain', 'props' ] ) app.actions.resetPart( part );
+		app.actions.resetParams();
+
+		progress( '.cube import' );
+		await s.setScene( 'lookdev', { tier: 1 } );
+		await s.applyLook( 'golden-hour' );
+		const base = await cap();
+		const rows = [];
+		for ( let bl = 0; bl < 2; bl ++ ) for ( let g = 0; g < 2; g ++ ) for ( let r = 0; r < 2; r ++ ) rows.push( `${1 - r} ${1 - g} ${1 - bl}` );
+		const imported = app.actions.importCube( `TITLE "Invert"\nLUT_3D_SIZE 2\n${rows.join( '\n' )}\n`, 'invert.cube' );
+		await frames();
+		const inverted = await cap();
+		check( '.cube import: named, set as the preset, and graded', imported.title === 'Invert' && app.resolved.global[ 'grade.lut.preset' ] === 'custom' && s.diff( base.id, inverted.id ).mae > 0.2, [ imported, s.diff( base.id, inverted.id ).mae ] );
+		const lookJson = JSON.parse( await s.exportFile( 'look.json' ) );
+		check( '.cube import: the exported look carries the LUT', lookJson.lut?.size === 33 && typeof lookJson.lut.rgb === 'string', lookJson.lut && { size: lookJson.lut.size } );
+		app.actions.resetParams();
+
+		progress( 'what changed, randomize, zip' );
+		await s.setScene( 'plaza', { tier: 1 } );
+		await s.applyLook( 'comic-ink' );
+		const changed = await s.whatChanged();
+		check( 'what changed: a summary with at least one real change', /^Your look /.test( changed.summary ) && changed.changes.some( ( c ) => c.weight >= 1 ), changed.summary );
+		const hash0 = s.resolvedHash(), r0 = s.info();
+		const roll = app.actions.randomize( { seed: 7 } );
+		await cap();
+		const r1 = s.info();
+		check( 'randomize: rolls the look\'s values without rebuilding', Object.keys( roll.overrides ).length > 5 && s.resolvedHash() !== hash0 && JSON.stringify( rebuilds( r0 ) ) === JSON.stringify( rebuilds( r1 ) ), [ Object.keys( roll.overrides ).length, rebuilds( r0 ), rebuilds( r1 ) ] );
+		s.undo();
+		check( 'randomize: one undo restores the look', s.resolvedHash() === hash0 );
+		const zip = await s.exportZip();
+		check( 'zip: a zip with every export file', zip.head.join() === '80,75,3,4' && [ 'STYLE.md', 'grade.cube', 'looks.json' ].every( ( n ) => zip.names.includes( n ) ) && zip.names.length === s.exportNames().length, zip.names );
+
+		if ( pad ) {
+
+			progress( 'gamepad' );
+			const before = s.padInfo().rumbles;
+			app.actions.stepLook( 1 );
+			await frames( 3 );
+			check( 'rumble: a look change plays a dual-rumble effect', s.padInfo().rumbles === before + 1 && window.__rumbles.at( - 1 ) === 'dual-rumble', [ before, s.padInfo().rumbles, window.__rumbles ] );
+			const tap = async ( i ) => { pad.buttons[ i ] = { pressed: true, touched: true, value: 1 }; await frames( 3 ); pad.buttons[ i ] = { pressed: false, touched: false, value: 0 }; await frames( 3 ); };
+			document.getElementById( 'help-btn' ).click();
+			await frames( 2 );
+			const scene0 = app.store.get().sceneId;
+			check( 'D-pad: the key map is the active panel', s.activePanel() === 'keys-modal', s.activePanel() );
+			await tap( 13 ); // ↓: next control
+			const focused = document.querySelector( '#keys-modal .pad-focus' );
+			await tap( 15 ); // →: not the next scene while a panel is open
+			check( 'D-pad: focus moves inside the panel and the scene stays', !! focused && app.store.get().sceneId === scene0, [ focused?.outerHTML?.slice( 0, 60 ), scene0, app.store.get().sceneId ] );
+			await tap( 1 ); // B closes
+			check( 'D-pad: B closes the panel', s.activePanel() === null, s.activePanel() );
+
+		}
+
+		progress( '.glb with KTX2 and morph targets' );
+		const bin = Uint8Array.from( atob( glb64 ), ( ch ) => ch.charCodeAt( 0 ) );
+		const imp = await s.importModel( bin.buffer, 'fixture.glb' );
+		let banner = null;
+		app.built.root.traverse( ( o ) => { if ( o.isMesh && o.name === 'banner' ) banner = o; } );
+		const plainTwin = banner?.children.find( ( c ) => c.name === 'plain twin' );
+		check( 'glb: loads with no warnings, the KTX2 texture as its map', imp.warnings.length === 0 && !! banner?.userData.style.map?.isTexture, { warnings: imp.warnings, map: !! banner?.userData.style.map } );
+		check( 'glb: the twins share the morph weights', !! plainTwin && plainTwin.morphTargetInfluences === banner.morphTargetInfluences );
+		s.freeze( 0 ); const m0 = await cap();
+		s.freeze( 1 ); const m1 = await cap();
+		s.compare( 'hold', { on: true } );
+		const mPlain = await cap();
+		s.compare( 'hold', { on: false } );
+		s.freeze( 0 ); s.compare( 'hold', { on: true } );
+		const mPlain0 = await cap();
+		s.compare( 'hold', { on: false } );
+		check( 'glb: the morph animation plays, styled and plain', s.diff( m0.id, m1.id ).mae > 0.005 && s.diff( mPlain0.id, mPlain.id ).mae > 0.005, [ s.diff( m0.id, m1.id ).mae, s.diff( mPlain0.id, mPlain.id ).mae ] );
+		await s.setScene( 'garden', { tier: 1 } );
+		s.freeze( null );
+		return res;
+
+	}, glb );
+
+	for ( const c of out.checks ) if ( ! c.pass ) fail( `M10: ${c.name} (${JSON.stringify( c.value )})` );
+
+	// Touch controls, with real pointer events: the stick moves the player in walk mode.
+	const touch = await page.evaluate( async () => { const s = window.__stylelab; s.forceTouch( true ); await s.setWalk( true ); const r = document.querySelector( '.touch-stick' ).getBoundingClientRect(); return { visible: s.touchVisible(), x: r.left + r.width / 2, y: r.top + r.height / 2, at: s.app.walk.position() }; } );
+	if ( ! touch.visible ) fail( 'M10: touch controls show in walk mode' );
+	else {
+
+		await page.mouse.move( touch.x, touch.y );
+		await page.mouse.down();
+		await page.mouse.move( touch.x, touch.y - 80, { steps: 4 } );
+		const during = await page.evaluate( () => [ ...window.__stylelab.app.walkInput.padMove ] );
+		await page.waitForTimeout( 2000 ); // a few frames: SwiftShader walks the garden at a few fps
+		const moved = await page.evaluate( ( p ) => Math.hypot( ...window.__stylelab.app.walk.position().map( ( v, i ) => v - p[ i ] ) ), touch.at );
+		await page.mouse.up();
+		const after = await page.evaluate( () => [ ...window.__stylelab.app.walkInput.padMove ] );
+		if ( ! ( during[ 1 ] > 0.9 && moved > 0.05 && after[ 0 ] === 0 && after[ 1 ] === 0 ) ) fail( `M10: the touch stick walks the player (${JSON.stringify( { during, moved, after } )})` );
+
+	}
+
+	await page.evaluate( async () => { const s = window.__stylelab; await s.setWalk( false ); s.forceTouch( false ); } );
+	return out;
 
 }
 
@@ -1068,7 +1265,9 @@ async function m9Checks( page, fail, run, base ) {
 async function smoke( browser, run, base ) {
 
 	const context = await browser.newContext( { viewport: { width: 1280, height: 720 } } );
-	await routeCdn( context );
+	const cdnRequests = [];
+	if ( run.offline ) await context.route( 'https://cdn.jsdelivr.net/**', ( route ) => { cdnRequests.push( route.request().url() ); return route.abort(); } );
+	else await routeCdn( context );
 	if ( run.m5 ) await context.addInitScript( fakeGamepad );
 	const page = await context.newPage();
 	// Long checks report progress so a slow run can be told from a stuck one.
@@ -1109,6 +1308,16 @@ async function smoke( browser, run, base ) {
 		if ( run.m7 && ! flag( '--no-m7' ) ) result.m7 = await m7Checks( page, fail, run );
 		if ( run.m8 && ! flag( '--no-m8' ) ) result.m8 = await m8Checks( page, fail, run );
 		if ( run.m9 && ! flag( '--no-m9' ) ) result.m9 = await m9Checks( page, fail, run, base );
+		if ( run.m10 && ! flag( '--no-m10' ) ) result.m10 = await m10Checks( page, fail, run );
+		if ( run.offline ) {
+
+			// The offline page must also apply looks and build scenes without the network.
+			await page.evaluate( async () => { const s = window.__stylelab; await s.setScene( 'alley', { tier: 1 } ); await s.applyLook( 'noir' ); } );
+			const f = ( await page.evaluate( () => window.__stylelab.capture() ) ).stats;
+			if ( ! ( f.lumaStd > 0.02 && f.meanLuma > 0.03 ) ) fail( `offline: the alley in Noir looks blank (${JSON.stringify( f )})` );
+			if ( cdnRequests.length ) fail( `offline: the page asked the CDN for ${cdnRequests.slice( 0, 3 ).join( ', ' )}` );
+
+		}
 
 		if ( ! flag( '--no-spikes' ) ) {
 

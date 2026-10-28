@@ -1,5 +1,6 @@
 // CAMERA stage (design §7.7): effects on the linear HDR image, in pipeline order:
-// AO and contact shadows (×) → bloom (+) → god rays (+) → motion blur → DOF / tilt-shift
+// AO and contact shadows (×) → screen-space GI (+) → bloom, lens flare and anamorphic
+// streaks (+) → god rays (+) → motion blur → DOF / tilt-shift
 // → exposure and white balance → tone mapping → output transform.
 //
 // Each effect is a module: `enabled(v)` decides whether it is in the graph (a rebuild),
@@ -8,13 +9,16 @@
 // never rebuild.
 
 import * as THREE from 'three/webgpu';
-import { Fn, vec2, vec3, vec4, float, int, mix, smoothstep, pow, abs, step, Loop, If, Break, luminance, sample, colorToDirection, sRGBTransferEOTF, renderOutput, interleavedGradientNoise, screenCoordinate, getViewPosition, getScreenPosition } from 'three/tsl';
+import { Fn, vec2, vec3, vec4, float, int, mix, max, smoothstep, pow, abs, step, Loop, If, Break, luminance, sample, colorToDirection, sRGBTransferEOTF, renderOutput, interleavedGradientNoise, screenCoordinate, getViewPosition, getScreenPosition } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { dof } from 'three/addons/tsl/display/DepthOfFieldNode.js';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { motionBlur } from 'three/addons/tsl/display/MotionBlur.js';
 import { traa } from 'three/addons/tsl/display/TRAANode.js';
+import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
+import { lensflare } from 'three/addons/tsl/display/LensflareNode.js';
+import { anamorphic } from 'three/addons/tsl/display/AnamorphicNode.js';
 
 export const TONE_MAPPING = {
 	none: THREE.NoToneMapping,
@@ -107,6 +111,31 @@ export const CAMERA = [
 		},
 	},
 	{
+		id: 'lighting.ssgi', label: 'Screen-space GI', stage: 'camera',
+		enabled: ( v ) => v[ 'lighting.ssgi.enabled' ],
+		requires: () => [ 'depth', 'normal' ],
+		build( c, ctx ) {
+
+			// One bounce from what is on screen (three's SSGI). Without temporal filtering the
+			// result is noisy, so four bilinear taps smooth it, like AO. There is no albedo
+			// buffer: the bounce takes the receiver's hue (its color at full value).
+			const P = ctx.P;
+			const normals = ctx.tex( 'normal' );
+			const node = ctx.own( ssgi( vec4( c, 1 ), ctx.tex( 'depth' ), sample( ( uv ) => colorToDirection( normals.sample( uv ).rgb ) ), ctx.camera ) );
+			node.useTemporalFiltering = false;
+			node.sliceCount.value = 2;
+			node.stepCount.value = 8;
+			node.radius = P.get( 'lighting.ssgi.radius' );
+			const giTex = node.getTextureNode();
+			const t = ctx.texel.mul( 1.5 );
+			const gi = giTex.sample( ctx.uv.add( t ) ).add( giTex.sample( ctx.uv.sub( t ) ) ).add( giTex.sample( ctx.uv.add( vec2( t.x, t.y.negate() ) ) ) ).add( giTex.sample( ctx.uv.sub( vec2( t.x, t.y.negate() ) ) ) ).mul( 0.25 );
+			const albedo = c.div( max( max( c.r, c.g ), max( c.b, 1e-3 ) ) ).mul( 0.8 );
+			const k = P.get( 'lighting.ssgi.intensity' );
+			return c.mul( mix( 1, gi.a, k.mul( 0.25 ).min( 0.5 ) ) ).add( albedo.mul( gi.rgb ).mul( k ) );
+
+		},
+	},
+	{
 		id: 'lens.bloom', label: 'Bloom', stage: 'camera',
 		enabled: ( v ) => v[ 'lens.bloom.enabled' ],
 		requires: ( v ) => ( v[ 'lens.bloom.source' ] === 'emissive' ? [ 'emissive' ] : [] ),
@@ -119,6 +148,43 @@ export const CAMERA = [
 			node.radius = ctx.P.get( 'lens.bloom.radius' );
 			node.threshold = ctx.P.get( 'lens.bloom.threshold' );
 			return c.add( node.getTextureNode().sample( ctx.uv ).rgb );
+
+		},
+	},
+	{
+		id: 'lens.flare', label: 'Lens flare', stage: 'camera',
+		enabled: ( v ) => v[ 'lens.flare.enabled' ],
+		requires: () => [],
+		build( c, ctx ) {
+
+			// Ghosts of the brightest highlights, mirrored through the center at quarter
+			// resolution (three's lensflare), then softened by four bilinear taps.
+			const P = ctx.P;
+			const node = ctx.own( lensflare( vec4( c, 1 ), {
+				threshold: P.get( 'lens.flare.threshold' ), ghostSpacing: P.get( 'lens.flare.spacing' ),
+				ghostTint: linear( P.get( 'lighting.key.color' ) ).mul( vec3( 1, 0.85, 0.7 ) ), ghostSamples: 5, ghostAttenuationFactor: 3, downSampleRatio: 4,
+			} ) );
+			const tex = node.getTextureNode();
+			const t = ctx.texel.mul( 6 );
+			const flare = tex.sample( ctx.uv.add( t ) ).add( tex.sample( ctx.uv.sub( t ) ) ).add( tex.sample( ctx.uv.add( vec2( t.x, t.y.negate() ) ) ) ).add( tex.sample( ctx.uv.sub( vec2( t.x, t.y.negate() ) ) ) ).rgb.mul( 0.25 );
+			return c.add( flare.mul( P.get( 'lens.flare.intensity' ) ) );
+
+		},
+	},
+	{
+		id: 'lens.anamorphic', label: 'Anamorphic streaks', stage: 'camera',
+		enabled: ( v ) => v[ 'lens.anamorphic.enabled' ],
+		requires: () => [],
+		build( c, ctx ) {
+
+			// Horizontal streaks at half resolution (three's anamorphic): a 32-tap line of the
+			// pixels above the threshold, tinted. The node sums its taps (about 16 at full
+			// weight), so the sum is scaled back to an average.
+			const P = ctx.P;
+			const node = ctx.own( anamorphic( vec4( c, 1 ), P.get( 'lens.anamorphic.threshold' ), P.get( 'lens.anamorphic.length' ), 32 ) );
+			node.colorNode = linear( P.get( 'lens.anamorphic.tint' ) );
+			node.resolutionScale = 0.5;
+			return c.add( node.getTextureNode().sample( ctx.uv ).rgb.mul( P.get( 'lens.anamorphic.intensity' ) ).mul( 1 / 16 ) );
 
 		},
 	},

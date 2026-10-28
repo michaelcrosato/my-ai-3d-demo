@@ -14,7 +14,7 @@ import { ditherThreshold } from '../post/stage-display.js';
 const RECIPROCAL_PI = 1 / Math.PI;
 
 /** Shading models with structural differences (registry `surface.model`). Toon water shades like toon. */
-export const MODELS = [ 'pbr', 'toon', 'halfLambert', 'flat', 'toonWater' ];
+export const MODELS = [ 'pbr', 'toon', 'halfLambert', 'flat', 'toonWater', 'gooch', 'matcap' ];
 
 /**
  * Creates the uniforms a style material reads. Materials of the same part share
@@ -50,6 +50,10 @@ export function createSurfaceUniforms( {
 		waterFoam: uniform( 0.35 ), waterPattern: uniform( 0.4 ), waterFoamColor: uniform( new Color( '#ffffff' ) ),
 		// Wind (factory positionNode).
 		windStrength: uniform( 1 ), windSpeed: uniform( 1 ), windGusts: uniform( 0.3 ),
+		// Gooch: cool shade and warm light instead of dark and bright.
+		goochCool: uniform( new Color( '#2f4fd0' ) ), goochWarm: uniform( new Color( '#ffcc55' ) ), goochStrength: uniform( 0.45 ),
+		// Retro texturing, baked vertex AO, the part's fog amount and its animation clock.
+		affineAmount: uniform( 1 ), vertexAoStrength: uniform( 0.6 ), fogAmount: uniform( 1 ), time: uniform( 0 ),
 	};
 
 }
@@ -126,6 +130,7 @@ export class StyleLightingModel extends LightingModel {
 		switch ( this.surface.model ) {
 
 			case 'halfLambert': return NdotL.mul( 0.5 ).add( 0.5 ).pow( 2 );
+			case 'gooch': return NdotL.mul( 0.5 ).add( 0.5 );
 			case 'flat': return float( 1 );
 			default: return NdotL.max( 0 );
 
@@ -148,7 +153,9 @@ export class StyleLightingModel extends LightingModel {
 		const r = this.ramp( this.facing( NdotL ).mul( visibility ).clamp() );
 		this.keyRamp.assign( max( this.keyRamp, r ) );
 
-		reflectedLight.directDiffuse.addAssign( diffuseColor.rgb.mul( base ).mul( r ).mul( RECIPROCAL_PI ) );
+		// Gooch: the lit side warms toward the warm tone (the cool side is filled in finish()).
+		const albedo = this.surface.model === 'gooch' ? mix( diffuseColor.rgb, this.surface.uniforms.goochWarm, this.surface.uniforms.goochStrength ) : diffuseColor.rgb;
+		reflectedLight.directDiffuse.addAssign( albedo.mul( base ).mul( r ).mul( RECIPROCAL_PI ) );
 
 		// Toon specular: a hard-edged Blinn blob, banded like the light.
 		const { specIntensity, specSize, specSoftness } = this.surface.uniforms;
@@ -172,7 +179,9 @@ export class StyleLightingModel extends LightingModel {
 	finish( builder ) {
 
 		const u = this.surface.uniforms;
-		const fill = diffuseColor.rgb.mul( u.shadowTint ).mul( u.tintStrength ).mul( this.keyRamp.oneMinus() );
+		let fill = diffuseColor.rgb.mul( u.shadowTint ).mul( u.tintStrength ).mul( this.keyRamp.oneMinus() );
+		// Gooch: where the key light doesn't reach, the surface is lit by its cool tone instead of going dark.
+		if ( this.surface.model === 'gooch' ) fill = fill.add( mix( diffuseColor.rgb, u.goochCool, u.goochStrength ).mul( this.keyRamp.oneMinus() ).mul( 0.45 ) );
 		const rim = rimTerm( u.rimWidth, u.rimSoftness ).mul( u.rimIntensity ).mul( mix( 1, this.keyRamp, u.rimLitSide ) );
 
 		const outgoing = builder.context.outgoingLight;

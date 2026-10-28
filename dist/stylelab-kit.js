@@ -1,4 +1,4 @@
-/* Style Lab kit v1.0.0 (e1ba119): procedural assets, part-tagged, seeded, tiered */
+/* Style Lab kit v1.1.0 (0580aa2): procedural assets, part-tagged, seeded, tiered */
 // src/scenes/kit/core.js
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -49,14 +49,14 @@ function fbm(x, y, z, seed = 0, octaves = 3) {
   }
   return sum;
 }
-function displace(geometry, { amount = 0.1, scale = 1, seed = 0, center = new THREE.Vector3(), octaves = 3, axis = null } = {}) {
+function displace(geometry, { amount = 0.1, scale = 1, seed = 0, center: center2 = new THREE.Vector3(), octaves = 3, axis = null } = {}) {
   const pos = geometry.getAttribute("position");
   const p = new THREE.Vector3(), d = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
     p.fromBufferAttribute(pos, i);
     const n = fbm(p.x * scale, p.y * scale, p.z * scale, seed, octaves) * amount;
     if (axis) d.copy(axis);
-    else d.subVectors(p, center).normalize();
+    else d.subVectors(p, center2).normalize();
     p.addScaledVector(d, n);
     pos.setXYZ(i, p.x, p.y, p.z);
   }
@@ -90,13 +90,74 @@ function place(geometry, { p = [0, 0, 0], r = [0, 0, 0], s = [1, 1, 1] } = {}) {
   return geometry.applyMatrix4(m);
 }
 var PLACEHOLDER = new THREE.MeshBasicMaterial();
-function mesh(geometry, { part, color = "#cccccc", roughness = 0.8, metalness = 0, emissive = null, emissiveIntensity = 1, wave = null, wind = null, opacity = 1, doubleSided = false, castShadow = true, receiveShadow = true, name = "" } = {}) {
+function mesh(geometry, { part, color = "#cccccc", roughness = 0.8, metalness = 0, emissive = null, emissiveIntensity = 1, wave = null, wind = null, opacity = 1, doubleSided = false, castShadow = true, receiveShadow = true, name = "", map = null, interactable: interactable2 = false } = {}) {
   const m = new THREE.Mesh(geometry, PLACEHOLDER);
   m.name = name;
   m.castShadow = castShadow && opacity >= 1;
   m.receiveShadow = receiveShadow;
   m.userData.style = { part, color, roughness, metalness, emissive, emissiveIntensity, wave, wind, opacity, doubleSided };
+  if (map) m.userData.style.map = kitTexture(map);
+  if (interactable2) m.userData.style.interactable = true;
   return m;
+}
+function interactable(object) {
+  object.traverse((o) => {
+    if (o.userData.style) o.userData.style.interactable = true;
+  });
+  return object;
+}
+var textures = /* @__PURE__ */ new Map();
+function kitTexture(kind) {
+  if (textures.has(kind)) return textures.get(kind);
+  const N = 64, data = new Uint8Array(N * N * 4);
+  const hash = (x, y) => {
+    let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ kind.length * 977;
+    h = Math.imul(h ^ h >>> 13, 1274126177);
+    return ((h ^ h >>> 16) >>> 0) / 4294967296;
+  };
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    let v = 1;
+    if (kind === "bricks") {
+      const row = Math.floor(y / 16), bx = (x + row % 2 * 16) % 64;
+      const mortar = y % 16 < 2 || bx % 32 < 2;
+      v = mortar ? 0.42 : 0.78 + 0.2 * hash(Math.floor(bx / 32) + row * 7, row) + 0.06 * (hash(x, y) - 0.5);
+    } else if (kind === "cobbles") {
+      let best = 9, second = 9;
+      for (let j = -1; j <= 4; j++) for (let i = -1; i <= 4; i++) {
+        const cx = (i + 0.25 + 0.5 * hash((i + 4) % 4, (j + 4) % 4)) * 16, cy = (j + 0.25 + 0.5 * hash((j + 4) % 4 + 9, (i + 4) % 4)) * 16;
+        const d = Math.hypot(x - cx, y - cy);
+        if (d < best) {
+          second = best;
+          best = d;
+        } else if (d < second) second = d;
+      }
+      v = second - best < 2 ? 0.3 : 0.7 + 0.25 * (1 - Math.min(1, best / 10)) + 0.05 * (hash(x, y) - 0.5);
+    } else if (kind === "planks") {
+      const plank = Math.floor(x / 16);
+      v = x % 16 < 1 ? 0.4 : 0.75 + 0.15 * hash(plank, 3) + 0.08 * Math.sin((y + hash(plank, 5) * 40) * 0.6 + x * 0.2);
+    } else {
+      v = (Math.floor(x / 8) + Math.floor(y / 8)) % 2 ? 1 : 0.55;
+    }
+    const k = (y * N + x) * 4, c = Math.round(Math.min(1, Math.max(0, v)) * 255);
+    data[k] = data[k + 1] = data[k + 2] = c;
+    data[k + 3] = 255;
+  }
+  const t = new THREE.DataTexture(data, N, N, THREE.RGBAFormat, THREE.UnsignedByteType);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.generateMipmaps = true;
+  t.name = `kit:${kind}`;
+  t.needsUpdate = true;
+  textures.set(kind, t);
+  return t;
+}
+function tileUv(geometry, sx, sy = sx) {
+  const uv = geometry.getAttribute("uv");
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * sx, uv.getY(i) * sy);
+  uv.needsUpdate = true;
+  return geometry;
 }
 function practical({ color = "#ffb35c", intensity = 12, distance = 10, flicker = 0, seed = 0 } = {}) {
   const light = new THREE.PointLight(color, intensity, distance, 2);
@@ -1182,7 +1243,7 @@ function coin(tier, { seed = 0 } = {}) {
   m.userData.animate = (t) => {
     m.rotation.y = t * 2.5 + seed;
   };
-  return m;
+  return interactable(m);
 }
 function pipe(tier, { height = 1.6, radius = 0.6, color = "#2ecc71" } = {}) {
   const root = group("pipe");
@@ -1204,7 +1265,7 @@ function block(tier, { kind = "item", size = 1 } = {}) {
     else for (const y of [-0.25, 0, 0.25]) for (const s of [1, -1]) dots.push(place(new THREE.BoxGeometry(size * 1.01, 0.03, 0.02), { p: [0, y * size, s * size / 2] }));
     root.add(mesh(merge(dots), { part: P3, color: kind === "item" ? "#8a4b0f" : "#e7d6c9" }));
   }
-  return root;
+  return kind === "item" ? interactable(root) : root;
 }
 function chest(tier, { color = "#8b5a2b" } = {}) {
   const root = group("chest");
@@ -1225,7 +1286,7 @@ function chest(tier, { color = "#8b5a2b" } = {}) {
     lock.position.set(0, 0.5, 0.37);
     root.add(lock);
   }
-  return root;
+  return interactable(root);
 }
 function trafficCone(tier) {
   const g = [place(new THREE.ConeGeometry(0.22, 0.65, byTier(tier, [6, 8, 20, 32])), { p: [0, 0.38, 0] }), place(new THREE.BoxGeometry(0.5, 0.06, 0.5), { p: [0, 0.03, 0] })];
@@ -2499,6 +2560,381 @@ var toybox_default = {
   }
 };
 
+// src/scenes/tabletop.js
+var R = 0.9;
+var RINGS = 6;
+function hexes(rings) {
+  const out = [];
+  for (let q = -rings; q <= rings; q++) for (let r = Math.max(-rings, -q - rings); r <= Math.min(rings, -q + rings); r++) out.push([q, r]);
+  return out;
+}
+var center = (q, r) => [1.5 * q * R, Math.sqrt(3) * (r + q / 2) * R];
+var TERRAIN = {
+  water: { h: 0.12, color: "#3f8fbf", part: "terrain" },
+  sand: { h: 0.22, color: "#e3cf8f", part: "terrain" },
+  grass: { h: 0.3, color: "#8fbf5a", part: "terrain" },
+  forest: { h: 0.32, color: "#6aa04a", part: "terrain" },
+  hill: { h: 0.5, color: "#a6ad6a", part: "terrain" },
+  mountain: { h: 0.62, color: "#8d8a84", part: "terrain" }
+};
+var SHARES = [["water", 0.3], ["sand", 0.09], ["grass", 0.25], ["forest", 0.16], ["hill", 0.11], ["mountain", 0.09]];
+function classify(cells, seed) {
+  const height = cells.map(([q, r]) => {
+    const [x, z] = center(q, r);
+    const d = Math.hypot(x, z) / (RINGS * 1.5 * R);
+    return fbm(x * 0.22, 0, z * 0.22, seed, 3) - d * 0.45;
+  });
+  const order = cells.map((_, i) => i).sort((a, b) => height[a] - height[b] || a - b);
+  const kinds = new Array(cells.length);
+  let k = 0, acc = SHARES[0][1];
+  order.forEach((i, rank) => {
+    while (rank >= acc * cells.length && k < SHARES.length - 1) acc += SHARES[++k][1];
+    kinds[i] = SHARES[k][0];
+  });
+  return kinds;
+}
+function hexGeometry(tier, h) {
+  const r = tier === 0 ? R : R * 0.96;
+  const g = new THREE.CylinderGeometry(tier >= 2 ? r * 0.93 : r, r, h, 6, byTier(tier, [1, 1, 2, 4]));
+  g.rotateY(Math.PI / 6);
+  g.translate(0, h / 2, 0);
+  return g;
+}
+function army(tier, rng, { color, n = 4 }) {
+  const root = group("army");
+  for (let i = 0; i < n; i++) {
+    const s = character(tier, { part: "characters", shirt: color, pants: "#3b3f46", hat: tier >= 2 ? color : null, seed: rng() * 10 });
+    root.add(at(s, [(i % 2 - 0.5) * 0.32, 0, (Math.floor(i / 2) - 0.5) * 0.32], [0, rng.range(-0.3, 0.3), 0], 0.26));
+  }
+  const pole = mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.8, byTier(tier, [4, 4, 8, 12])), { part: "props", color: "#4a3a2a" });
+  pole.position.set(0.3, 0.4, 0);
+  const flag = mesh(new THREE.PlaneGeometry(0.28, 0.18, byTier(tier, [1, 1, 4, 8]), 1), { part: "props", color, doubleSided: true });
+  flag.position.set(0.44, 0.7, 0);
+  flag.userData.animate = (t) => {
+    flag.rotation.y = Math.sin(t * 2.3 + color.length) * 0.25;
+  };
+  root.add(pole, flag);
+  return root;
+}
+function castle(tier, { stone = "#b9b2a6", roof = "#3d6fd6" } = {}) {
+  const root = group("castle");
+  const seg = byTier(tier, [6, 8, 16, 24]);
+  const walls = [place(new THREE.BoxGeometry(0.9, 0.35, 0.9), { p: [0, 0.175, 0] }), place(new THREE.BoxGeometry(0.42, 0.65, 0.42), { p: [0, 0.32, 0] })];
+  const roofs = [place(new THREE.ConeGeometry(0.33, 0.35, 4), { p: [0, 0.82, 0], r: [0, Math.PI / 4, 0] })];
+  for (const [x, z] of [[-0.45, -0.45], [0.45, -0.45], [-0.45, 0.45], [0.45, 0.45]]) {
+    walls.push(place(new THREE.CylinderGeometry(0.12, 0.13, 0.55, seg), { p: [x, 0.275, z] }));
+    roofs.push(place(new THREE.ConeGeometry(0.15, 0.25, seg), { p: [x, 0.67, z] }));
+  }
+  if (tier >= 2) for (let i = 0; i < 12; i++) walls.push(place(new THREE.BoxGeometry(0.07, 0.07, 0.07), { p: [-0.4 + i % 6 * 0.16, 0.38, i < 6 ? 0.45 : -0.45] }));
+  root.add(mesh(tier === 1 ? faceted(merge(walls)) : merge(walls), { part: "architecture", color: stone }));
+  root.add(mesh(merge(roofs), { part: "architecture", color: roof }));
+  return root;
+}
+function die(tier, { color = "#f4f1ea", pip = "#20232b" } = {}) {
+  const root = group("die");
+  const body = beveledBox(tier, 0.5, { part: "props", color, roughness: 0.4 });
+  body.position.y = 0.25;
+  root.add(body);
+  if (tier >= 1) {
+    const pips = [];
+    const seg = byTier(tier, [6, 6, 10, 14]);
+    const add = (p) => pips.push(place(new THREE.SphereGeometry(0.045, seg, Math.ceil(seg / 2)), { p }));
+    add([0, 0.5, 0]);
+    for (const [a, b] of [[-0.12, -0.12], [0, 0], [0.12, 0.12]]) add([a, 0.25 + b, 0.25]);
+    for (const [a, b] of [[-0.12, -0.12], [0.12, 0.12]]) add([0.25, 0.25 + b, a]);
+    root.add(mesh(merge(pips), { part: "props", color: pip }));
+  }
+  return root;
+}
+var tabletop_default = {
+  id: "tabletop",
+  name: "Tabletop Map",
+  inspiredBy: ["Civilization", "Townscaper", "Bad North"],
+  genre: "strategy board",
+  notes: "A board seen from above: every tile must read by color and value at a glance, and the units must pop from the terrain. The miniature look (tilt-shift) needs exactly this high angle. The table is textured: try the retro texture filters on the planks.",
+  shots: {
+    hero: { label: "Tilted top-down", pos: [0, 15.5, 12.5], target: [0, 0, 0.6], fov: 36 },
+    gameplay: { label: "Gameplay (closer tilt)", pos: [4.5, 8.5, 9], target: [1.2, 0, 0.8], fov: 40 },
+    wide: { label: "Wide (the whole table)", pos: [0, 22, 17], target: [0, 0, 0], fov: 42 },
+    close: { label: "Close-up (the armies)", pos: [3.6, 2.4, 4.6], target: [1.4, 0.4, 1.4], fov: 34 }
+  },
+  defaultShot: "hero",
+  focus: [0, 0.4, 0.6],
+  shadow: { center: [0, 0, 0], radius: 13 },
+  far: 300,
+  fogFocus: 0.75,
+  params: {
+    "lighting.key.elevation": 52,
+    "lighting.key.azimuth": 140,
+    "lighting.key.color": "#fff0d8",
+    "lighting.key.intensity": 3,
+    "lighting.ambient.sky": "#cfd9ee",
+    "lighting.ambient.ground": "#6b5440",
+    "lighting.ambient.intensity": 0.75,
+    "atmosphere.sky.zenith": "#2b2320",
+    "atmosphere.sky.horizon": "#5a4636",
+    "atmosphere.sky.ground": "#2b2320",
+    "atmosphere.fog.color": "#5a4636"
+  },
+  build({ tier = 0, seed = 12, density = 1 } = {}) {
+    const rng = createRng(seed);
+    const root = group("tabletop");
+    const tableG = new THREE.BoxGeometry(30, 0.6, 24, byTier(tier, [1, 2, 4, 8]), 1, byTier(tier, [1, 2, 4, 8]));
+    tileUv(tableG, 30 / 2.5, 24 / 2.5);
+    root.add(at(mesh(tableG, { part: "terrain", color: "#8a5a3a", map: "planks", roughness: 0.55 }), [0, -0.3, 0]));
+    const tiles = /* @__PURE__ */ new Map();
+    const kinds = /* @__PURE__ */ new Map();
+    const cells = hexes(RINGS);
+    const assigned = classify(cells, 5);
+    for (const [i, [q, r]] of cells.entries()) {
+      const kind = assigned[i];
+      kinds.set(`${q},${r}`, kind);
+      const [x, z] = center(q, r);
+      const g = hexGeometry(tier, TERRAIN[kind].h);
+      g.translate(x, 0, z);
+      if (!tiles.has(kind)) tiles.set(kind, []);
+      tiles.get(kind).push(g);
+    }
+    for (const [kind, list] of tiles) {
+      const t = TERRAIN[kind];
+      const g = merge(list);
+      root.add(mesh(tier === 1 ? faceted(g) : g, { part: t.part, color: t.color, roughness: kind === "water" ? 0.3 : 0.85 }));
+    }
+    const where = (kind) => [...kinds].filter(([, k]) => k === kind).map(([key]) => key.split(",").map(Number));
+    const top = (q, r) => TERRAIN[kinds.get(`${q},${r}`)].h;
+    const peaks = [], caps = [];
+    for (const [q, r] of where("mountain")) {
+      const [x, z] = center(q, r);
+      const hgt = 0.7 + rng() * 0.4;
+      peaks.push(place(new THREE.ConeGeometry(0.62, hgt, byTier(tier, [5, 6, 10, 16]), byTier(tier, [1, 1, 2, 4])), { p: [x, top(q, r) + hgt / 2, z], r: [0, rng() * Math.PI, 0] }));
+      if (tier >= 2) caps.push(place(new THREE.ConeGeometry(0.26, hgt * 0.42, byTier(tier, [5, 6, 10, 16])), { p: [x, top(q, r) + hgt * 0.79, z] }));
+    }
+    if (peaks.length) root.add(mesh(tier === 1 ? faceted(merge(peaks)) : merge(peaks), { part: "terrain", color: "#7d7a74" }));
+    if (caps.length) root.add(mesh(merge(caps), { part: "terrain", color: "#f1f3f5" }));
+    for (const [q, r] of where("forest")) {
+      const [x, z] = center(q, r);
+      const n = count(byTier(tier, [1, 2, 3, 4]), density);
+      for (let i = 0; i < n; i++) {
+        const a = rng() * Math.PI * 2, d = n === 1 ? 0 : rng.range(0.2, 0.55);
+        root.add(at(pine(tier, rng.fork(), { height: rng.range(0.7, 1), color: "#2f5d3a" }), [x + Math.cos(a) * d, top(q, r), z + Math.sin(a) * d]));
+      }
+    }
+    const grass2 = where("grass");
+    const roofs = ["#c0392b", "#d98e2b", "#3d6fd6", "#7a4a8a"];
+    for (let i = 0; i < Math.min(grass2.length, count(5, density)); i++) {
+      const [q, r] = grass2[Math.floor(rng() * grass2.length)];
+      const [x, z] = center(q, r);
+      root.add(at(house(tier, { wall: "#f2e6d0", roof: roofs[i % 4], trim: "#ffffff", door: "#6d4c41" }, { w: 2.4, d: 2, h: 1.8 }), [x, top(q, r), z], [0, rng() * Math.PI, 0], 0.24));
+    }
+    const hills = where("hill");
+    const keep = hills.length ? hills[Math.floor(hills.length / 2)] : [0, 0];
+    const [kx, kz] = center(...keep);
+    root.add(at(castle(tier), [kx, top(...keep), kz], [0, 0.3, 0]));
+    const near = ([q, r], dq, dr) => {
+      const key = `${q + dq},${r + dr}`;
+      return kinds.has(key) && kinds.get(key) !== "water" && kinds.get(key) !== "mountain" ? [q + dq, r + dr] : [q, r];
+    };
+    for (const [dq, dr, color] of [[2, 0, "#c0392b"], [-1, 2, "#2e6fd6"]]) {
+      const [q, r] = near(keep, dq, dr);
+      const [x, z] = center(q, r);
+      root.add(at(army(tier, rng.fork(), { color, n: count(4, density) }), [x, top(q, r), z], [0, rng() * Math.PI, 0]));
+    }
+    const water = where("water");
+    if (water.length) {
+      const [q, r] = water[Math.floor(water.length * 0.3)];
+      const [x, z] = center(q, r);
+      const b = at(boat(tier, { hull: "#8b5a2b" }), [x, top(q, r), z], [0, 0.6, 0], 0.11);
+      b.userData.animate = (t) => {
+        b.position.y = top(q, r) + Math.sin(t * 1.6) * 0.01;
+        b.rotation.z = Math.sin(t * 1.1) * 0.04;
+      };
+      root.add(b);
+    }
+    root.add(at(die(tier), [11.2, 0, 4.5], [0, 0.4, 0]), at(die(tier, { color: "#c0392b", pip: "#f4f1ea" }), [12, 0, 5.6], [0, -0.2, 0]));
+    const tokens = [];
+    for (let i = 0; i < count(6, density); i++) tokens.push(place(new THREE.CylinderGeometry(0.28, 0.28, 0.08, byTier(tier, [10, 12, 24, 40])), { p: [-11 + i % 2 * 0.05, 0.04 + i * 0.085, 5] }));
+    root.add(mesh(merge(tokens), { part: "props", color: "#d4af37", metalness: 0.6, roughness: 0.35 }));
+    if (tier >= 2) root.add(at(sphere(tier, 0.22, { part: "props", color: "#3d6fd6", roughness: 0.2 }), [-10.2, 0.22, 6.2]));
+    return { root };
+  }
+};
+
+// src/scenes/alley.js
+var A3 = "architecture";
+var P4 = "props";
+function facade(tier, rng, { side, z0, z1, height, color }) {
+  const root = group("facade");
+  const len = z1 - z0, x = side * 3.4;
+  const wallG = new THREE.BoxGeometry(0.8, height, len, 1, byTier(tier, [1, 2, 4, 8]), byTier(tier, [1, 2, 6, 12]));
+  tileUv(wallG, len / 2.4, height / 2.4);
+  root.add(at(mesh(wallG, { part: A3, color, map: "bricks", roughness: 0.85 }), [x, height / 2, (z0 + z1) / 2]));
+  const lit = [], dark = [], frames = [], sills = [];
+  const face = x - side * 0.41;
+  for (let y = 3.2; y < height - 1; y += 3) for (let z = z0 + 1.5; z < z1 - 1; z += 3.2) {
+    const on2 = rng() < 0.4;
+    (on2 ? lit : dark).push(place(new THREE.BoxGeometry(0.06, 1.4, 1), { p: [face, y, z] }));
+    if (tier >= 1) frames.push(place(new THREE.BoxGeometry(0.12, 1.6, 0.1), { p: [face, y, z - 0.55] }), place(new THREE.BoxGeometry(0.12, 1.6, 0.1), { p: [face, y, z + 0.55] }), place(new THREE.BoxGeometry(0.12, 0.1, 1.2), { p: [face, y + 0.75, z] }));
+    if (tier >= 2) sills.push(place(new THREE.BoxGeometry(0.25, 0.1, 1.3), { p: [face - side * 0.08, y - 0.78, z] }));
+  }
+  if (lit.length) root.add(mesh(merge(lit), { part: "vfx", color: "#ffd38a", emissive: "#ffb347", emissiveIntensity: 1.6, castShadow: false }));
+  if (dark.length) root.add(mesh(merge(dark), { part: A3, color: "#1b2030", roughness: 0.15 }));
+  if (frames.length) root.add(mesh(merge(frames), { part: A3, color: "#4a4440" }));
+  if (sills.length) root.add(mesh(merge(sills), { part: A3, color: "#6a625a" }));
+  const doorZ = z0 + len * 0.55;
+  root.add(at(mesh(new THREE.BoxGeometry(0.12, 2.2, 1.1), { part: A3, color: "#3a2a22" }), [face, 1.1, doorZ]));
+  if (tier >= 1) root.add(at(mesh(new THREE.BoxGeometry(0.6, 0.18, 1.5), { part: A3, color: "#5a5550" }), [face - side * 0.3, 0.09, doorZ]));
+  if (tier >= 2) root.add(at(mesh(new THREE.CylinderGeometry(0.07, 0.07, height, byTier(tier, [6, 6, 10, 16])), { part: A3, color: "#2f3238", metalness: 0.4, roughness: 0.5 }), [face - side * 0.12, height / 2, z1 - 0.6]));
+  if (tier >= 3) root.add(at(mesh(new THREE.BoxGeometry(0.5, 0.35, len, 1, 2, 24), { part: A3, color: "#5e5650" }), [x - side * 0.2, height - 0.1, (z0 + z1) / 2]));
+  return root;
+}
+function fireEscape(tier, { side, z, floors = 3 }) {
+  const g = [];
+  const x = side * 2.4;
+  for (let f = 0; f < floors; f++) {
+    const y = 3.6 + f * 3;
+    g.push(place(new THREE.BoxGeometry(1.4, 0.08, 3), { p: [x, y, z] }));
+    if (tier >= 1) {
+      g.push(place(new THREE.BoxGeometry(0.05, 0.05, 3), { p: [x - side * 0.68, y + 0.9, z] }));
+      for (let k = 0; k <= byTier(tier, [2, 2, 6, 12]); k++) g.push(place(new THREE.BoxGeometry(0.04, 0.9, 0.04), { p: [x - side * 0.68, y + 0.45, z - 1.5 + k * 3 / byTier(tier, [2, 2, 6, 12])] }));
+    }
+    if (tier >= 2 && f < floors - 1) {
+      for (const dz of [-0.25, 0.25]) g.push(place(new THREE.BoxGeometry(0.04, 3, 0.04), { p: [x, y + 1.5, z + 1.1 + dz] }));
+      for (let r = 0; r < 8; r++) g.push(place(new THREE.BoxGeometry(0.03, 0.03, 0.5), { p: [x, y + 0.3 + r * 0.36, z + 1.1] }));
+    }
+  }
+  return mesh(merge(g), { part: P4, color: "#26292f", metalness: 0.6, roughness: 0.45 });
+}
+function neon(tier, { color, seed = 0, flicker = 0.4 }) {
+  const root = group("neon sign");
+  root.add(mesh(new THREE.BoxGeometry(0.12, 1.1, 2.2), { part: P4, color: "#16181d" }));
+  const bars = [place(new THREE.BoxGeometry(0.08, 0.12, 1.8), { p: [-0.08, 0.3, 0] }), place(new THREE.BoxGeometry(0.08, 0.12, 1.2), { p: [-0.08, -0.1, -0.3] })];
+  if (tier >= 2) bars.push(place(new THREE.TorusGeometry(0.22, 0.05, 8, byTier(tier, [12, 12, 24, 48])), { p: [-0.08, -0.15, 0.6], r: [0, Math.PI / 2, 0] }));
+  root.add(mesh(merge(bars), { part: "vfx", color, emissive: color, emissiveIntensity: 3.5, castShadow: false }));
+  const l = practical({ color, intensity: 14, distance: 9, flicker, seed });
+  l.position.x = -1;
+  root.add(l);
+  return root;
+}
+var alley_default = {
+  id: "alley",
+  name: "Noir Alley",
+  inspiredBy: ["Noir detective games", "Blacksad", "L.A. Noire"],
+  genre: "noir detective adventure",
+  notes: "Night: the light comes from neon, windows and one lamp, not the moon. Watch whether the wet cobbles catch the neon, whether the detective reads against the dark, and how a black-and-white look keeps the neon readable by value alone. Bricks and cobbles are textured: the retro texture filters and the affine warp show here.",
+  shots: {
+    hero: { label: "Street level (down the alley)", pos: [1.3, 1.7, 9.5], target: [-0.4, 2.4, -12], fov: 50 },
+    gameplay: { label: "Third-person (behind the detective)", pos: [0.9, 2.5, 7.8], target: [0, 1.3, 1], fov: 56 },
+    wide: { label: "Wide (from the fire escape)", pos: [2.2, 10.5, 12], target: [-0.5, 1, -8], fov: 48 },
+    close: { label: "Close-up (under the lamp)", pos: [1.9, 1.7, 5.6], target: [0.1, 1.45, 3], fov: 34 }
+  },
+  defaultShot: "hero",
+  focus: [0, 1.4, 3],
+  shadow: { center: [0, 0, -6], radius: 20 },
+  far: 400,
+  params: {
+    "lighting.key.elevation": 38,
+    "lighting.key.azimuth": 205,
+    "lighting.key.color": "#a9bcff",
+    "lighting.key.intensity": 1.5,
+    "lighting.ambient.sky": "#43538a",
+    "lighting.ambient.ground": "#2a2026",
+    "lighting.ambient.intensity": 1,
+    "atmosphere.sky.zenith": "#06070e",
+    "atmosphere.sky.horizon": "#25304d",
+    "atmosphere.sky.ground": "#0e1018",
+    "atmosphere.fog.color": "#202842",
+    // The scene's weather: rain, in every styled look (the plain baseline has none).
+    "atmosphere.particles.enabled": true,
+    "atmosphere.particles.type": "rain",
+    "atmosphere.particles.density": 0.7,
+    "atmosphere.particles.color": "#b7c8ff"
+  },
+  // Look zones (§6.10): the neon floods the grade magenta; under the lamp it warms.
+  zones: [
+    {
+      id: "neon",
+      label: "Under the neon",
+      lookName: "Neon wash",
+      shape: "sphere",
+      center: [-1.5, 1, -6],
+      radius: 3,
+      blend: 3,
+      priority: 1,
+      params: { "grade.temperature": -0.15, "grade.tint": 0.25, "grade.saturation": 1.2, "lighting.practicals.intensity": 1.6 }
+    },
+    {
+      id: "lamp",
+      label: "Under the lamp",
+      lookName: "Lamplight",
+      shape: "sphere",
+      center: [1.8, 1, 3],
+      radius: 2.5,
+      blend: 3,
+      priority: 0,
+      params: { "grade.temperature": 0.3, "grade.exposure": 0.25 }
+    }
+  ],
+  build({ tier = 0, seed = 31, density = 1 } = {}) {
+    const rng = createRng(seed);
+    const root = group("alley");
+    const streetG = new THREE.PlaneGeometry(6.4, 48, byTier(tier, [1, 4, 16, 64]), byTier(tier, [1, 24, 96, 320])).rotateX(-Math.PI / 2);
+    tileUv(streetG, 6.4 / 1.6, 48 / 1.6);
+    if (tier >= 3) {
+      const pos = streetG.getAttribute("position");
+      for (let i = 0; i < pos.count; i++) pos.setY(i, Math.sin(pos.getX(i) * 4.1) * Math.sin(pos.getZ(i) * 3.7) * 0.015);
+      streetG.computeVertexNormals();
+    }
+    root.add(at(mesh(streetG, { part: "terrain", color: "#7a7c84", map: "cobbles", roughness: 0.28 }), [0, 0, -14]));
+    const puddles = [];
+    for (let i = 0; i < count(7, density); i++) {
+      const g = new THREE.CircleGeometry(rng.range(0.4, 1.1), byTier(tier, [10, 12, 28, 48])).rotateX(-Math.PI / 2);
+      g.scale(1, 1, rng.range(1.3, 2.2));
+      puddles.push(place(g, { p: [rng.range(-2, 2), 0.012, rng.range(-30, 7)] }));
+    }
+    root.add(mesh(tier === 1 ? faceted(merge(puddles)) : merge(puddles), { part: "water", color: "#141a26", roughness: 0.04, metalness: 0.2, castShadow: false }));
+    const bricks = ["#8a4535", "#7a4a3c", "#8c5544", "#6e443b"];
+    for (const side of [-1, 1]) {
+      let z = 9;
+      for (let i = 0; i < 3; i++) {
+        const len = rng.range(10, 15);
+        root.add(facade(tier, rng.fork(), { side, z0: z - len, z1: z, height: rng.range(10, 15), color: bricks[(i + (side > 0 ? 2 : 0)) % 4] }));
+        z -= len;
+      }
+    }
+    const endG = new THREE.BoxGeometry(7.6, 12, 0.8);
+    tileUv(endG, 7.6 / 2.4, 12 / 2.4);
+    root.add(at(mesh(endG, { part: A3, color: "#4a3a36", map: "bricks" }), [0, 6, -37]));
+    root.add(fireEscape(tier, { side: -1, z: -4 }), fireEscape(tier, { side: 1, z: -17, floors: 2 }));
+    root.add(at(neon(tier, { color: "#ff2e88", seed: 1, flicker: 0.6 }), [-2.9, 4.2, -6], [0, Math.PI, 0]));
+    root.add(at(neon(tier, { color: "#22d3ee", seed: 4, flicker: 0.2 }), [2.9, 3.6, -15]));
+    root.add(at(lampPost(tier, { height: 4.2, glow: "#ffcf87" }), [2.4, 0, 3.2]));
+    const spots = [[-2.4, 1.5], [2.5, -3], [-2.5, -9], [2.4, -12], [-2.3, -20], [2.4, -24], [-2.4, -28], [2.4, 6.5]];
+    for (let i = 0; i < Math.min(spots.length, count(5, density)); i++) {
+      const [x, z] = spots[i];
+      const prop = i % 3 === 1 ? crate(tier, { color: "#6b5236" }) : trashCan(tier, { color: "#3d4436" });
+      root.add(at(prop, [x, 0, z], [0, rng.range(0, Math.PI), 0]));
+    }
+    const dumpster = group("dumpster");
+    dumpster.add(at(mesh(new THREE.BoxGeometry(1.2, 1.3, 2.2), { part: P4, color: "#2f4a3a", roughness: 0.6, metalness: 0.3 }), [0, 0.65, 0]));
+    if (tier >= 1) dumpster.add(at(mesh(new THREE.BoxGeometry(1.3, 0.1, 2.3), { part: P4, color: "#25382d", metalness: 0.3 }), [0, 1.35, 0], [0, 0, -0.12]));
+    root.add(at(dumpster, [-2.3, 0, -14]));
+    if (tier >= 2) {
+      const wires = [];
+      for (const z of [-2, -11, -22]) {
+        const curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3(-3, 8.5, z), new THREE.Vector3(0, 7.4, z + 0.4), new THREE.Vector3(3, 8.2, z - 0.3));
+        wires.push(new THREE.TubeGeometry(curve, byTier(tier, [8, 8, 16, 32]), 0.02, 4));
+      }
+      root.add(mesh(merge(wires), { part: P4, color: "#111317" }));
+    }
+    const detective = character(tier, { part: "hero", shirt: "#8b7a58", pants: "#2b2b30", hat: "#3b3226", seed: 3 });
+    root.add(at(detective, [0.6, 0, 3], [0, -0.35, 0]));
+    root.add(at(character(tier, { part: "characters", shirt: "#3a3f55", pants: "#1f2229", hat: "#20232b", seed: 8 }), [-2.3, 0, -17.5], [0, Math.PI / 2, 0]));
+    const glow = mesh(new THREE.PlaneGeometry(7, 1.2), { part: "vfx", color: "#ffcf87", emissive: "#ffb347", emissiveIntensity: 0.8, castShadow: false });
+    root.add(at(glow, [0, 11.4, -36.55]));
+    return { root };
+  }
+};
+
 // src/scenes/index.js
 var countMeshes = (root) => {
   let n = 0;
@@ -2507,21 +2943,28 @@ var countMeshes = (root) => {
   });
   return n;
 };
-var SCENES = [harbor_default, lookdev_default, garden_default, plaza_default, dungeon_default, kart_default, platforms_default, hangar_default, meadow_default, campsite_default, toybox_default];
+var SCENES = [harbor_default, lookdev_default, garden_default, plaza_default, dungeon_default, kart_default, platforms_default, hangar_default, meadow_default, campsite_default, toybox_default, tabletop_default, alley_default];
 var DENSITY = { min: 0.5, max: 4, default: 1 };
 var sceneById = new Map(SCENES.map((s) => [s.id, s]));
+function partOf(object) {
+  let part = object.userData.style?.part ?? null;
+  if (!part) object.traverse((o) => {
+    part ??= o.userData.style?.part ?? null;
+  });
+  return part;
+}
 function buildScene(scene, { tier = 0, seed, density = 1 } = {}) {
   const { root } = scene.build({ tier, seed, density });
   const animators = [];
   root.traverse((o) => {
-    if (o.userData.animate) animators.push(o.userData.animate);
+    if (o.userData.animate) animators.push({ fn: o.userData.animate, part: partOf(o) });
   });
   return {
     root,
     triangles: countTriangles(root),
     objects: countMeshes(root),
-    animate: (t) => {
-      for (const a of animators) a(t);
+    animate: (t, timeFor = null) => {
+      for (const a of animators) a.fn(timeFor ? timeFor(a.part) : t);
     }
   };
 }
@@ -2566,7 +3009,9 @@ export {
   hillHeight,
   hologram,
   house,
+  interactable,
   kart,
+  kitTexture,
   knight,
   lampPost,
   lantern,
@@ -2598,6 +3043,7 @@ export {
   stoneLantern,
   tent,
   terrainPatch,
+  tileUv,
   tireStack,
   torch,
   torusKnot,

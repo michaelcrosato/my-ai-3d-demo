@@ -7,7 +7,7 @@ import { PARTS } from '../../runtime/registry/index.js';
 import { PART_MODULES, partRecipe } from '../../runtime/look/resolve.js';
 import { esc } from './dom.js';
 
-const MODULE_LABELS = { lighting: 'Ambient', surface: 'Surface', lines: 'Lines', palette: 'Palette', media: 'Media', retro: 'Vertex snap' };
+const MODULE_LABELS = { lighting: 'Ambient', surface: 'Surface', lines: 'Lines', palette: 'Palette', atmosphere: 'Fog', media: 'Media', retro: 'Retro', motion: 'Stepping' };
 const PART_LABELS = { sky: 'Sky', terrain: 'Terrain', water: 'Water', foliage: 'Foliage', architecture: 'Architecture', props: 'Props', characters: 'Characters', hero: 'Hero (inherits characters)', vfx: 'VFX and emissive' };
 
 export function createPartsTab( pane, app, { toast } ) {

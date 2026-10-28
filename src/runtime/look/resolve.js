@@ -26,7 +26,7 @@ export const LAYERS = [ 'registry', 'scene', 'look', 'override' ];
 export const PART_PARENT = { hero: 'characters' };
 
 /** Modules that can differ per part (§6.7): exact in materials, or masked in post. */
-export const PART_MODULES = [ 'lighting', 'surface', 'lines', 'palette', 'media', 'retro' ];
+export const PART_MODULES = [ 'lighting', 'surface', 'lines', 'palette', 'atmosphere', 'media', 'retro', 'motion' ];
 
 /** Resamples a palette (list of hex) to `n` stops, interpolating in OKLab. */
 export function resamplePalette( colors, n ) {

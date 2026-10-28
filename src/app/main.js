@@ -16,11 +16,12 @@ import { createApp } from './app.js';
 import { createTopBar } from './ui/topbar.js';
 import { createGallery } from './ui/gallery.js';
 import { createBriefModal } from './ui/brief.js';
-import { exportFiles, briefText, looksJson } from './export/exports.js';
+import { exportFiles, exportZip, briefText, looksJson } from './export/exports.js';
 import { bakeGradeLut } from './export/grade.js';
 import { createAuditModal } from './ui/audit.js';
 import { createLessonPlayer } from './ui/lessons.js';
 import { critique, STYLE_EXCEPTIONS } from './analysis/critic.js';
+import { whatChanged } from './analysis/changes.js';
 import { LESSONS } from '../content/lessons.js';
 import { runAudit, AUDIT_TARGETS } from './perf/audit.js';
 import { createInspector } from './ui/inspector.js';
@@ -28,6 +29,7 @@ import { createCompareUI } from './ui/compare.js';
 import { $, h, toast } from './ui/dom.js';
 import { bindKeyboard } from './input/keyboard.js';
 import { createGamepad } from './input/gamepad.js';
+import { createTouchControls } from './input/touch.js';
 import { LOOKS } from '../content/looks/index.js';
 import { EFFECT_DEMOS, cellId } from '../content/effects.js';
 import { SCENES, TIERS, sceneById } from '../scenes/index.js';
@@ -180,7 +182,7 @@ async function boot() {
 	const shareURL = async () => `${location.origin}${location.pathname}${location.search}${await app.actions.shareHash()}`;
 	// Lessons and the Analyze tab (M8) are wired after the modals they drive exist.
 	let lessonPlayer = null, analyzeFrame = null;
-	const inspector = createInspector( $( 'inspector' ), app, { readouts, benefitMatrix: () => api.benefitMatrix(), showImage, toast, share: shareURL, startLesson: ( l ) => lessonPlayer.start( l ), analyze: () => analyzeFrame() } );
+	const inspector = createInspector( $( 'inspector' ), app, { readouts, benefitMatrix: () => api.benefitMatrix(), showImage, toast, share: shareURL, startLesson: ( l ) => lessonPlayer.start( l ), analyze: () => analyzeFrame(), whatChanged: () => measureChanges( { notify: false } ) } );
 
 	// Drop a .glb anywhere to import it; click in the view to pick parts.
 	window.addEventListener( 'dragover', ( e ) => { e.preventDefault(); } );
@@ -189,11 +191,16 @@ async function boot() {
 		e.preventDefault();
 		const file = [ ...( e.dataTransfer?.files || [] ) ].find( ( f ) => /\.(glb|gltf)$/i.test( f.name ) );
 		const lookFile = [ ...( e.dataTransfer?.files || [] ) ].find( ( f ) => /\.json$/i.test( f.name ) );
-		if ( file ) { inspector.setTab( 'scene' ); inspector.sceneTab.importFile( file ); } else if ( lookFile ) {
+		const cubeFile = [ ...( e.dataTransfer?.files || [] ) ].find( ( f ) => /\.cube$/i.test( f.name ) );
+		if ( cubeFile ) {
+
+			cubeFile.text().then( ( t ) => { const r = app.actions.importCube( t, cubeFile.name ); toast( `Imported the LUT "${r.title}" (${r.size}³): Grade → LUT preset is now Imported .cube.` ); } ).catch( ( err ) => toast( `LUT import failed: ${err.message}`, 6000 ) );
+
+		} else if ( file ) { inspector.setTab( 'scene' ); inspector.sceneTab.importFile( file ); } else if ( lookFile ) {
 
 			lookFile.text().then( ( t ) => { const l = app.actions.importLook( JSON.parse( t ) ); toast( `Imported "${l.name}" into My looks.` ); } ).catch( ( err ) => toast( `Import failed: ${err.message}`, 6000 ) );
 
-		} else if ( e.dataTransfer?.files?.length ) toast( 'Drop a .glb or .gltf file to import it, or a look .json.' );
+		} else if ( e.dataTransfer?.files?.length ) toast( 'Drop a .glb or .gltf file to import it, a look .json, or a .cube LUT.' );
 
 	} );
 
@@ -220,6 +227,7 @@ async function boot() {
 
 	} );
 	const compareUI = createCompareUI( app );
+	const touch = createTouchControls( $( 'viewport' ), app, { force: new URLSearchParams( location.search ).get( 'touch' ) === '1' } );
 
 	// Brief and export (§6.12).
 	const briefRoot = h( 'div.modal', { id: 'brief-modal', hidden: true } );
@@ -298,6 +306,58 @@ async function boot() {
 
 	};
 
+	// What changed (§6.13, P2): after you let go of hold-to-compare, the plain and the styled
+	// frame are read back small and compared; the summary is a toast and lands in Analyze.
+	const subjectAt = ( w, hgt ) => {
+
+		const at = app.walking ? app.walk.position().map( ( v, i ) => ( i === 1 ? v + 0.9 : v ) ) : app.scene().focus;
+		if ( ! at ) return null;
+		const cam = app.camera.clone();
+		cam.aspect = w / hgt;
+		cam.updateProjectionMatrix();
+		cam.updateMatrixWorld();
+		const p = new THREE.Vector3( ...at ).project( cam );
+		return Math.abs( p.x ) <= 1 && Math.abs( p.y ) <= 1 && p.z < 1 ? [ ( p.x + 1 ) / 2 * w, ( 1 - p.y ) / 2 * hgt ] : null;
+
+	};
+	const measureChanges = ( { notify = true } = {} ) => pausedWhileRef( async () => {
+
+		const [ w, hgt ] = [ 160, 90 ];
+		// Plain, then styled, in one job (nothing else renders in between); the compare
+		// uniforms go back to exactly what they were.
+		const U = app.runtime.U, before = { hold: U.hold.value, split: U.split.value, flicker: U.flicker.value };
+		let plain, styled;
+		try {
+
+			app.runtime.setCompare( { hold: true, split: false, flicker: false } );
+			plain = await captureNow( { width: w, height: hgt } );
+			app.runtime.setCompare( { hold: false } );
+			styled = await captureNow( { width: w, height: hgt } );
+
+		} finally {
+
+			U.hold.value = before.hold; U.split.value = before.split; U.flicker.value = before.flicker;
+
+		}
+
+		const r = whatChanged( captures.get( plain.id ).data, captures.get( styled.id ).data, w, hgt, { focus: subjectAt( w, hgt ) } );
+		app.emit( 'changed', r );
+		if ( notify ) toast( `What changed: ${r.summary}`, 6000 );
+		return r;
+
+	} );
+	let heldAt = 0, changeTimer = null;
+	app.on( ( type, on ) => {
+
+		if ( type !== 'hold' ) return;
+		clearTimeout( changeTimer );
+		if ( on ) { heldAt = performance.now(); return; }
+		// Only after a real look at the baseline (not a tap), once the key is up for a moment, and
+		// not under automation (scripted holds happen mid-test; the API measures on request).
+		if ( performance.now() - heldAt > 250 && app.store.get().showChanges !== false && ! navigator.webdriver ) changeTimer = setTimeout( () => measureChanges().catch( ( e ) => log.add( 'warn', [ 'What changed:', e ] ) ), 400 );
+
+	} );
+
 	// Help (M9): the shortcut overlay (?) and the first-run welcome.
 	const keysRoot = h( 'div.modal', { id: 'keys-modal', hidden: true } );
 	const welcomeRoot = h( 'div.modal', { id: 'welcome-modal', hidden: true } );
@@ -315,6 +375,8 @@ async function boot() {
 		toggleHidden: () => appRoot.classList.toggle( 'ui-hidden' ),
 		showKeys: () => keys.toggle(),
 		closePanels: () => { $( 'verify' ).hidden = true; briefModal.close(); auditModal.close(); keys.close(); onboarding?.close(); appRoot.classList.remove( 'inspector-open', 'ui-hidden' ); },
+		/** The panel the D-pad navigates: the topmost open modal, the tour drawer, or the inspector drawer. */
+		activePanel: () => [ 'welcome-modal', 'keys-modal', 'modal', 'brief-modal', 'audit-modal' ].map( $ ).find( ( el ) => el && ! el.hidden ) || ( $( 'verify' ).hidden ? null : $( 'verify' ) ) || ( appRoot.classList.contains( 'inspector-open' ) ? $( 'inspector' ) : null ),
 		toast,
 	};
 
@@ -504,6 +566,16 @@ async function boot() {
 
 	};
 
+	const effectSheetFor = async ( demos, title ) => {
+
+		toast( `Rendering ${demos.length} effect cells…`, 60000 );
+		let n = 0;
+		const r = await api.effectSheet( { ids: demos.map( ( d ) => d.id ), cell: [ 480, 270 ], cols: 5, onCell: () => toast( `Rendering effect cells… ${++ n} / ${demos.length}`, 60000 ) } );
+		toast( 'Effects sheet ready.' );
+		showImage( r.url, title );
+
+	};
+
 	const panel = createVerifyPanel( {
 		root: $( 'verify' ),
 		build: BUILD,
@@ -521,15 +593,8 @@ async function boot() {
 			openAudit: async () => { $( 'verify' ).hidden = true; auditModal.open(); },
 			showWelcome: async () => { $( 'verify' ).hidden = true; onboarding.show(); },
 			showKeys: async () => { $( 'verify' ).hidden = true; keys.show(); },
-			effectSheet: async () => {
-
-				toast( `Rendering ${EFFECT_DEMOS.length} effect cells…`, 60000 );
-				let n = 0;
-				const r = await api.effectSheet( { cell: [ 480, 270 ], cols: 5, onCell: () => toast( `Rendering effect cells… ${++ n} / ${EFFECT_DEMOS.length}`, 60000 ) } );
-				toast( 'Effects sheet ready.' );
-				showImage( r.url, 'Effects contact sheet (report bad cells by id)' );
-
-			},
+			effectSheet: async () => effectSheetFor( EFFECT_DEMOS.filter( ( d ) => d.milestone.startsWith( 'M3' ) ), 'Effects contact sheet (report bad cells by id)' ),
+			effectSheetP2: async () => effectSheetFor( EFFECT_DEMOS.filter( ( d ) => d.milestone === 'M10' ), 'New effects contact sheet, v1.1 (report bad cells by id)' ),
 		},
 	} );
 
@@ -548,6 +613,60 @@ async function boot() {
 	// Captures keep their pixels so diff() can compare them.
 	const captures = new Map();
 	let captureId = 0;
+
+	/**
+	 * Renders the current view offscreen; returns { id, stats, hash }. `advance` moves the
+	 * (frozen) clock between the warm-up and the captured frame, for effects that need
+	 * motion; `viewOffset` pans the image plane by whole screen pixels [x, y]. Call it inside
+	 * a job (pausedWhile); api.capture does.
+	 */
+	const captureNow = async ( { width = 512, height = 288, advance = 0, viewOffset = null } = {} ) => {
+
+		const cam = app.camera, aspect = cam.aspect;
+		const shutter = app.runtime.P.get( 'lens.motionBlur.shutter' ), shutter0 = shutter.value;
+		cam.aspect = width / height;
+		if ( viewOffset ) cam.setViewOffset( width, height, viewOffset[ 0 ], viewOffset[ 1 ], width, height );
+		cam.updateProjectionMatrix();
+		const t0 = app.frozenTime;
+
+		try {
+
+			const px = await withRendererSize( renderer, width, height, async () => {
+
+				app.tick( 0 );
+				// A still capture has no motion, so no motion blur: renders outside the animation
+				// loop would otherwise read stale previous-frame matrices in the velocity buffer.
+				if ( ! advance ) shutter.value = 0;
+				stepNodeFrame( renderer );
+				await renderToPixels( renderer, width, height, () => app.runtime.render() ); // warm-up: compiles after rebuilds
+				if ( advance && t0 !== null ) { app.actions.freeze( t0 + advance ); app.tick( 0 ); }
+				stepNodeFrame( renderer );
+				const pixels = await renderToPixels( renderer, width, height, () => app.runtime.render() );
+				// With trackTimestamp on, unresolved queries pile up while the loop is paused.
+				if ( stats.method === 'timestamp' ) await renderer.resolveTimestampsAsync( 'render' );
+				return pixels;
+
+			} );
+			const id = ++ captureId;
+			captures.set( id, px );
+			if ( captures.size > 64 ) captures.delete( captures.keys().next().value );
+			// FNV-1a over the pixels: equal hashes mean identical frames (determinism checks).
+			let hash = 0x811c9dc5;
+			for ( let i = 0; i < px.data.length; i ++ ) hash = Math.imul( hash ^ px.data[ i ], 16777619 );
+			return { id, stats: pixelStats( px ), hash: ( hash >>> 0 ).toString( 16 ) };
+
+		} finally {
+
+			if ( advance && t0 !== null ) app.actions.freeze( t0 );
+			shutter.value = shutter0;
+			if ( viewOffset ) cam.clearViewOffset();
+			cam.aspect = aspect;
+			cam.updateProjectionMatrix();
+
+		}
+
+	};
+
 
 	Object.assign( api, {
 		renderer,
@@ -579,6 +698,14 @@ async function boot() {
 		/** One export file by name: its text, or a data URL for images. */
 		exportFile: async ( name ) => { const f = exportFiles( app, { share: shareURL } ).find( ( x ) => x.name === name || ( name === 'look.json' && x.name.endsWith( '.look.json' ) ) ); if ( ! f ) throw new Error( `no export ${name}` ); return f.make(); },
 		exportNames: () => exportFiles( app, { share: shareURL } ).map( ( f ) => f.name ),
+		/** Every export file as one zip: { names, size, head } (head: the first bytes, as numbers). */
+		exportZip: async () => { const z = await exportZip( app, { share: shareURL } ); return { names: z.names, size: z.bytes.length, head: [ ...z.bytes.slice( 0, 4 ) ], bytes: btoa( String.fromCharCode( ...z.bytes.slice( - 22 ) ) ) }; },
+		/** Gamepad layer info (connected, glyphs, rumbles played) and the touch controls. */
+		padInfo: () => ( { ...gamepad.info } ),
+		touchVisible: () => touch.visible,
+		/** Shows the touch controls in walk mode on any screen (?touch=1 does the same at load). */
+		forceTouch: ( on ) => { touch.force = on; return touch.visible; },
+		activePanel: () => ui.activePanel()?.id ?? null,
 		/** The baked grade LUT (33³ RGBA floats, .cube order) for the current look. */
 		bakeGrade: async () => Array.from( await bakeGradeLut( renderer, app.target.global ) ),
 		/** Opens the brief modal on a tab; returns its text, including the brief's textarea. */
@@ -603,6 +730,8 @@ async function boot() {
 		openShareLink: async ( hash ) => ( { toast: await openSharedHash( hash ) } ),
 		// M8: education
 		setView: async ( id ) => { app.actions.setView( id ); await nextFrames(); },
+		/** What changed between the plain baseline and the look on the current frame: { summary, changes }. */
+		whatChanged: () => measureChanges( { notify: false } ),
 		/** The critic on the current frame: { tips, stats }. */
 		critique: async () => { const r = await analyzeFrame(); return { tips: r.tips, stats: r.stats }; },
 		/** The built-in looks where a critic rule is part of the style (see analysis/critic.js). */
@@ -648,57 +777,9 @@ async function boot() {
 
 		},
 		freeze: ( t ) => app.actions.freeze( t ),
-		/**
-		 * Renders the current view offscreen; returns { id, stats, hash }. `advance` moves the
-		 * (frozen) clock between the warm-up and the captured frame, for effects that need
-		 * motion; `viewOffset` pans the image plane by whole screen pixels [x, y].
-		 */
-		capture: ( { width = 512, height = 288, advance = 0, viewOffset = null } = {} ) => pausedWhile( async () => {
+		/** Renders the current view offscreen: { id, stats, hash } (see captureNow; `advance`, `viewOffset`). */
+		capture: ( options ) => pausedWhile( () => captureNow( options ) ),
 
-			const cam = app.camera, aspect = cam.aspect;
-			const shutter = app.runtime.P.get( 'lens.motionBlur.shutter' ), shutter0 = shutter.value;
-			cam.aspect = width / height;
-			if ( viewOffset ) cam.setViewOffset( width, height, viewOffset[ 0 ], viewOffset[ 1 ], width, height );
-			cam.updateProjectionMatrix();
-			const t0 = app.frozenTime;
-
-			try {
-
-				const px = await withRendererSize( renderer, width, height, async () => {
-
-					app.tick( 0 );
-					// A still capture has no motion, so no motion blur: renders outside the animation
-					// loop would otherwise read stale previous-frame matrices in the velocity buffer.
-					if ( ! advance ) shutter.value = 0;
-					stepNodeFrame( renderer );
-					await renderToPixels( renderer, width, height, () => app.runtime.render() ); // warm-up: compiles after rebuilds
-					if ( advance && t0 !== null ) { app.actions.freeze( t0 + advance ); app.tick( 0 ); }
-					stepNodeFrame( renderer );
-					const pixels = await renderToPixels( renderer, width, height, () => app.runtime.render() );
-					// With trackTimestamp on, unresolved queries pile up while the loop is paused.
-					if ( stats.method === 'timestamp' ) await renderer.resolveTimestampsAsync( 'render' );
-					return pixels;
-
-				} );
-				const id = ++ captureId;
-				captures.set( id, px );
-				if ( captures.size > 64 ) captures.delete( captures.keys().next().value );
-				// FNV-1a over the pixels: equal hashes mean identical frames (determinism checks).
-				let hash = 0x811c9dc5;
-				for ( let i = 0; i < px.data.length; i ++ ) hash = Math.imul( hash ^ px.data[ i ], 16777619 );
-				return { id, stats: pixelStats( px ), hash: ( hash >>> 0 ).toString( 16 ) };
-
-			} finally {
-
-				if ( advance && t0 !== null ) app.actions.freeze( t0 );
-				shutter.value = shutter0;
-				if ( viewOffset ) cam.clearViewOffset();
-				cam.aspect = aspect;
-				cam.updateProjectionMatrix();
-
-			}
-
-		} ),
 		/** A labeled grid, rows = scenes, columns = looks (§6.14); returns a PNG data URL. */
 		contactSheet: async ( { looks = LOOKS.map( ( l ) => l.id ), scenes = SCENES.map( ( s ) => s.id ), tier = app.store.get().tier, cell = [ 320, 180 ] } = {} ) => {
 
@@ -804,8 +885,10 @@ async function boot() {
 				const x = ( i % cols ) * w, y = Math.floor( i / cols ) * ( hgt + pad );
 				ctx.putImageData( new ImageData( new Uint8ClampedArray( captures.get( shot.id ).data ), w, hgt ), x, y + pad );
 				ctx.fillStyle = errors.length ? '#ff8a80' : '#e6e6e6';
-				ctx.fillText( `${cellId( i )} · ${d.label}`, x + 6, y + 13 );
-				const result = { cell: cellId( i ), id: d.id, label: d.label, effect: d.effect, diff, minDiff: d.minDiff, ok: diff >= d.minDiff && ! errors.length, errors, stats: shot.stats };
+				// Cell ids follow the full demo list, so a cell keeps its id on any sheet.
+				const cell = cellId( EFFECT_DEMOS.indexOf( d ) );
+				ctx.fillText( `${cell} · ${d.label}`, x + 6, y + 13 );
+				const result = { cell, id: d.id, label: d.label, effect: d.effect, diff, minDiff: d.minDiff, ok: diff >= d.minDiff && ! errors.length, errors, stats: shot.stats };
 				cells.push( result );
 				onCell( result );
 
