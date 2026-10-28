@@ -1,0 +1,21 @@
+{
+  "name": "my-ai-3d-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Style Lab: a live art-style preview tool for games (three.js r182, WebGPU).",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node --test \"tests/**/*.test.js\"",
+    "smoke": "node scripts/build.mjs && node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "@dimforge/rapier3d-compat": "0.19.3",
+    "@tweakpane/plugin-essentials": "0.2.1",
+    "esbuild": "0.28.2",
+    "three": "0.182.0",
+    "tweakpane": "4.0.5",
+    "uqr": "0.1.3"
+  }
+}

@@ -1,0 +1,47 @@
+# Publishes dist/ (the built single-file tool, runtime, kit and starter) to GitHub Pages.
+#
+# Not active until Pages is enabled: repository Settings → Pages → Build and deployment →
+# Source: "GitHub Actions". Until then this workflow fails at the deploy step and nothing
+# is published. It runs on pushes to main and by hand (Actions → Deploy to GitHub Pages →
+# Run workflow).
+#
+# dist/ is committed (built by `npm run build` and checked by `npm run smoke`), so the
+# workflow only uploads it; it doesn't rebuild.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'dist/**' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble the site
+        run: |
+          mkdir -p site
+          cp dist/style-lab.html site/index.html
+          cp dist/style-lab.html dist/stylelab-runtime.js dist/stylelab-kit.js dist/starter.html site/
+          touch site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
