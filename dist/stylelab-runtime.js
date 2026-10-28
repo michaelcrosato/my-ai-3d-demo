@@ -1,4 +1,4 @@
-/* Style Lab runtime v0.3.0 (fd17341) */
+/* Style Lab runtime v0.4.0 (a2058a3) */
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -6,13 +6,13 @@ var __export = (target, all) => {
 };
 
 // src/runtime/style.js
-import * as THREE5 from "three/webgpu";
-import { pass, mrt as mrt3, output as output3, normalView as normalView2, directionToColor, vec4 as vec43 } from "three/tsl";
+import * as THREE10 from "three/webgpu";
+import { mrt as mrt3, output as output3, normalView as normalView2, directionToColor, vec4 as vec45, velocity, emissive } from "three/tsl";
 
 // src/runtime/materials/factory.js
-import * as THREE from "three/webgpu";
+import * as THREE2 from "three/webgpu";
 import * as TSL from "three/tsl";
-import { uniform as uniform2, vec3 as vec32, vec4, mrt, output, fract, sin, cos, dot, floor, smoothstep as smoothstep2, modelWorldMatrix, positionLocal, Fn as Fn2 } from "three/tsl";
+import { uniform as uniform3, vec3 as vec32, vec4, mrt, output, fract, sin, cos, dot, floor, float as float3, smoothstep as smoothstep3, modelWorldMatrix, modelViewProjection, positionLocal, materialColor, Fn as Fn3 } from "three/tsl";
 
 // src/runtime/materials/StyleLightingModel.js
 import { Color, LightingModel, MeshToonNodeMaterial, MeshStandardNodeMaterial } from "three/webgpu";
@@ -161,9 +161,9 @@ function computeOutlineNormals(geometry, { name = "outlineNormal", precision = 1
     _n.normalize();
     const ids = [ia, ib, ic];
     for (let k = 0; k < 3; k++) {
-      const [p10, q, r] = corners[k];
-      _e1.subVectors(q, p10).normalize();
-      _e2.subVectors(r, p10).normalize();
+      const [p12, q, r] = corners[k];
+      _e1.subVectors(q, p12).normalize();
+      _e2.subVectors(r, p12).normalize();
       const angle = Math.acos(Math.min(1, Math.max(-1, _e1.dot(_e2))));
       const key = keys[ids[k]];
       let sum = sums.get(key);
@@ -183,24 +183,119 @@ function computeOutlineNormals(geometry, { name = "outlineNormal", precision = 1
   geometry.setAttribute(name, new BufferAttribute(out, 3));
   return geometry;
 }
-function createHullMaterial({ THREE: THREE6, TSL: TSL2, color, thickness, normalName = "outlineNormal" }) {
-  const { Fn: Fn5, vec4: vec44, attribute, positionLocal: positionLocal2, modelViewMatrix, cameraProjectionMatrix, screenSize: screenSize3 } = TSL2;
-  const material = new THREE6.MeshBasicNodeMaterial({ side: BackSide });
+function createHullMaterial({ THREE: THREE11, TSL: TSL2, color, thickness, normalName = "outlineNormal", snapRows = null }) {
+  const { Fn: Fn10, vec4: vec46, attribute, positionLocal: positionLocal2, modelViewMatrix, cameraProjectionMatrix, screenSize: screenSize3 } = TSL2;
+  const material = new THREE11.MeshBasicNodeMaterial({ side: BackSide });
   material.colorNode = color;
-  material.vertexNode = Fn5(() => {
-    const clip = cameraProjectionMatrix.mul(modelViewMatrix).mul(vec44(positionLocal2, 1));
-    const nView = modelViewMatrix.mul(vec44(attribute(normalName, "vec3"), 0)).xyz;
-    const nClip = cameraProjectionMatrix.mul(vec44(nView, 0)).xy;
+  material.vertexNode = Fn10(() => {
+    const clip = cameraProjectionMatrix.mul(modelViewMatrix).mul(vec46(positionLocal2, 1));
+    const nView = modelViewMatrix.mul(vec46(attribute(normalName, "vec3"), 0)).xyz;
+    const nClip = cameraProjectionMatrix.mul(vec46(nView, 0)).xy;
     const pixels = thickness.mul(screenSize3.y.div(1080));
     const offset = nClip.normalize().mul(pixels).mul(2).div(screenSize3).mul(clip.w);
-    return vec44(clip.xy.add(offset), clip.zw);
+    const out = vec46(clip.xy.add(offset), clip.zw);
+    return snapRows ? snapClip(TSL2, out, snapRows) : out;
   })();
   return material;
 }
+function snapClip(TSL2, clip, rows) {
+  const { vec2: vec26, vec4: vec46, floor: floor6, screenSize: screenSize3 } = TSL2;
+  const grid = vec26(rows.mul(screenSize3.x.div(screenSize3.y)), rows).mul(0.5);
+  const ndc = clip.xy.div(clip.w);
+  return vec46(floor6(ndc.mul(grid).add(0.5)).div(grid).mul(clip.w), clip.zw);
+}
+
+// src/runtime/render/blobs.js
+import * as THREE from "three/webgpu";
+import { Fn as Fn2, uniformArray, uniform as uniform2, float as float2, int, Loop, max as max2, smoothstep as smoothstep2, step as step2, positionWorld } from "three/tsl";
+var MAX_BLOBS = 48;
+var MAX_FOOTPRINT = 6;
+var _box = new THREE.Box3();
+var _size = new THREE.Vector3();
+var BlobShadows = class {
+  constructor() {
+    this.data = uniformArray(Array.from({ length: MAX_BLOBS }, () => new THREE.Vector4()), "vec4");
+    this.count = uniform2(0, "int");
+    this.softness = uniform2(0.6);
+    this.opacity = uniform2(0.5);
+    this.size = 1.1;
+    this.candidates = [];
+    this.owners = [];
+    this.parts = /* @__PURE__ */ new Set();
+    this.node = null;
+  }
+  /** Collects candidate owners: top-level objects, each with its dominant part and local bounds. */
+  setScene(root) {
+    this.candidates = [];
+    root.updateMatrixWorld(true);
+    const inverse = new THREE.Matrix4();
+    for (const object of root.children) {
+      const counts = {};
+      const box = new THREE.Box3();
+      inverse.copy(object.matrixWorld).invert();
+      object.traverse((o) => {
+        if (!o.isMesh || !o.userData.style) return;
+        counts[o.userData.style.part] = (counts[o.userData.style.part] || 0) + 1;
+        if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+        box.union(_box.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld).applyMatrix4(inverse));
+      });
+      const part = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
+      if (!part || box.isEmpty()) continue;
+      box.getSize(_size);
+      if (Math.max(_size.x, _size.z) > MAX_FOOTPRINT * 2) continue;
+      this.candidates.push({ object, part, box });
+    }
+    this.select();
+  }
+  /** Parts whose objects get blobs. Returns true when the set changed. */
+  setParts(parts) {
+    const next = new Set(parts);
+    const changed = next.size !== this.parts.size || [...next].some((p12) => !this.parts.has(p12));
+    this.parts = next;
+    if (changed) this.select();
+    return changed;
+  }
+  select() {
+    this.owners = this.candidates.filter((c) => this.parts.has(c.part)).slice(0, MAX_BLOBS);
+  }
+  get active() {
+    return this.parts.size > 0;
+  }
+  /** Per frame: owners' world footprints into the uniform array (x, base y, z, radius). */
+  update() {
+    let n = 0;
+    for (const { object, box } of this.owners) {
+      _box.copy(box).applyMatrix4(object.matrixWorld);
+      _box.getSize(_size);
+      const r = Math.max(0.15, Math.max(_size.x, _size.z) * 0.5 * this.size);
+      this.data.array[n++].set((_box.min.x + _box.max.x) / 2, _box.min.y, (_box.min.z + _box.max.z) / 2, r);
+    }
+    this.count.value = n;
+  }
+  /** Darkening in [0, opacity] at the fragment's world position (one node, shared by every material). */
+  shade() {
+    if (this.node) return this.node;
+    this.node = Fn2(() => {
+      const shade = float2(0).toVar();
+      Loop({ start: int(0), end: this.count, type: "int", condition: "<" }, ({ i }) => {
+        const b = this.data.element(i);
+        const d = positionWorld.xz.sub(b.xz).length().div(b.w);
+        const h = b.y.sub(positionWorld.y);
+        const disc = smoothstep2(this.softness.oneMinus().mul(0.95), 1, d).oneMinus();
+        const below = step2(-0.06, h);
+        const fade = smoothstep2(0, max2(b.w.mul(2.5), 1), h).oneMinus();
+        shade.assign(max2(shade, disc.mul(below).mul(fade)));
+      });
+      return shade.mul(this.opacity);
+    })();
+    return this.node;
+  }
+};
 
 // src/runtime/registry/define.js
 var CHEAP = { class: "cheap", fpe: 0.1 };
 var MEDIUM = { class: "medium", fpe: 1 };
+var HEAVY = { class: "heavy", fpe: 3 };
 var MIX_BY_TYPE = { float: "lerp", int: "lerp", angle: "angle", color: "oklab", bool: "step", enum: "step", palette: "step" };
 function param(module, e) {
   return {
@@ -356,6 +451,267 @@ var lighting_default = [
     },
     brief: "Shadow edge softness {value} px (filter radius).",
     tags: ["shadow"]
+  }),
+  p({
+    id: "lighting.shadows.mapSize",
+    label: "Shadow resolution",
+    type: "enum",
+    default: 2048,
+    options: [{ value: 512, label: "512" }, { value: 1024, label: "1024" }, { value: 2048, label: "2048" }, { value: 4096, label: "4096" }],
+    enabledBy: "lighting.shadows.enabled",
+    learn: {
+      what: "The size of the shadow map: how many texels cover the shadowed area.",
+      why: "Bigger maps give crisper, steadier shadow edges. Phones prefer 1024: shadow maps cost memory bandwidth, and toon styles hide the softer edge well.",
+      typical: "2048 on desktop, 1024 on phones."
+    },
+    brief: "Shadow map {value}×{value}.",
+    tags: ["shadow", "performance"]
+  }),
+  p({
+    id: "lighting.tod.enabled",
+    label: "Time of day",
+    type: "bool",
+    default: false,
+    learn: {
+      what: "Drives the sun, sky, ambient light and fog color from one clock, instead of setting each by hand.",
+      why: "Light is the fastest way to change mood, and time of day keeps every light color consistent with every other: a low orange sun comes with a violet sky fill and warm haze.",
+      avoid: "Fighting it with hand-set colors: turn it off to art-direct each light yourself."
+    },
+    brief: "Lighting follows a time of day.",
+    tags: ["light", "time of day", "mood"]
+  }),
+  p({
+    id: "lighting.tod.hour",
+    label: "Hour",
+    type: "float",
+    min: 4,
+    max: 22,
+    step: 0.1,
+    unit: "h",
+    default: 16,
+    enabledBy: "lighting.tod.enabled",
+    learn: {
+      what: "The time of day, from before dawn (4) to night (22). Noon is 12.",
+      why: "Dawn and golden hour rake light across the scene with long shadows and warm color; noon flattens it; blue hour and night drop to a cool, low-contrast fill.",
+      typical: "17–18 for golden hour, 19.5 for blue hour, 12 for a neutral reference."
+    },
+    brief: "Time of day {value} h (sun, sky, ambient and fog follow it).",
+    tags: ["time of day", "sun"]
+  }),
+  p({
+    id: "lighting.practicals.intensity",
+    label: "Practical lights",
+    type: "float",
+    min: 0,
+    max: 3,
+    step: 0.01,
+    unit: "×",
+    default: 1,
+    learn: {
+      what: "Brightness of the scene's own lights (torches, lamps, campfires, neon) relative to how the scene set them.",
+      why: "Practicals are motivated light: the viewer sees the source. Pushing them up makes night scenes feel lit by the world rather than by an invisible fill.",
+      typical: "1–1.5; higher for dark, moody looks."
+    },
+    brief: "Practical lights at {value}× the scene's intensity.",
+    tags: ["light", "practical", "night"]
+  }),
+  p({
+    id: "lighting.practicals.flicker",
+    label: "Practical flicker",
+    type: "float",
+    min: 0,
+    max: 3,
+    step: 0.01,
+    unit: "×",
+    default: 1,
+    learn: {
+      what: "How much flames and faulty lamps flicker, relative to the scene.",
+      why: "A little flicker makes fire read as fire and makes a still frame feel alive. Too much is distracting and reads as a broken light."
+    },
+    brief: "Practical light flicker {value}×.",
+    tags: ["light", "practical", "motion"]
+  }),
+  p({
+    id: "lighting.blob.enabled",
+    label: "Blob shadows",
+    type: "bool",
+    default: false,
+    structural: true,
+    scope: "both",
+    learn: {
+      what: "A soft dark disc on the ground under each object of a part, like the round shadow under a character in a classic platformer.",
+      why: "A contact shadow tells you exactly where something stands, which matters for jumping and aiming. It is nearly free, so phone games use it instead of (or on top of) real shadows.",
+      avoid: "Blobs under large or flat objects (buildings, terrain): they only make sense for things that stand on the ground.",
+      typical: "On characters, the hero and small props."
+    },
+    brief: "Soft blob shadows under each object.",
+    tags: ["shadow", "contact", "grounding", "phone-safe"]
+  }),
+  p({
+    id: "lighting.blob.size",
+    label: "Blob size",
+    type: "float",
+    min: 0.3,
+    max: 3,
+    step: 0.01,
+    unit: "×",
+    default: 1.1,
+    enabledBy: "lighting.blob.enabled",
+    learn: { what: "Blob radius as a multiple of the object's footprint.", why: "Slightly larger than the footprint reads as a soft shadow; smaller reads as a contact point." },
+    brief: "Blob radius {value}× the footprint.",
+    tags: ["shadow"]
+  }),
+  p({
+    id: "lighting.blob.softness",
+    label: "Blob softness",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.6,
+    enabledBy: "lighting.blob.enabled",
+    learn: { what: "How soft the blob's edge is.", why: "Hard blobs look graphic and retro; soft blobs read as real soft shadows." },
+    brief: "Blob edge softness {value}.",
+    tags: ["shadow"]
+  }),
+  p({
+    id: "lighting.blob.opacity",
+    label: "Blob darkness",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.5,
+    neutral: 0,
+    enabledBy: "lighting.blob.enabled",
+    learn: { what: "How dark the blob is under its object. It fades as the object rises off the ground.", why: "A fading blob tells you how high a jumping character is, which is why platformers keep it even with real shadows." },
+    brief: "Blob darkness {value} (fades with height).",
+    tags: ["shadow"]
+  }),
+  p({
+    id: "lighting.ao.enabled",
+    label: "Ambient occlusion",
+    type: "bool",
+    default: false,
+    structural: true,
+    requires: ["depth", "normal"],
+    cost: HEAVY,
+    learn: {
+      what: "Darkens creases, corners and the ground around objects, where surrounding geometry blocks the sky light (screen-space GTAO).",
+      why: "Occlusion is the strongest depth cue after shadows: it glues objects to the ground and to each other, so a scene stops looking like floating primitives.",
+      avoid: "Strong AO on toon looks with flat colors: dirty gray halos fight the clean bands. Tint it, or use contact shadows."
+    },
+    brief: "Screen-space ambient occlusion (GTAO).",
+    tags: ["ao", "shadow", "depth", "grounding"]
+  }),
+  p({
+    id: "lighting.ao.radius",
+    label: "AO radius",
+    type: "float",
+    min: 0.05,
+    max: 3,
+    step: 0.01,
+    unit: "m",
+    default: 0.6,
+    enabledBy: "lighting.ao.enabled",
+    learn: { what: "How far occlusion reaches, in meters.", why: "Small radii darken only tight creases; large radii add soft shading between objects and around their bases.", typical: "0.3–1 for human-scale scenes." },
+    brief: "AO radius {value} m.",
+    tags: ["ao"]
+  }),
+  p({
+    id: "lighting.ao.intensity",
+    label: "AO strength",
+    type: "float",
+    min: 0,
+    max: 2,
+    step: 0.01,
+    default: 1,
+    neutral: 0,
+    enabledBy: "lighting.ao.enabled",
+    learn: { what: "How dark occluded areas get.", why: "Subtle AO adds weight without a dirty look.", typical: "0.4–1." },
+    brief: "AO strength {value}.",
+    tags: ["ao"]
+  }),
+  p({
+    id: "lighting.ao.tint",
+    label: "AO tint",
+    type: "color",
+    default: "#000000",
+    enabledBy: "lighting.ao.enabled",
+    learn: { what: "The color occluded areas darken toward.", why: "A cool or colored tint keeps occlusion from turning pastel and toon palettes gray, the same trick as hue-shifted shadows.", typical: "A darker, cooler version of the shadow tint." },
+    brief: "AO darkens toward {value}.",
+    tags: ["ao", "color"]
+  }),
+  p({
+    id: "lighting.ao.ink",
+    label: "AO ink",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0,
+    enabledBy: "lighting.ao.enabled",
+    learn: { what: "Turns the deepest occlusion into flat, hard-edged ink.", why: 'Comic artists fill deep crevices with solid black ("spotting blacks"); hard AO does the same automatically.' },
+    brief: "Deep occlusion inked solid (amount {value}).",
+    tags: ["ao", "ink", "comic"]
+  }),
+  p({
+    id: "lighting.contact.enabled",
+    label: "Contact shadows",
+    type: "bool",
+    default: false,
+    structural: true,
+    requires: ["depth", "normal"],
+    cost: MEDIUM,
+    learn: {
+      what: "Short, sharp shadows traced in screen space from the sun, filling in where the shadow map is too coarse: under feet, where objects touch the ground.",
+      why: "The shadow map can't resolve tiny gaps, so objects look like they hover. Contact shadows pin them down.",
+      avoid: "Long contact shadows: they are screen-space and break at the screen edge."
+    },
+    brief: "Screen-space contact shadows from the key light.",
+    tags: ["shadow", "contact", "grounding"]
+  }),
+  p({
+    id: "lighting.contact.length",
+    label: "Contact length",
+    type: "float",
+    min: 0.02,
+    max: 2,
+    step: 0.01,
+    unit: "m",
+    default: 0.35,
+    enabledBy: "lighting.contact.enabled",
+    learn: { what: "How far each contact shadow is traced toward the sun.", why: "Keep it short: it is meant for small gaps the shadow map misses." },
+    brief: "Contact shadows traced {value} m.",
+    tags: ["shadow", "contact"]
+  }),
+  p({
+    id: "lighting.contact.thickness",
+    label: "Contact thickness",
+    type: "float",
+    min: 5e-3,
+    max: 0.5,
+    step: 5e-3,
+    unit: "m",
+    default: 0.05,
+    enabledBy: "lighting.contact.enabled",
+    learn: { what: "How thick objects are assumed to be when tracing.", why: "Too thin and shadows leak through objects; too thick and they smear behind them." },
+    brief: "Contact thickness {value} m.",
+    tags: ["shadow", "contact"]
+  }),
+  p({
+    id: "lighting.contact.intensity",
+    label: "Contact darkness",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.6,
+    neutral: 0,
+    enabledBy: "lighting.contact.enabled",
+    learn: { what: "How dark contact shadows are.", why: "Match it to the cast shadows, so the two read as one shadow." },
+    brief: "Contact shadow darkness {value}.",
+    tags: ["shadow", "contact"]
   })
 ];
 
@@ -1134,6 +1490,62 @@ var atmosphere_default = [
     learn: { what: "Brightness of the sun disc, as a multiple of the key light color.", why: "Values above 1 are HDR, so bloom picks the sun up." },
     brief: "Sun disc brightness {value}× the key color.",
     tags: ["sky", "sun", "bloom"]
+  }),
+  p5({
+    id: "atmosphere.godRays.enabled",
+    label: "God rays",
+    type: "bool",
+    default: false,
+    structural: true,
+    requires: ["depth"],
+    cost: MEDIUM,
+    learn: {
+      what: "Shafts of light streaming from the sun past the objects in front of it (a radial blur of the sky toward the sun).",
+      why: "Visible light shafts make air feel thick and light feel physical: dust, haze, a sacred or dramatic moment.",
+      avoid: "Shots without the sun near the frame: the rays come from the sun's screen position."
+    },
+    brief: "God rays from the sun.",
+    tags: ["atmosphere", "god rays", "light"]
+  }),
+  p5({
+    id: "atmosphere.godRays.intensity",
+    label: "Ray strength",
+    type: "float",
+    min: 0,
+    max: 2,
+    step: 0.01,
+    default: 0.6,
+    neutral: 0,
+    enabledBy: "atmosphere.godRays.enabled",
+    learn: { what: "How bright the shafts are.", why: "Subtle rays add atmosphere; strong rays are a dramatic statement." },
+    brief: "God ray strength {value}.",
+    tags: ["god rays"]
+  }),
+  p5({
+    id: "atmosphere.godRays.length",
+    label: "Ray length",
+    type: "float",
+    min: 0.1,
+    max: 1,
+    step: 0.01,
+    default: 0.6,
+    enabledBy: "atmosphere.godRays.enabled",
+    learn: { what: "How far the shafts reach from the sun, as a fraction of the way across the screen.", why: "Long rays fill the frame with light; short ones stay a halo around the sun." },
+    brief: "God rays reach {value} of the way from the sun.",
+    tags: ["god rays"]
+  }),
+  p5({
+    id: "atmosphere.godRays.decay",
+    label: "Ray falloff",
+    type: "float",
+    min: 0.8,
+    max: 1,
+    step: 1e-3,
+    default: 0.96,
+    enabledBy: "atmosphere.godRays.enabled",
+    learn: { what: "How quickly rays fade along their length.", why: "Lower values keep the rays near the sun." },
+    brief: "God ray decay {value}.",
+    tags: ["god rays"]
   })
 ];
 
@@ -1213,6 +1625,22 @@ var lens_default = [
     tags: ["bloom"]
   }),
   p6({
+    id: "lens.bloom.source",
+    label: "Bloom source",
+    type: "enum",
+    default: "all",
+    structural: true,
+    enabledBy: "lens.bloom.enabled",
+    requires: ["emissive"],
+    options: [{ value: "all", label: "Everything bright" }, { value: "emissive", label: "Emissive only (selective)" }],
+    learn: {
+      what: "What glows: every pixel above the threshold, or only emissive materials (lamps, neon, magic).",
+      why: "Selective bloom keeps sunlit white walls crisp while lights glow, the trick behind neon and synthwave looks. It needs one extra buffer."
+    },
+    brief: "Bloom source: {label}.",
+    tags: ["bloom", "glow", "emissive"]
+  }),
+  p6({
     id: "lens.vignette.amount",
     label: "Vignette",
     type: "float",
@@ -1261,6 +1689,244 @@ var lens_default = [
     learn: { what: "The color the corners fade toward.", why: "A tinted vignette (warm brown, deep blue) frames without killing the palette." },
     brief: "Vignette color {value}.",
     tags: ["vignette", "color"]
+  }),
+  p6({
+    id: "lens.dof.enabled",
+    label: "Depth of field",
+    type: "bool",
+    default: false,
+    structural: true,
+    requires: ["depth"],
+    cost: HEAVY,
+    learn: {
+      what: "Blurs what is in front of and behind the focus point, like a camera lens with a wide aperture. Focus follows what the camera looks at.",
+      why: "Shallow focus tells the eye exactly where to look and separates the subject from a busy background. It is the signature of cinematic and photographic looks.",
+      avoid: "Gameplay cameras where the player must read the background, and retro looks (old consoles couldn't blur)."
+    },
+    brief: "Depth of field focused on the subject.",
+    tags: ["dof", "focus", "cinematic", "blur"]
+  }),
+  p6({
+    id: "lens.dof.range",
+    label: "Focus range",
+    type: "float",
+    min: 0.5,
+    max: 60,
+    step: 0.1,
+    unit: "m",
+    default: 8,
+    enabledBy: "lens.dof.enabled",
+    learn: { what: "How far from the focus point things become fully blurred.", why: "A short range is a fast lens (shallow focus); a long range keeps most of the scene sharp.", typical: "3–10 m for a third-person subject." },
+    brief: "Fully out of focus {value} m from the focal plane.",
+    tags: ["dof"]
+  }),
+  p6({
+    id: "lens.dof.blur",
+    label: "Bokeh size",
+    type: "float",
+    min: 0,
+    max: 4,
+    step: 0.01,
+    default: 1,
+    neutral: 0,
+    enabledBy: "lens.dof.enabled",
+    learn: { what: "The size of the out-of-focus blur.", why: "Big, round bokeh reads as a large sensor and a fast lens: expensive and filmic." },
+    brief: "Bokeh scale {value}.",
+    tags: ["dof", "bokeh"]
+  }),
+  p6({
+    id: "lens.dof.offset",
+    label: "Focus offset",
+    type: "float",
+    min: -20,
+    max: 20,
+    step: 0.1,
+    unit: "m",
+    default: 0,
+    enabledBy: "lens.dof.enabled",
+    learn: { what: "Moves the focal plane in front of (−) or behind (+) the subject.", why: 'Pulling focus to the background or foreground is a storytelling device: it says "look here instead".' },
+    brief: "Focus offset {value} m from the subject.",
+    tags: ["dof"]
+  }),
+  p6({
+    id: "lens.tiltShift.enabled",
+    label: "Tilt-shift",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: MEDIUM,
+    learn: {
+      what: "Keeps a horizontal band sharp and blurs above and below it.",
+      why: "Our eyes associate a very shallow, band-shaped focus with photos of small things close up, so a big scene reads as a miniature model.",
+      avoid: "Low camera angles: the effect only sells a miniature when you look down on the scene."
+    },
+    brief: "Tilt-shift miniature blur.",
+    tags: ["tilt-shift", "miniature", "blur"]
+  }),
+  p6({
+    id: "lens.tiltShift.center",
+    label: "Sharp band center",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.55,
+    enabledBy: "lens.tiltShift.enabled",
+    learn: { what: "Height of the sharp band on screen (0 = bottom, 1 = top).", why: "Put it on the subject; the blur above suggests distance, the blur below suggests a lens close to the model." },
+    brief: "Sharp band at {value} of the screen height.",
+    tags: ["tilt-shift"]
+  }),
+  p6({
+    id: "lens.tiltShift.width",
+    label: "Sharp band width",
+    type: "float",
+    min: 0.02,
+    max: 0.8,
+    step: 0.01,
+    default: 0.18,
+    enabledBy: "lens.tiltShift.enabled",
+    learn: { what: "How tall the sharp band is.", why: "Narrow bands sell the miniature harder." },
+    brief: "Sharp band {value} of the screen tall.",
+    tags: ["tilt-shift"]
+  }),
+  p6({
+    id: "lens.tiltShift.blur",
+    label: "Tilt-shift blur",
+    type: "float",
+    min: 0,
+    max: 4,
+    step: 0.01,
+    default: 2,
+    neutral: 0,
+    enabledBy: "lens.tiltShift.enabled",
+    learn: { what: "How strong the blur outside the band is.", why: "Strong blur and high saturation together are what make tilt-shift photos look like toys." },
+    brief: "Tilt-shift blur {value}.",
+    tags: ["tilt-shift"]
+  }),
+  p6({
+    id: "lens.motionBlur.enabled",
+    label: "Motion blur",
+    type: "bool",
+    default: false,
+    structural: true,
+    requires: ["velocity"],
+    cost: HEAVY,
+    learn: {
+      what: "Smears moving objects along their motion, as a film camera does with its shutter open.",
+      why: "It reads as speed and weight, and smooths fast motion at low frame rates. Racing and action games use it to sell velocity.",
+      avoid: "Retro looks, and strong blur on gameplay-critical objects: players need to see them."
+    },
+    brief: "Per-object motion blur.",
+    tags: ["motion blur", "speed", "cinematic"]
+  }),
+  p6({
+    id: "lens.motionBlur.shutter",
+    label: "Shutter angle",
+    type: "float",
+    min: 0,
+    max: 360,
+    step: 1,
+    unit: "°",
+    default: 180,
+    neutral: 0,
+    enabledBy: "lens.motionBlur.enabled",
+    learn: { what: "How long the virtual shutter stays open per frame. 180° is film standard; 360° smears the whole frame time.", why: "Film's 180° rule gives natural motion; larger angles look dreamy or fast, smaller ones staccato (action scenes, war films).", typical: "180°." },
+    brief: "Shutter angle {value}°.",
+    tags: ["motion blur"]
+  }),
+  p6({
+    id: "lens.ca.enabled",
+    label: "Chromatic aberration",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: CHEAP,
+    learn: {
+      what: "Splits red, green and blue slightly toward the edges of the frame, like a cheap or vintage lens.",
+      why: "A touch of fringing reads as a real lens, a screen, or a glitch. It is a signature of sci-fi HUDs and found-footage looks.",
+      avoid: "Strong CA on text and UI, or with thin lines: it blurs them."
+    },
+    brief: "Chromatic aberration at the frame edges.",
+    tags: ["lens", "chromatic aberration", "sci-fi"]
+  }),
+  p6({
+    id: "lens.ca.amount",
+    label: "Aberration",
+    type: "float",
+    min: 0,
+    max: 3,
+    step: 0.01,
+    default: 0.6,
+    neutral: 0,
+    enabledBy: "lens.ca.enabled",
+    learn: { what: "How far the color channels separate.", why: "Subtle values read as a lens; strong ones as a glitch." },
+    brief: "Aberration strength {value}.",
+    tags: ["chromatic aberration"]
+  }),
+  p6({
+    id: "lens.distortion.enabled",
+    label: "Lens distortion",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: CHEAP,
+    learn: {
+      what: "Bends straight lines: barrel distortion bulges the middle (fisheye), pincushion pinches it.",
+      why: "Barrel distortion with a wide lens is the look of skate videos and action cams: it exaggerates speed and energy."
+    },
+    brief: "Lens distortion.",
+    tags: ["lens", "fisheye", "distortion"]
+  }),
+  p6({
+    id: "lens.distortion.amount",
+    label: "Distortion",
+    type: "float",
+    min: -0.5,
+    max: 0.5,
+    step: 0.01,
+    default: 0.12,
+    neutral: 0,
+    enabledBy: "lens.distortion.enabled",
+    learn: { what: "Positive for barrel (fisheye), negative for pincushion.", why: "A little barrel reads as an energetic wide lens; a lot reads as a peephole.", typical: "0.08–0.15." },
+    brief: "Distortion {value} (+ barrel).",
+    tags: ["distortion"]
+  }),
+  p6({
+    id: "lens.letterbox.amount",
+    label: "Letterbox",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0,
+    learn: {
+      what: "Black bars that crop the frame to a wider (or narrower) aspect ratio.",
+      why: 'The 2.39:1 frame is cinema; players read it as "this is a cutscene". 4:3 bars read as retro TV.',
+      avoid: "During gameplay on phones: bars waste scarce screen space."
+    },
+    brief: "Letterbox to {value} of the full crop.",
+    tags: ["letterbox", "cinematic", "framing"]
+  }),
+  p6({
+    id: "lens.letterbox.aspect",
+    label: "Letterbox aspect",
+    type: "float",
+    min: 1.2,
+    max: 2.8,
+    step: 0.01,
+    default: 2.39,
+    learn: { what: "The aspect ratio the bars crop to (width / height). Narrower than the screen gives side bars.", why: "2.39 is anamorphic cinema, 1.85 flat cinema, 1.33 (4:3) old TV." },
+    brief: "Letterbox aspect {value}:1.",
+    tags: ["letterbox"]
+  }),
+  p6({
+    id: "lens.letterbox.color",
+    label: "Letterbox color",
+    type: "color",
+    default: "#000000",
+    learn: { what: "The color of the bars.", why: "Black disappears on screens; a paper or brand color turns the bars into a frame." },
+    brief: "Letterbox bars {value}.",
+    tags: ["letterbox"]
   })
 ];
 
@@ -1409,6 +2075,224 @@ var grade_default = [
     learn: { what: "Moves the crossover between shadow and highlight toning.", why: "Positive values give more of the image to the shadow color." },
     brief: "Split balance {value}.",
     tags: ["split tone"]
+  }),
+  p7({
+    id: "grade.lift",
+    label: "Lift (shadows)",
+    type: "float",
+    min: -0.3,
+    max: 0.3,
+    step: 5e-3,
+    default: 0,
+    learn: {
+      what: 'Raises (+) or crushes (−) the darkest tones; the CDL "offset".',
+      why: "Lifted blacks read as faded film, haze or a soft pastel style; crushed blacks read as punchy and dramatic.",
+      typical: "−0.03 to +0.05."
+    },
+    brief: "Lift {value} (CDL offset).",
+    tags: ["grade", "cdl", "shadows"]
+  }),
+  p7({
+    id: "grade.gamma",
+    label: "Gamma (midtones)",
+    type: "float",
+    min: 0.5,
+    max: 2,
+    step: 0.01,
+    default: 1,
+    learn: {
+      what: 'Brightens (below 1) or darkens (above 1) the midtones while black and white stay put; the CDL "power".',
+      why: "Most of an image is midtones. Gamma changes the overall mood without clipping either end."
+    },
+    brief: "Gamma {value} (CDL power).",
+    tags: ["grade", "cdl", "midtones"]
+  }),
+  p7({
+    id: "grade.gain",
+    label: "Gain (highlights)",
+    type: "float",
+    min: 0.5,
+    max: 2,
+    step: 0.01,
+    default: 1,
+    learn: {
+      what: 'Scales every tone, which mostly moves the highlights; the CDL "slope".',
+      why: "Gain sets how bright the brightest areas get. Together, lift, gamma and gain are the standard three-way color corrector."
+    },
+    brief: "Gain {value} (CDL slope).",
+    tags: ["grade", "cdl", "highlights"]
+  }),
+  p7({
+    id: "grade.vibrance",
+    label: "Vibrance",
+    type: "float",
+    min: -1,
+    max: 1,
+    step: 0.01,
+    default: 0,
+    learn: {
+      what: "Boosts the color of muted tones more than already saturated ones.",
+      why: "Unlike saturation, vibrance lifts dull colors without pushing bright ones (or skin) into neon."
+    },
+    brief: "Vibrance {value}.",
+    tags: ["grade", "saturation"]
+  }),
+  p7({
+    id: "grade.hue",
+    label: "Hue shift (grade)",
+    type: "angle",
+    min: -180,
+    max: 180,
+    step: 1,
+    unit: "°",
+    default: 0,
+    learn: {
+      what: "Rotates the hue of the whole final image, light and fog included.",
+      why: 'A small global shift unifies an image toward one color family; a big one is a psychedelic or "corrupted world" effect. Use the palette hue to shift objects only.'
+    },
+    brief: "Final image hue rotated {value}°.",
+    tags: ["grade", "hue"]
+  }),
+  p7({
+    id: "grade.selective.enabled",
+    label: "Selective color",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: CHEAP,
+    learn: {
+      what: "Keeps one hue in color and desaturates everything else.",
+      why: "A single colored element in a gray world becomes the focus of every frame: the red coat in a black-and-white film.",
+      avoid: "Choosing a hue that appears everywhere in the scene: nothing stands out."
+    },
+    brief: "Selective color: only one hue keeps its color.",
+    tags: ["grade", "selective color", "noir", "focus"]
+  }),
+  p7({
+    id: "grade.selective.hue",
+    label: "Kept hue",
+    type: "angle",
+    min: -180,
+    max: 180,
+    step: 1,
+    unit: "°",
+    default: 25,
+    enabledBy: "grade.selective.enabled",
+    learn: { what: "The hue that keeps its color (OKLCH hue angle: about 25° red, 90° yellow, 145° green, 250° blue, 330° magenta).", why: "Pick the color of your subject." },
+    brief: "Kept hue {value}° (OKLCH).",
+    tags: ["selective color"]
+  }),
+  p7({
+    id: "grade.selective.range",
+    label: "Hue range",
+    type: "float",
+    min: 5,
+    max: 120,
+    step: 1,
+    unit: "°",
+    default: 35,
+    enabledBy: "grade.selective.enabled",
+    learn: { what: "How far around the kept hue colors survive.", why: "Narrow ranges isolate one object; wide ranges keep a whole color family." },
+    brief: "Hue range ±{value}°.",
+    tags: ["selective color"]
+  }),
+  p7({
+    id: "grade.selective.amount",
+    label: "Desaturate the rest",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 1,
+    neutral: 0,
+    enabledBy: "grade.selective.enabled",
+    learn: { what: "How gray everything outside the range becomes.", why: "Full desaturation is the classic noir effect; partial keeps a hint of the world's color." },
+    brief: "Other hues desaturated {value}.",
+    tags: ["selective color"]
+  }),
+  p7({
+    id: "grade.lut.enabled",
+    label: "Color LUT",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: CHEAP,
+    learn: {
+      what: "A 3D lookup table: a baked, complete color grade applied in one texture fetch.",
+      why: "This is how games ship film-style grades: an artist grades a frame in any tool, exports a LUT, and the engine applies it for almost nothing. The presets here are generated in code."
+    },
+    brief: "A 3D color LUT.",
+    tags: ["grade", "lut"]
+  }),
+  p7({
+    id: "grade.lut.preset",
+    label: "LUT preset",
+    type: "enum",
+    default: "teal-orange",
+    enabledBy: "grade.lut.enabled",
+    options: [
+      { value: "teal-orange", label: "Teal and orange" },
+      { value: "warm-film", label: "Warm film" },
+      { value: "bleach", label: "Bleach bypass" },
+      { value: "cross", label: "Cross-processed" },
+      { value: "faded", label: "Faded print" },
+      { value: "cool-night", label: "Cool night" }
+    ],
+    learn: { what: "Which generated grade the LUT holds.", why: "Each preset is a recognizable film or photo-lab look; compare them at full strength, then dial the amount back." },
+    brief: "LUT preset: {label}.",
+    tags: ["lut"]
+  }),
+  p7({
+    id: "grade.lut.amount",
+    label: "LUT amount",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 1,
+    neutral: 0,
+    enabledBy: "grade.lut.enabled",
+    learn: { what: "Blends between the image and the LUT result.", why: "Most LUTs look best at 40–70%: the character without the cliché." },
+    brief: "LUT at {value}.",
+    tags: ["lut"]
+  }),
+  p7({
+    id: "grade.gradientMap.enabled",
+    label: "Gradient map",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: CHEAP,
+    learn: {
+      what: "Replaces every pixel's color with a color from a gradient, chosen by its brightness (duotone, tritone).",
+      why: "It forces a whole image into a designed palette while keeping its light structure, the look of screen-printed posters and stylized flashbacks."
+    },
+    brief: "Gradient map (brightness → color).",
+    tags: ["grade", "duotone", "gradient map", "palette"]
+  }),
+  p7({
+    id: "grade.gradientMap.stops",
+    label: "Gradient",
+    type: "palette",
+    default: ["#1b1442", "#7a3b8f", "#f08a5d", "#fff1c9"],
+    enabledBy: "grade.gradientMap.enabled",
+    learn: { what: "The gradient from shadows (first color) to highlights (last), 2–8 stops.", why: "Dark-to-light gradients that also shift hue (purple → orange → cream) give the richest duotones." },
+    brief: "Gradient map stops: {value}.",
+    tags: ["gradient map"]
+  }),
+  p7({
+    id: "grade.gradientMap.amount",
+    label: "Gradient map amount",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 1,
+    neutral: 0,
+    enabledBy: "grade.gradientMap.enabled",
+    learn: { what: "Blends between the image and its gradient-mapped version.", why: "At 20–40% a gradient map becomes a subtle unifying tint." },
+    brief: "Gradient map at {value}.",
+    tags: ["gradient map"]
   })
 ];
 
@@ -1455,10 +2339,272 @@ var media_default = [
   })
 ];
 
-// src/runtime/registry/quality.js
-var p9 = (e) => param("quality", e);
-var quality_default = [
+// src/runtime/registry/retro.js
+var p9 = (e) => param("retro", e);
+var retro_default = [
   p9({
+    id: "retro.pixel.enabled",
+    label: "Pixelation",
+    type: "bool",
+    default: false,
+    structural: true,
+    requires: ["depth", "normal"],
+    cost: { ...CHEAP, fpe: 0.05 },
+    learn: {
+      what: "Renders the styled scene at a low internal resolution and shows it with hard, square pixels. The pixels stay locked to a grid while the camera moves.",
+      why: "Big pixels turn simple 3D into pixel art: the eye fills in the detail, and every shape reads at a glance. It also saves most of the GPU cost.",
+      avoid: "Mixing it with modern blur (depth of field, motion blur): pick one era."
+    },
+    brief: "Low internal resolution with nearest-neighbor pixels, grid-locked.",
+    tags: ["retro", "pixel art", "resolution", "phone-safe"]
+  }),
+  p9({
+    id: "retro.pixel.height",
+    label: "Pixel rows",
+    type: "int",
+    min: 64,
+    max: 540,
+    step: 1,
+    unit: "px",
+    default: 240,
+    enabledBy: "retro.pixel.enabled",
+    learn: {
+      what: "How many pixel rows fill the screen height. Pixels are whole screen pixels wide, so the real count rounds to fit your screen.",
+      why: "Era matters: 144 rows is a handheld, 224–240 is a 16-bit or 32-bit console, 360 is a modern pixel-art game.",
+      typical: "240 (PS1), 224–270 (16-bit), 144 (Game Boy)."
+    },
+    brief: "About {value} pixel rows on screen (pixel size = output height / {value}, rounded).",
+    tags: ["pixel art", "resolution"]
+  }),
+  p9({
+    id: "retro.pixel.edges",
+    label: "Pixel edge highlights",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.35,
+    neutral: 0,
+    enabledBy: "retro.pixel.enabled",
+    learn: {
+      what: "Lightens pixels on outer edges and darkens pixels at depth steps, one pixel wide.",
+      why: "Pixel artists outline and highlight shapes by hand so they read at tiny sizes. Edge highlights do it from the depth and normals."
+    },
+    brief: "One-pixel edge highlights at {value}.",
+    tags: ["pixel art", "edges"]
+  }),
+  p9({
+    id: "retro.quantize.mode",
+    label: "Color depth",
+    type: "enum",
+    default: "off",
+    structural: true,
+    cost: { ...MEDIUM, fpe: 0.3 },
+    options: [{ value: "off", label: "Full color" }, { value: "posterize", label: "Posterize (levels per channel)" }, { value: "palette", label: "Palette (nearest color)" }],
+    learn: {
+      what: "Limits the final image to a few levels per channel, or to the nearest colors of a fixed palette (matched in OKLab, so the nearest color is the one that looks closest).",
+      why: "Old hardware could show only a few colors at once. A small palette is also the most direct way to force a coherent look."
+    },
+    brief: "Color depth: {label}.",
+    tags: ["retro", "posterize", "palette", "quantize"]
+  }),
+  p9({
+    id: "retro.quantize.levels",
+    label: "Levels per channel",
+    type: "int",
+    min: 2,
+    max: 32,
+    step: 1,
+    default: 8,
+    learn: { what: "Levels per color channel when posterizing. 32 is 15-bit color (PS1), 16 is 12-bit, 4–6 is posterized art.", why: "Fewer levels make banding a deliberate style, especially with dithering between the bands." },
+    brief: "{value} levels per channel.",
+    tags: ["posterize"]
+  }),
+  p9({
+    id: "retro.quantize.palette",
+    label: "Palette",
+    type: "enum",
+    default: "pico8",
+    options: [
+      { value: "pico8", label: "PICO-8 (16)" },
+      { value: "gameboy", label: "Game Boy (4 greens)" },
+      { value: "cga", label: "CGA (4)" },
+      { value: "nes", label: "NES-like (16)" },
+      { value: "onebit", label: "1-bit (2 inks)" },
+      { value: "look", label: "The look's palette" }
+    ],
+    learn: { what: "The colors the palette mode snaps to.", why: `Famous palettes are instantly recognizable; "the look's palette" reuses the palette module's colors for the whole image.` },
+    brief: "Palette: {label}.",
+    tags: ["palette", "retro"]
+  }),
+  p9({
+    id: "retro.dither.amount",
+    label: "Dithering",
+    type: "float",
+    min: 0,
+    max: 1.5,
+    step: 0.01,
+    default: 0.6,
+    neutral: 0,
+    learn: {
+      what: "Adds an ordered pattern before quantizing, so in-between colors become a checker of the two nearest ones.",
+      why: "Dithering fakes more colors than the palette has and turns banding into texture. It is the signature of 8- and 16-bit art and of 1-bit games."
+    },
+    brief: "Ordered dithering at {value}.",
+    tags: ["dither", "retro"]
+  }),
+  p9({
+    id: "retro.dither.pattern",
+    label: "Dither pattern",
+    type: "enum",
+    default: "bayer4",
+    options: [{ value: "bayer2", label: "Bayer 2×2" }, { value: "bayer4", label: "Bayer 4×4" }, { value: "bayer8", label: "Bayer 8×8" }, { value: "bayer16", label: "Bayer 16×16" }, { value: "noise", label: "Blue-ish noise (interleaved gradient)" }],
+    learn: { what: "The pattern used to dither.", why: "Bayer gives the classic cross-hatched grid; noise looks organic and hides the grid." },
+    brief: "Dither pattern: {label}.",
+    tags: ["dither"]
+  }),
+  p9({
+    id: "retro.vertexSnap.enabled",
+    label: "Vertex snapping",
+    type: "bool",
+    default: false,
+    structural: true,
+    scope: "both",
+    learn: {
+      what: "Snaps every vertex to a coarse screen grid, so polygons jitter and wobble as they move: the PS1 look.",
+      why: "Fifth-generation consoles had no sub-pixel precision. The jitter is nostalgic and makes 3D feel hand-made and unstable in a charming way.",
+      avoid: "Combining it with modern smooth effects (DOF, motion blur)."
+    },
+    brief: "Vertices snapped to a coarse screen grid (PS1 jitter).",
+    tags: ["retro", "ps1", "jitter"]
+  }),
+  p9({
+    id: "retro.vertexSnap.grid",
+    label: "Snap grid rows",
+    type: "int",
+    min: 40,
+    max: 480,
+    step: 1,
+    default: 120,
+    scope: "both",
+    enabledBy: "retro.vertexSnap.enabled",
+    learn: { what: "How many grid rows the screen height is divided into for snapping.", why: "Coarser grids jitter more. 120 rows matches the PS1's typical precision at 240p." },
+    brief: "Snap grid of {value} rows.",
+    tags: ["ps1"]
+  }),
+  p9({
+    id: "retro.crt.enabled",
+    label: "CRT",
+    type: "bool",
+    default: false,
+    structural: true,
+    cost: CHEAP,
+    learn: {
+      what: "Simulates a tube TV: scanlines, an RGB shadow mask, a curved screen, glow and a little flicker.",
+      why: "Pixel art was designed for CRTs, which blur and bloom pixels into softer shapes. The simulation brings back that warmth and the arcade context."
+    },
+    brief: "CRT display simulation.",
+    tags: ["retro", "crt", "arcade", "display"]
+  }),
+  p9({
+    id: "retro.crt.scanlines",
+    label: "Scanlines",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.35,
+    neutral: 0,
+    enabledBy: "retro.crt.enabled",
+    learn: { what: "Dark gaps between rows, one per pixel row in pixel looks.", why: "Scanlines are the most recognizable CRT trait." },
+    brief: "Scanlines {value}.",
+    tags: ["crt"]
+  }),
+  p9({
+    id: "retro.crt.mask",
+    label: "Shadow mask",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.2,
+    neutral: 0,
+    enabledBy: "retro.crt.enabled",
+    learn: { what: "The red, green and blue stripes of the tube's phosphors.", why: "Visible up close, it adds texture; keep it low at small sizes or it turns into moiré." },
+    brief: "Aperture mask {value}.",
+    tags: ["crt"]
+  }),
+  p9({
+    id: "retro.crt.curvature",
+    label: "Screen curvature",
+    type: "float",
+    min: 0,
+    max: 0.3,
+    step: 5e-3,
+    default: 0.06,
+    neutral: 0,
+    enabledBy: "retro.crt.enabled",
+    learn: { what: "Bulges the image like a curved glass tube, with dark rounded corners.", why: "Curvature frames the image as an object, a TV in a room." },
+    brief: "Curvature {value}.",
+    tags: ["crt"]
+  }),
+  p9({
+    id: "retro.crt.glow",
+    label: "Phosphor glow",
+    type: "float",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 0.2,
+    neutral: 0,
+    enabledBy: "retro.crt.enabled",
+    learn: { what: "Bright pixels bleed light into their neighbors.", why: "The glow softens hard pixel edges the way a real tube did." },
+    brief: "Phosphor glow {value}.",
+    tags: ["crt"]
+  }),
+  p9({
+    id: "retro.crt.flicker",
+    label: "Flicker",
+    type: "float",
+    min: 0,
+    max: 0.2,
+    step: 5e-3,
+    default: 0.02,
+    neutral: 0,
+    enabledBy: "retro.crt.enabled",
+    learn: { what: "A subtle brightness flicker over time.", why: "A touch of instability sells the hardware. Keep it low: strong flicker is uncomfortable and an accessibility problem." },
+    brief: "Flicker {value}.",
+    tags: ["crt", "motion"]
+  })
+];
+
+// src/runtime/registry/motion.js
+var p10 = (e) => param("motion", e);
+var motion_default = [
+  p10({
+    id: "motion.stepped.fps",
+    label: "Animate on…",
+    type: "int",
+    min: 0,
+    max: 30,
+    step: 1,
+    unit: "fps",
+    default: 0,
+    learn: {
+      what: "Updates animation (characters, water, wind, flicker) only this many times per second. 0 is smooth. The camera always stays smooth.",
+      why: 'Hand-drawn animation runs "on twos" (12 drawings per second). Stepped motion on a smooth camera makes 3D read as drawn, the trick behind stylized animated films.',
+      typical: "12 (on twos), 8 (on threes), 0 (smooth).",
+      avoid: "Stepping the player character in an action game: it costs responsiveness."
+    },
+    brief: "Animation stepped at {value} fps (camera smooth); 0 = continuous.",
+    tags: ["motion", "animation", "on twos"]
+  })
+];
+
+// src/runtime/registry/quality.js
+var p11 = (e) => param("quality", e);
+var quality_default = [
+  p11({
     id: "quality.resolution",
     label: "Internal resolution",
     type: "float",
@@ -1486,12 +2632,14 @@ var MODULES = [
   { id: "atmosphere", label: "Atmosphere", stage: "WORLD", perPart: "no" },
   { id: "lens", label: "Lens", stage: "CAMERA + DISPLAY", perPart: "no" },
   { id: "grade", label: "Grade", stage: "CAMERA + GRADE", perPart: "no" },
-  { id: "media", label: "Media", stage: "DISPLAY", perPart: "no" },
+  { id: "media", label: "Media", stage: "MEDIUM + DISPLAY", perPart: "no" },
+  { id: "retro", label: "Retro", stage: "pass + DISPLAY", perPart: "vertex snap" },
+  { id: "motion", label: "Motion", stage: "clock", perPart: "no" },
   { id: "quality", label: "Quality", stage: "pass", perPart: "no" }
 ];
 var PARTS = ["sky", "terrain", "water", "foliage", "architecture", "props", "characters", "hero", "vfx"];
-var PART_INDEX = Object.fromEntries(PARTS.map((p10, i) => [p10, i]));
-var REGISTRY = [...lighting_default, ...surface_default, ...lines_default, ...palette_default, ...atmosphere_default, ...lens_default, ...grade_default, ...media_default, ...quality_default];
+var PART_INDEX = Object.fromEntries(PARTS.map((p12, i) => [p12, i]));
+var REGISTRY = [...lighting_default, ...surface_default, ...lines_default, ...palette_default, ...atmosphere_default, ...lens_default, ...grade_default, ...media_default, ...retro_default, ...motion_default, ...quality_default];
 var byId = new Map(REGISTRY.map((e) => [e.id, e]));
 var PART_PARAMS = REGISTRY.filter((e) => e.scope !== "global").map((e) => e.id);
 function valueLabel(entry, value) {
@@ -1502,7 +2650,7 @@ function valueLabel(entry, value) {
   return String(value);
 }
 function formatBrief(entry, value) {
-  return entry.brief.replace("{value}", valueLabel(entry, value)).replace("{label}", valueLabel(entry, value));
+  return entry.brief.replaceAll("{value}", valueLabel(entry, value)).replaceAll("{label}", valueLabel(entry, value));
 }
 function defaults() {
   return Object.fromEntries(REGISTRY.map((e) => [e.id, clone(e.default)]));
@@ -1579,24 +2727,24 @@ function oklchToOklab([L, C, h]) {
   return [L, C * Math.cos(r), C * Math.sin(r)];
 }
 function mixHex(a, b, t) {
-  const p10 = hexToOklab(a), q = hexToOklab(b);
-  return oklabToHex(p10.map((v, i) => v + (q[i] - v) * t));
+  const p12 = hexToOklab(a), q = hexToOklab(b);
+  return oklabToHex(p12.map((v, i) => v + (q[i] - v) * t));
 }
-function adjustHex(hex, { saturation: saturation2 = 1, value = 1, hue = 0 } = {}) {
-  if (saturation2 === 1 && value === 1 && hue === 0) return hex.toLowerCase();
+function adjustHex(hex, { saturation: saturation2 = 1, value = 1, hue: hue2 = 0 } = {}) {
+  if (saturation2 === 1 && value === 1 && hue2 === 0) return hex.toLowerCase();
   const [L, C, h] = oklabToOklch(hexToOklab(hex));
-  return oklabToHex(oklchToOklab([clamp01(L * value), C * saturation2, h + hue]));
+  return oklabToHex(oklchToOklab([clamp01(L * value), C * saturation2, h + hue2]));
 }
 function remapToPalette(hex, palette, { keepValue = true } = {}) {
   if (!palette || palette.length === 0) return hex.toLowerCase();
   const lab = hexToOklab(hex);
   let best = null, bestD = Infinity;
   for (const entry of palette) {
-    const p10 = hexToOklab(entry);
-    const d = 0.5 * (p10[0] - lab[0]) ** 2 + (p10[1] - lab[1]) ** 2 + (p10[2] - lab[2]) ** 2;
+    const p12 = hexToOklab(entry);
+    const d = 0.5 * (p12[0] - lab[0]) ** 2 + (p12[1] - lab[1]) ** 2 + (p12[2] - lab[2]) ** 2;
     if (d < bestD) {
       bestD = d;
-      best = p10;
+      best = p12;
     }
   }
   return oklabToHex(keepValue ? [(lab[0] + best[0]) / 2, best[1], best[2]] : best);
@@ -1633,7 +2781,7 @@ var luminanceOfHex = (hex) => {
 // src/runtime/materials/factory.js
 var LAYER_STYLED = 1;
 var LAYER_PLAIN = 2;
-var objectIdNode = Fn2(() => {
+var objectIdNode = Fn3(() => {
   const t = modelWorldMatrix.element(3).xyz;
   const h = fract(sin(dot(t, vec32(12.9898, 78.233, 37.719))).mul(43758.5453));
   return floor(h.mul(254)).add(1).div(255);
@@ -1647,7 +2795,7 @@ function paletteColor(hex, v) {
   if (v["palette.tintAmount"] > 0) c = mixHex(c, v["palette.tint"], v["palette.tintAmount"]);
   return adjustHex(c, { saturation: v["palette.saturation"], value: v["palette.value"], hue: v["palette.hue"] });
 }
-var structKey = (v) => `${v["surface.model"]}|${v["surface.model"] === "pbr" ? 0 : v["surface.bands"]}|${v["surface.flatNormals"] ? 1 : 0}`;
+var structKey = (v, blobs) => [v["surface.model"], v["surface.model"] === "pbr" ? 0 : v["surface.bands"], v["surface.flatNormals"] ? "flat" : "", v["retro.vertexSnap.enabled"] ? "snap" : "", blobs ? "blob" : ""].join("|");
 var StyleMaterials = class {
   /**
    * @param {object} o
@@ -1657,11 +2805,12 @@ var StyleMaterials = class {
   constructor({ time, keyDirection }) {
     this.time = time;
     this.keyDirection = keyDirection;
-    this.parts = Object.fromEntries(PARTS.map((p10) => [p10, {
+    this.parts = Object.fromEntries(PARTS.map((p12) => [p12, {
       surface: createSurfaceUniforms(),
-      hullColor: uniform2(new THREE.Color("#1b1d2a")),
-      hullThickness: uniform2(1.5),
+      hullColor: uniform3(new THREE2.Color("#1b1d2a")),
+      hullThickness: uniform3(1.5),
       hullEnabled: false,
+      snapRows: uniform3(120),
       struct: null,
       values: null
     }]));
@@ -1669,13 +2818,14 @@ var StyleMaterials = class {
     this.plain = /* @__PURE__ */ new Map();
     this.hulls = /* @__PURE__ */ new Map();
     this.entries = [];
+    this.blobs = new BlobShadows();
     this.built = 0;
   }
   waveNode(wave) {
     if (!wave) return null;
     const { amplitude, frequency, falloff = 90 } = wave;
     const t = this.time;
-    const fade = smoothstep2(falloff, falloff * 0.4, positionLocal.xz.length());
+    const fade = smoothstep3(falloff, falloff * 0.4, positionLocal.xz.length());
     const y = sin(positionLocal.x.mul(frequency).add(t)).mul(cos(positionLocal.z.mul(frequency * 0.8).add(t.mul(0.7)))).mul(amplitude).mul(fade);
     return positionLocal.add(vec32(0, y, 0));
   }
@@ -1693,9 +2843,9 @@ var StyleMaterials = class {
   }
   /** Settings shared by the styled and plain twins of a mesh. */
   common(material, style) {
-    material.side = style.doubleSided ? THREE.DoubleSide : THREE.FrontSide;
+    material.side = style.doubleSided ? THREE2.DoubleSide : THREE2.FrontSide;
     if (style.emissive) {
-      material.emissive = new THREE.Color(style.emissive);
+      material.emissive = new THREE2.Color(style.emissive);
       material.emissiveIntensity = style.emissiveIntensity;
     }
     material.positionNode = this.deformNode(style);
@@ -1718,6 +2868,8 @@ var StyleMaterials = class {
     material.name = `style:${part}:${surface.model}`;
     material.flatShading = v["surface.flatNormals"];
     this.common(material, style);
+    if (v["retro.vertexSnap.enabled"]) material.vertexNode = snapClip(TSL, modelViewProjection, pv.snapRows);
+    if (pv.struct.endsWith("blob")) material.colorNode = materialColor.mul(float3(1).sub(this.blobs.shade()));
     material.mrtNode = mrt({ output, ids: idsNode(part) });
     material.userData = { sourceColor: style.color, part, key };
     material.color.set(paletteColor(style.color, v));
@@ -1729,20 +2881,22 @@ var StyleMaterials = class {
     const key = styleKey(style);
     let material = this.plain.get(key);
     if (material) return material;
-    material = new THREE.MeshStandardNodeMaterial({ color: new THREE.Color(style.color), roughness: style.roughness ?? 0.8, metalness: style.metalness ?? 0, fog: false });
+    material = new THREE2.MeshStandardNodeMaterial({ color: new THREE2.Color(style.color), roughness: style.roughness ?? 0.8, metalness: style.metalness ?? 0, fog: false });
     material.name = "plain";
     this.common(material, style);
     this.plain.set(key, material);
     return material;
   }
   hullMaterial(part) {
-    let material = this.hulls.get(part);
-    if (material) return material;
     const pv = this.parts[part];
-    material = createHullMaterial({ THREE, TSL, color: pv.hullColor, thickness: pv.hullThickness });
+    const snap = pv.values["retro.vertexSnap.enabled"];
+    const key = `${part}|${snap ? "snap" : ""}`;
+    let material = this.hulls.get(key);
+    if (material) return material;
+    material = createHullMaterial({ THREE: THREE2, TSL, color: pv.hullColor, thickness: pv.hullThickness, snapRows: snap ? pv.snapRows : null });
     material.name = `hull:${part}`;
     material.mrtNode = mrt({ output, ids: idsNode(part) });
-    this.hulls.set(part, material);
+    this.hulls.set(key, material);
     this.built++;
     return material;
   }
@@ -1756,7 +2910,7 @@ var StyleMaterials = class {
       const style = mesh.userData.style;
       mesh.material = this.styledMaterial(style, style.part);
       mesh.layers.set(LAYER_STYLED);
-      const plain = mesh.isSkinnedMesh ? new THREE.SkinnedMesh(mesh.geometry, this.plainMaterial(style)) : new THREE.Mesh(mesh.geometry, this.plainMaterial(style));
+      const plain = mesh.isSkinnedMesh ? new THREE2.SkinnedMesh(mesh.geometry, this.plainMaterial(style)) : new THREE2.Mesh(mesh.geometry, this.plainMaterial(style));
       if (mesh.isSkinnedMesh) {
         plain.bindMode = mesh.bindMode;
         plain.bind(mesh.skeleton, mesh.bindMatrix);
@@ -1779,21 +2933,32 @@ var StyleMaterials = class {
     if (want && !entry.hull) {
       const g = entry.mesh.geometry;
       if (!g.getAttribute("outlineNormal")) computeOutlineNormals(g);
-      const hull = new THREE.Mesh(g, this.hullMaterial(entry.part));
+      const hull = new THREE2.Mesh(g, this.hullMaterial(entry.part));
       hull.name = "hull";
       hull.layers.set(LAYER_STYLED);
       hull.castShadow = hull.receiveShadow = false;
       entry.mesh.add(hull);
       entry.hull = hull;
     }
-    if (entry.hull) entry.hull.visible = want;
+    if (entry.hull) {
+      entry.hull.visible = want;
+      if (want) entry.hull.material = this.hullMaterial(entry.part);
+    }
   }
   /**
    * Applies resolved per-part values. Returns the parts whose materials were rebuilt.
    * @param {object} parts - resolveLook().parts
    */
-  apply(parts) {
+  apply(parts, globalValues) {
     const rebuilt = [];
+    const blobParts = PARTS.filter((p12) => parts[p12]["lighting.blob.enabled"]);
+    this.blobs.setParts(blobParts);
+    const blobs = blobParts.length > 0;
+    if (globalValues) {
+      this.blobs.size = globalValues["lighting.blob.size"];
+      this.blobs.softness.value = globalValues["lighting.blob.softness"];
+      this.blobs.opacity.value = globalValues["lighting.blob.opacity"];
+    }
     for (const part of PARTS) {
       const pv = this.parts[part];
       const v = parts[part];
@@ -1814,7 +2979,8 @@ var StyleMaterials = class {
       pv.hullColor.value.set(v["lines.hull.color"]);
       pv.hullThickness.value = v["lines.hull.thickness"];
       pv.hullEnabled = v["lines.hull.enabled"];
-      const key = structKey(v);
+      pv.snapRows.value = v["retro.vertexSnap.grid"];
+      const key = structKey(v, blobs);
       if (pv.struct !== key) {
         if (pv.struct !== null) rebuilt.push(part);
         pv.struct = key;
@@ -1867,62 +3033,62 @@ var StyleMaterials = class {
 };
 
 // src/runtime/atmosphere/atmosphere.js
-import * as THREE2 from "three/webgpu";
-import { Fn as Fn3, uniform as uniform3, vec3 as vec33, float as float2, mix as mix2, smoothstep as smoothstep3, step as step2, select as select2, exp, floor as floor2, fract as fract2, fwidth as fwidth2, max as max2, acos, clamp, positionWorld, positionView, cameraPosition, fog, mrt as mrt2, output as output2 } from "three/tsl";
+import * as THREE3 from "three/webgpu";
+import { Fn as Fn4, uniform as uniform4, vec3 as vec33, float as float4, mix as mix2, smoothstep as smoothstep4, step as step3, select as select2, exp, floor as floor2, fract as fract2, fwidth as fwidth2, max as max3, acos, clamp, positionWorld as positionWorld2, positionView, cameraPosition, fog, mrt as mrt2, output as output2 } from "three/tsl";
 function createAtmosphereUniforms() {
   return {
-    zenith: uniform3(new THREE2.Color("#87ceeb")),
-    horizon: uniform3(new THREE2.Color("#87ceeb")),
-    ground: uniform3(new THREE2.Color("#87ceeb")),
-    exponent: uniform3(1),
-    sunDirection: uniform3(new THREE2.Vector3(0, 1, 0)),
-    sunColor: uniform3(new THREE2.Color("#ffffff")),
-    sunRadius: uniform3(0),
+    zenith: uniform4(new THREE3.Color("#87ceeb")),
+    horizon: uniform4(new THREE3.Color("#87ceeb")),
+    ground: uniform4(new THREE3.Color("#87ceeb")),
+    exponent: uniform4(1),
+    sunDirection: uniform4(new THREE3.Vector3(0, 1, 0)),
+    sunColor: uniform4(new THREE3.Color("#ffffff")),
+    sunRadius: uniform4(0),
     // radians
-    sunSoftness: uniform3(0.5),
-    fogType: uniform3(0),
+    sunSoftness: uniform4(0.5),
+    fogType: uniform4(0),
     // 0 off · 1 linear · 2 exp · 3 exp2
-    fogAmount: uniform3(1),
-    fogDensity: uniform3(8e-3),
-    fogStart: uniform3(10),
-    fogEnd: uniform3(200),
-    fogColor: uniform3(new THREE2.Color("#c8dcf0")),
-    fogSkyTint: uniform3(1),
-    fogBands: uniform3(0)
+    fogAmount: uniform4(1),
+    fogDensity: uniform4(8e-3),
+    fogStart: uniform4(10),
+    fogEnd: uniform4(200),
+    fogColor: uniform4(new THREE3.Color("#c8dcf0")),
+    fogSkyTint: uniform4(1),
+    fogBands: uniform4(0)
   };
 }
 var FOG_TYPES = { off: 0, linear: 1, exp: 2, exp2: 3 };
 function skyGradient(u, dir) {
   const up = clamp(dir.y, 0, 1).pow(u.exponent);
   const above = mix2(u.horizon, u.zenith, up);
-  const below = mix2(u.horizon, u.ground, smoothstep3(0, 0.08, dir.y.negate()));
-  return mix2(below, above, step2(0, dir.y));
+  const below = mix2(u.horizon, u.ground, smoothstep4(0, 0.08, dir.y.negate()));
+  return mix2(below, above, step3(0, dir.y));
 }
 function skyColor(u, dir) {
   const angle = acos(clamp(dir.dot(u.sunDirection), -1, 1));
-  const r = max2(u.sunRadius, 1e-4);
-  const disc = smoothstep3(r.mul(u.sunSoftness.mul(-0.85).add(1)).sub(1e-4), r, angle).oneMinus().mul(step2(1e-4, u.sunRadius));
-  const halo = exp(angle.div(r.mul(3)).negate()).mul(0.15).mul(step2(1e-4, u.sunRadius));
+  const r = max3(u.sunRadius, 1e-4);
+  const disc = smoothstep4(r.mul(u.sunSoftness.mul(-0.85).add(1)).sub(1e-4), r, angle).oneMinus().mul(step3(1e-4, u.sunRadius));
+  const halo = exp(angle.div(r.mul(3)).negate()).mul(0.15).mul(step3(1e-4, u.sunRadius));
   return skyGradient(u, dir).add(u.sunColor.mul(disc.add(halo)));
 }
 function fogFactor(u, dist) {
-  const linear = smoothstep3(u.fogStart, u.fogEnd, dist);
+  const linear2 = smoothstep4(u.fogStart, u.fogEnd, dist);
   const e = exp(u.fogDensity.mul(dist).negate()).oneMinus();
   const e2 = exp(u.fogDensity.mul(dist).pow(2).negate()).oneMinus();
-  const f = select2(u.fogType.equal(1), linear, select2(u.fogType.equal(2), e, select2(u.fogType.equal(3), e2, float2(0))));
+  const f = select2(u.fogType.equal(1), linear2, select2(u.fogType.equal(2), e, select2(u.fogType.equal(3), e2, float4(0))));
   const x = f.mul(u.fogBands);
-  const aa = max2(fwidth2(x).mul(0.75), 0.02);
-  const banded = floor2(x).add(smoothstep3(aa.oneMinus().mul(0.5), aa.add(1).mul(0.5), fract2(x))).div(max2(u.fogBands, 1));
+  const aa = max3(fwidth2(x).mul(0.75), 0.02);
+  const banded = floor2(x).add(smoothstep4(aa.oneMinus().mul(0.5), aa.add(1).mul(0.5), fract2(x))).div(max3(u.fogBands, 1));
   return select2(u.fogBands.greaterThan(0.5), banded, f).mul(u.fogAmount);
 }
 function createFogNode(u) {
-  const viewDir = positionWorld.sub(cameraPosition).normalize();
-  const flat = vec33(viewDir.x, max2(viewDir.y, 0), viewDir.z).normalize();
+  const viewDir = positionWorld2.sub(cameraPosition).normalize();
+  const flat = vec33(viewDir.x, max3(viewDir.y, 0), viewDir.z).normalize();
   const color = mix2(u.fogColor, skyGradient(u, flat), u.fogSkyTint);
   return fog(color, fogFactor(u, positionView.length()));
 }
 function dome(material, layer) {
-  const mesh = new THREE2.Mesh(new THREE2.SphereGeometry(1, 48, 24), material);
+  const mesh = new THREE3.Mesh(new THREE3.SphereGeometry(1, 48, 24), material);
   mesh.layers.set(layer);
   mesh.frustumCulled = false;
   mesh.renderOrder = -1e3;
@@ -1931,203 +3097,868 @@ function dome(material, layer) {
   return mesh;
 }
 function createSkyDomes(u, { layerStyled, layerPlain, idsNode: idsNode2 }) {
-  const styled = new THREE2.MeshBasicNodeMaterial({ side: THREE2.BackSide, depthWrite: false, fog: false });
-  styled.colorNode = Fn3(() => skyColor(u, positionWorld.sub(cameraPosition).normalize()))();
+  const styled = new THREE3.MeshBasicNodeMaterial({ side: THREE3.BackSide, depthWrite: false, fog: false });
+  styled.colorNode = Fn4(() => skyColor(u, positionWorld2.sub(cameraPosition).normalize()))();
   styled.mrtNode = mrt2({ output: output2, ids: idsNode2 });
-  const plain = new THREE2.MeshBasicNodeMaterial({ side: THREE2.BackSide, depthWrite: false, fog: false, color: new THREE2.Color("#87ceeb") });
+  const plain = new THREE3.MeshBasicNodeMaterial({ side: THREE3.BackSide, depthWrite: false, fog: false, color: new THREE3.Color("#87ceeb") });
   return { styled: dome(styled, layerStyled), plain: dome(plain, layerPlain) };
 }
 
 // src/runtime/post/graph.js
-import * as THREE3 from "three/webgpu";
-import { uniform as uniform4, vec2 as vec22, vec3 as vec35, vec4 as vec42, mix as mix4, max as max4, smoothstep as smoothstep5, step as step4, abs as abs2, sin as sin2, dot as dot2, fract as fract3, floor as floor3, length, luminance as luminance2, saturation, renderOutput, screenUV as screenUV2, screenSize as screenSize2, screenCoordinate } from "three/tsl";
+import * as THREE8 from "three/webgpu";
+import { uniform as uniform8, vec2 as vec25, vec3 as vec310, vec4 as vec44, mix as mix8, max as max7, smoothstep as smoothstep10, step as step7, abs as abs4, floor as floor5, renderOutput as renderOutput2, screenUV as screenUV2, screenSize as screenSize2, screenCoordinate as screenCoordinate3, convertToTexture } from "three/tsl";
+
+// src/runtime/post/stage-camera.js
+import * as THREE4 from "three/webgpu";
+import { Fn as Fn5, vec2, vec3 as vec34, vec4 as vec42, float as float5, int as int2, mix as mix3, smoothstep as smoothstep5, pow, abs, step as step4, Loop as Loop2, If, Break, luminance as luminance2, sample, colorToDirection, sRGBTransferEOTF, renderOutput, interleavedGradientNoise, screenCoordinate, getViewPosition, getScreenPosition } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
+import { ao } from "three/addons/tsl/display/GTAONode.js";
+import { dof } from "three/addons/tsl/display/DepthOfFieldNode.js";
+import { gaussianBlur } from "three/addons/tsl/display/GaussianBlurNode.js";
+import { motionBlur } from "three/addons/tsl/display/MotionBlur.js";
+var TONE_MAPPING = {
+  none: THREE4.NoToneMapping,
+  linear: THREE4.LinearToneMapping,
+  reinhard: THREE4.ReinhardToneMapping,
+  cineon: THREE4.CineonToneMapping,
+  aces: THREE4.ACESFilmicToneMapping,
+  agx: THREE4.AgXToneMapping,
+  neutral: THREE4.NeutralToneMapping
+};
+var linear = (u) => sRGBTransferEOTF(u);
+var CAMERA = [
+  {
+    id: "lighting.ao",
+    label: "Ambient occlusion",
+    stage: "camera",
+    enabled: (v) => v["lighting.ao.enabled"],
+    requires: () => ["depth", "normal"],
+    build(c, ctx) {
+      const P = ctx.P;
+      const normals = ctx.tex("normal");
+      const node = ctx.own(ao(ctx.tex("depth"), sample((uv) => colorToDirection(normals.sample(uv).rgb)), ctx.camera));
+      node.resolutionScale = 0.5;
+      node.radius = P.get("lighting.ao.radius");
+      node.thickness = P.get("lighting.ao.radius");
+      node.distanceFallOff.value = 0.5;
+      const aoTex = node.getTextureNode();
+      const t = vec2(0.75).div(node.resolution);
+      const raw = aoTex.sample(ctx.uv.add(t)).r.add(aoTex.sample(ctx.uv.sub(t)).r).add(aoTex.sample(ctx.uv.add(vec2(t.x, t.y.negate()))).r).add(aoTex.sample(ctx.uv.sub(vec2(t.x, t.y.negate()))).r).mul(0.25);
+      const a = raw.sub(0.35).div(0.6).clamp(0, 1);
+      const occlusion = pow(a, P.get("lighting.ao.intensity"));
+      const tint = linear(P.get("lighting.ao.tint"));
+      const shaded = c.mul(mix3(tint, vec34(1), occlusion));
+      return mix3(shaded, tint.mul(0.15), smoothstep5(0.55, 0.7, a).oneMinus().mul(P.get("lighting.ao.ink")));
+    }
+  },
+  {
+    id: "lighting.contact",
+    label: "Contact shadows",
+    stage: "camera",
+    enabled: (v) => v["lighting.contact.enabled"],
+    requires: () => ["depth", "normal"],
+    build(c, ctx) {
+      const P = ctx.P, U = ctx.U;
+      const depth = ctx.tex("depth");
+      const N = 16;
+      const occlusion = Fn5(() => {
+        const d0 = depth.sample(ctx.uv).r;
+        const p0 = getViewPosition(ctx.uv, d0, U.projInv).toVar();
+        const len = P.get("lighting.contact.length");
+        const thickness = P.get("lighting.contact.thickness");
+        const bias = p0.z.negate().mul(3e-3).add(0.015);
+        const jitter = interleavedGradientNoise(screenCoordinate);
+        const hit = float5(0).toVar();
+        Loop2({ start: int2(0), end: int2(N), type: "int", condition: "<" }, ({ i }) => {
+          const t = float5(i).add(jitter).add(0.5).div(N);
+          const p12 = p0.add(U.lightView.mul(len.mul(t)));
+          const uv = getScreenPosition(p12, U.proj);
+          const scene = getViewPosition(uv, depth.sample(uv).r, U.projInv).z;
+          const delta = scene.sub(p12.z);
+          If(delta.greaterThan(bias).and(delta.lessThan(thickness.add(bias))), () => {
+            hit.assign(t.oneMinus().mul(1.5).clamp(0, 1));
+            Break();
+          });
+        });
+        const n = colorToDirection(ctx.tex("normal").sample(ctx.uv).rgb);
+        const facing = smoothstep5(0.05, 0.3, n.dot(U.lightView));
+        return hit.mul(facing).mul(step4(d0, 0.99999));
+      })();
+      return c.mul(occlusion.mul(P.get("lighting.contact.intensity")).oneMinus());
+    }
+  },
+  {
+    id: "lens.bloom",
+    label: "Bloom",
+    stage: "camera",
+    enabled: (v) => v["lens.bloom.enabled"],
+    requires: (v) => v["lens.bloom.source"] === "emissive" ? ["emissive"] : [],
+    key: (v) => v["lens.bloom.source"],
+    build(c, ctx) {
+      const source = ctx.v["lens.bloom.source"] === "emissive" ? ctx.tex("emissive") : ctx.tex("output");
+      const node = ctx.own(bloom(source));
+      node.strength = ctx.P.get("lens.bloom.strength");
+      node.radius = ctx.P.get("lens.bloom.radius");
+      node.threshold = ctx.P.get("lens.bloom.threshold");
+      return c.add(node.getTextureNode().sample(ctx.uv).rgb);
+    }
+  },
+  {
+    id: "atmosphere.godRays",
+    label: "God rays",
+    stage: "camera",
+    enabled: (v) => v["atmosphere.godRays.enabled"],
+    requires: () => ["depth"],
+    build(c, ctx) {
+      const P = ctx.P, U = ctx.U;
+      const depth = ctx.tex("depth"), hdr = ctx.tex("output");
+      const N = 32;
+      const rays = Fn5(() => {
+        const uv = vec2(ctx.uv).toVar();
+        const delta = U.sunScreen.sub(uv).mul(P.get("atmosphere.godRays.length")).div(N).toVar();
+        uv.addAssign(delta.mul(interleavedGradientNoise(screenCoordinate)));
+        const sum = float5(0).toVar();
+        const w = float5(1).toVar();
+        Loop2({ start: int2(0), end: int2(N), type: "int", condition: "<" }, () => {
+          uv.addAssign(delta);
+          const inside = step4(0, uv.x).mul(step4(uv.x, 1)).mul(step4(0, uv.y)).mul(step4(uv.y, 1));
+          const sky = step4(0.99999, depth.sample(uv).r).mul(inside);
+          sum.addAssign(luminance2(hdr.sample(uv).rgb).min(6).mul(sky).mul(w));
+          w.mulAssign(P.get("atmosphere.godRays.decay"));
+        });
+        return sum.div(N);
+      })();
+      const tint = linear(P.get("lighting.key.color"));
+      return c.add(tint.mul(rays).mul(P.get("atmosphere.godRays.intensity")).mul(U.sunVisible));
+    }
+  },
+  {
+    id: "lens.motionBlur",
+    label: "Motion blur",
+    stage: "camera",
+    neighborhood: true,
+    enabled: (v) => v["lens.motionBlur.enabled"],
+    requires: () => ["velocity"],
+    build(c, ctx) {
+      const velocity2 = ctx.tex("velocity").sample(ctx.uv).xy.mul(ctx.P.get("lens.motionBlur.shutter").div(360));
+      return vec34(motionBlur(ctx.texture(c), velocity2, int2(16)).rgb);
+    }
+  },
+  {
+    id: "lens.dof",
+    label: "Depth of field",
+    stage: "camera",
+    neighborhood: true,
+    enabled: (v) => v["lens.dof.enabled"],
+    requires: () => ["depth"],
+    build(c, ctx) {
+      const node = ctx.own(dof(vec42(c, 1), ctx.pass.getViewZNode(), ctx.U.focusDistance, ctx.P.get("lens.dof.range"), ctx.P.get("lens.dof.blur")));
+      return vec34(node.rgb);
+    }
+  },
+  {
+    id: "lens.tiltShift",
+    label: "Tilt-shift",
+    stage: "camera",
+    neighborhood: true,
+    enabled: (v) => v["lens.tiltShift.enabled"],
+    requires: () => [],
+    build(c, ctx) {
+      const P = ctx.P;
+      const blurred = ctx.own(gaussianBlur(vec42(c, 1), vec2(P.get("lens.tiltShift.blur")), 6));
+      const half = P.get("lens.tiltShift.width").mul(0.5);
+      const d = abs(ctx.uv.y.oneMinus().sub(P.get("lens.tiltShift.center")));
+      return mix3(c, vec34(blurred.rgb), smoothstep5(half, half.add(0.22), d));
+    }
+  },
+  {
+    id: "grade.toneMapping",
+    label: "Exposure and tone mapping",
+    stage: "camera",
+    always: true,
+    enabled: () => true,
+    requires: () => [],
+    key: (v) => v["grade.toneMapping"],
+    build(c, ctx) {
+      return renderOutput(vec42(c.mul(ctx.U.exposure), 1), TONE_MAPPING[ctx.v["grade.toneMapping"]], THREE4.SRGBColorSpace).rgb;
+    }
+  }
+];
+
+// src/runtime/post/stage-grade.js
+import * as THREE5 from "three/webgpu";
+import { Fn as Fn6, vec3 as vec36, float as float6, int as int3, mix as mix5, smoothstep as smoothstep6, abs as abs2, atan, floor as floor3, fract as fract3, min as min2, luminance as luminance3, saturation, vibrance, hue, cdl, texture3D, uniform as uniform5, uniformArray as uniformArray2 } from "three/tsl";
+
+// src/runtime/post/colorspace.js
+import { vec3 as vec35, dot as dot2, cbrt, sRGBTransferEOTF as sRGBTransferEOTF2 } from "three/tsl";
+function linearToOklab2(c) {
+  const l = cbrt(dot2(c, vec35(0.4122214708, 0.5363325363, 0.0514459929)));
+  const m = cbrt(dot2(c, vec35(0.2119034982, 0.6806995451, 0.1073969566)));
+  const s = cbrt(dot2(c, vec35(0.0883024619, 0.2817188376, 0.6299787005)));
+  const lms = vec35(l, m, s);
+  return vec35(
+    dot2(lms, vec35(0.2104542553, 0.793617785, -0.0040720468)),
+    dot2(lms, vec35(1.9779984951, -2.428592205, 0.4505937099)),
+    dot2(lms, vec35(0.0259040371, 0.7827717662, -0.808675766))
+  );
+}
+var displayToOklab = (c) => linearToOklab2(sRGBTransferEOTF2(c.max(0)));
+
+// src/runtime/color/lut.js
+var clamp012 = (x) => Math.min(1, Math.max(0, x));
+var lum = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+var mix4 = (a, b, t) => a + (b - a) * t;
+var mix32 = (a, b, t) => [mix4(a[0], b[0], t), mix4(a[1], b[1], t), mix4(a[2], b[2], t)];
+var smooth = (e0, e1, x) => {
+  const t = clamp012((x - e0) / (e1 - e0));
+  return t * t * (3 - 2 * t);
+};
+var sCurve = (x, k) => mix4(x, x * x * (3 - 2 * x), k);
+var saturate3 = (c, s) => {
+  const l = lum(c);
+  return c.map((v) => l + (v - l) * s);
+};
+var softLight = (a, b) => a.map((x, i) => b[i] < 0.5 ? x - (1 - 2 * b[i]) * x * (1 - x) : x + (2 * b[i] - 1) * ((x < 0.25 ? ((16 * x - 12) * x + 4) * x : Math.sqrt(x)) - x));
+var LUT_PRESETS = {
+  "teal-orange": (c) => {
+    const l = lum(c);
+    const tone = mix32([0.05, 0.42, 0.5], [1, 0.62, 0.32], smooth(0.15, 0.85, l));
+    const graded = softLight(c.map((x) => sCurve(x, 0.35)), tone);
+    return saturate3(mix32(c, graded, 0.75), 1.08);
+  },
+  "warm-film": (c) => {
+    const lifted = c.map((x) => 0.035 + sCurve(x, 0.3) * 0.94);
+    return saturate3([lifted[0] * 1.06, lifted[1] * 1, lifted[2] * 0.88], 0.92);
+  },
+  bleach: (c) => {
+    const l = lum(c);
+    const overlay = c.map((x) => l < 0.5 ? 2 * x * l : 1 - 2 * (1 - x) * (1 - l));
+    return saturate3(mix32(c, overlay, 0.65), 0.45).map((x) => sCurve(x, 0.25));
+  },
+  cross: (c) => [sCurve(c[0], 0.6), sCurve(c[1], 0.3) * 0.95 + 0.04, 0.12 + c[2] * 0.72],
+  faded: (c) => saturate3(c.map((x) => 0.08 + x * 0.84), 0.78).map((x, i) => x * [1.02, 1, 0.97][i]),
+  "cool-night": (c) => saturate3(c, 0.55).map((x, i) => Math.pow(clamp012(x), 1.2) * [0.78, 0.88, 1.12][i])
+};
+function bakeLut(preset, size = 33) {
+  const f = typeof preset === "function" ? preset : LUT_PRESETS[preset];
+  if (!f) throw new Error(`Unknown LUT preset ${preset}`);
+  const data = new Uint8Array(size * size * size * 4);
+  let i = 0;
+  for (let b = 0; b < size; b++) for (let g = 0; g < size; g++) for (let r = 0; r < size; r++) {
+    const out = f([r / (size - 1), g / (size - 1), b / (size - 1)]);
+    data[i++] = Math.round(clamp012(out[0]) * 255);
+    data[i++] = Math.round(clamp012(out[1]) * 255);
+    data[i++] = Math.round(clamp012(out[2]) * 255);
+    data[i++] = 255;
+  }
+  return data;
+}
+var PALETTES = {
+  pico8: ["#000000", "#1d2b53", "#7e2553", "#008751", "#ab5236", "#5f574f", "#c2c3c7", "#fff1e8", "#ff004d", "#ffa300", "#ffec27", "#00e436", "#29adff", "#83769c", "#ff77a8", "#ffccaa"],
+  gameboy: ["#0f380f", "#306230", "#8bac0f", "#9bbc0f"],
+  cga: ["#000000", "#55ffff", "#ff55ff", "#ffffff"],
+  nes: ["#000000", "#fcfcfc", "#7c7c7c", "#bcbcbc", "#a80020", "#f83800", "#fca044", "#f8b800", "#00a800", "#58d854", "#0058f8", "#3cbcfc", "#6844fc", "#d800cc", "#503000", "#f8d8b8"],
+  onebit: ["#16131f", "#e8e2d0"]
+};
+function bayerMatrix(n) {
+  if (n === 1) return [[0]];
+  const m = bayerMatrix(n / 2);
+  const out = Array.from({ length: n }, () => new Array(n));
+  const h = n / 2;
+  for (let y = 0; y < h; y++) for (let x = 0; x < h; x++) {
+    const v = m[y][x] * 4;
+    out[y][x] = v;
+    out[y][x + h] = v + 2;
+    out[y + h][x] = v + 3;
+    out[y + h][x + h] = v + 1;
+  }
+  return out;
+}
+
+// src/runtime/post/stage-grade.js
+var LUT_SIZE = 33;
+var lutCache = /* @__PURE__ */ new Map();
+function lutTexture(preset) {
+  let t = lutCache.get(preset);
+  if (t) return t;
+  t = new THREE5.Data3DTexture(bakeLut(preset, LUT_SIZE), LUT_SIZE, LUT_SIZE, LUT_SIZE);
+  t.format = THREE5.RGBAFormat;
+  t.type = THREE5.UnsignedByteType;
+  t.minFilter = t.magFilter = THREE5.LinearFilter;
+  t.wrapS = t.wrapT = t.wrapR = THREE5.ClampToEdgeWrapping;
+  t.unpackAlignment = 1;
+  t.needsUpdate = true;
+  lutCache.set(preset, t);
+  return t;
+}
+var LUT_PRESET_IDS = Object.keys(LUT_PRESETS);
+var MAX_STOPS = 8;
+function createGradeLists() {
+  return {
+    stops: uniformArray2(Array.from({ length: MAX_STOPS }, () => new THREE5.Vector3()), "vec3"),
+    stopCount: uniform5(2),
+    lut: texture3D(lutTexture("teal-orange"))
+  };
+}
+function applyGradeLists(L, v) {
+  const stops = v["grade.gradientMap.stops"].slice(0, MAX_STOPS);
+  const list = stops.length >= 2 ? stops : ["#000000", "#ffffff"];
+  list.forEach((hex, i) => L.stops.array[i].set(...hexToRgb(hex)));
+  L.stopCount.value = list.length;
+  const preset = v["grade.lut.preset"];
+  if (L.lut.value !== lutTexture(preset)) L.lut.value = lutTexture(preset);
+}
+var GRADE = [
+  {
+    id: "grade.basic",
+    label: "Lift, gamma, gain, contrast, saturation, hue, split tone",
+    stage: "grade",
+    always: true,
+    enabled: () => true,
+    requires: () => [],
+    build(c, ctx) {
+      const P = ctx.P;
+      let x = vec36(cdl(c, vec36(P.get("grade.gain")), vec36(P.get("grade.lift")), vec36(P.get("grade.gamma"))).rgb);
+      x = x.sub(0.5).mul(P.get("grade.contrast")).add(0.5).max(0);
+      x = saturation(x, P.get("grade.saturation"));
+      x = vibrance(x, P.get("grade.vibrance"));
+      x = hue(x, P.get("grade.hue").mul(Math.PI / 180));
+      const h = smoothstep6(0.05, 0.95, luminance3(x).sub(P.get("grade.split.balance").mul(0.25)));
+      const tone = mix5(P.get("grade.split.shadows"), P.get("grade.split.highlights"), h);
+      const softLight2 = x.mul(x).mul(tone.mul(2).oneMinus()).add(x.mul(tone).mul(2));
+      return mix5(x, softLight2, P.get("grade.split.amount"));
+    }
+  },
+  {
+    id: "grade.selective",
+    label: "Selective color",
+    stage: "grade",
+    enabled: (v) => v["grade.selective.enabled"],
+    requires: () => [],
+    build(c, ctx) {
+      const P = ctx.P;
+      const lab = displayToOklab(c);
+      const h = atan(lab.z, lab.y).mul(180 / Math.PI);
+      const d = abs2(fract3(h.sub(P.get("grade.selective.hue")).div(360).add(0.5)).sub(0.5)).mul(360);
+      const range = P.get("grade.selective.range");
+      const chroma = lab.yz.length();
+      const keep = smoothstep6(range.mul(0.6), range, d).oneMinus().mul(smoothstep6(0.02, 0.06, chroma));
+      return mix5(c, vec36(luminance3(c)), P.get("grade.selective.amount").mul(keep.oneMinus()));
+    }
+  },
+  {
+    id: "grade.lut",
+    label: "Color LUT",
+    stage: "grade",
+    enabled: (v) => v["grade.lut.enabled"],
+    requires: () => [],
+    build(c, ctx) {
+      const uvw = c.clamp(0, 1).mul((LUT_SIZE - 1) / LUT_SIZE).add(0.5 / LUT_SIZE);
+      return mix5(c, ctx.lists.lut.sample(uvw).rgb, ctx.P.get("grade.lut.amount"));
+    }
+  },
+  {
+    id: "grade.gradientMap",
+    label: "Gradient map",
+    stage: "grade",
+    enabled: (v) => v["grade.gradientMap.enabled"],
+    requires: () => [],
+    build(c, ctx) {
+      const L = ctx.lists;
+      const mapped = Fn6(() => {
+        const n = float6(L.stopCount).sub(1);
+        const t = luminance3(c).clamp(0, 1).mul(n);
+        const i = min2(floor3(t), n.sub(1));
+        const a = L.stops.element(int3(i)), b = L.stops.element(int3(i).add(1));
+        return mix5(a, b, t.sub(i).clamp(0, 1));
+      })();
+      return mix5(c, mapped, ctx.P.get("grade.gradientMap.amount"));
+    }
+  }
+];
+
+// src/runtime/post/stage-medium.js
+import { Fn as Fn8, vec2 as vec23, vec3 as vec38, vec4 as vec43, float as float8, max as max5, smoothstep as smoothstep8, colorToDirection as colorToDirection3, perspectiveDepthToViewZ as perspectiveDepthToViewZ2 } from "three/tsl";
 import { fxaa } from "three/addons/tsl/display/FXAANode.js";
 
 // src/runtime/post/lines.js
-import { Fn as Fn4, vec2, vec3 as vec34, float as float3, screenUV, screenSize, max as max3, mix as mix3, smoothstep as smoothstep4, step as step3, abs, colorToDirection, perspectiveDepthToViewZ } from "three/tsl";
+import { Fn as Fn7, vec2 as vec22, vec3 as vec37, float as float7, max as max4, mix as mix6, smoothstep as smoothstep7, step as step5, abs as abs3, colorToDirection as colorToDirection2, perspectiveDepthToViewZ } from "three/tsl";
 var PAIRS = [[1, 0], [0, 1], [0.7071, 0.7071], [0.7071, -0.7071]];
-function screenLines(color, b, u, atmos) {
-  return Fn4(() => {
-    const uv = screenUV;
-    const px = vec2(1).div(screenSize);
-    const radius = max3(u.thickness.mul(screenSize.y.div(1080)), 0);
+function screenLines(color, b, u, atmos, { uv, texel, scale }) {
+  return Fn7(() => {
+    const px = texel;
+    const radius = max4(u.thickness.mul(scale), 0);
     const dist = (d) => perspectiveDepthToViewZ(d, u.near, u.far).negate();
     const d0 = dist(b.depth.sample(uv).r).toVar();
-    const n0 = colorToDirection(b.normal.sample(uv).rgb).toVar();
+    const n0 = colorToDirection2(b.normal.sample(uv).rgb).toVar();
     const id0 = b.ids.sample(uv).rg.toVar();
-    const depthEdge = float3(0).toVar();
-    const normalEdge = float3(0).toVar();
-    const idEdge = float3(0).toVar();
+    const depthEdge = float7(0).toVar();
+    const normalEdge = float7(0).toVar();
+    const idEdge = float7(0).toVar();
     const w0 = d0.reciprocal();
     for (const [x, y] of PAIRS) {
-      const o = vec2(x, y).mul(px).mul(radius);
+      const o = vec22(x, y).mul(px).mul(radius);
       const samples = [uv.add(o), uv.sub(o)];
       const da = dist(b.depth.sample(samples[0]).r), db = dist(b.depth.sample(samples[1]).r);
       const lap = da.reciprocal().add(db.reciprocal()).sub(w0.mul(2)).div(w0);
-      depthEdge.assign(max3(depthEdge, lap.negate()));
+      depthEdge.assign(max4(depthEdge, lap.negate()));
       for (const [k, s] of samples.entries()) {
-        const n = colorToDirection(b.normal.sample(k === 0 ? uv.add(o.mul(0.5)) : uv.sub(o.mul(0.5))).rgb);
-        normalEdge.assign(max3(normalEdge, n.dot(n0).oneMinus()));
+        const n = colorToDirection2(b.normal.sample(k === 0 ? uv.add(o.mul(0.5)) : uv.sub(o.mul(0.5))).rgb);
+        normalEdge.assign(max4(normalEdge, n.dot(n0).oneMinus()));
         const id = b.ids.sample(s).rg;
-        const differs = step3(0.5 / 255, abs(id.x.sub(id0.x)).add(abs(id.y.sub(id0.y))));
-        const notCloser = step3(d0.mul(0.999), k === 0 ? da : db);
-        idEdge.assign(max3(idEdge, differs.mul(notCloser)));
+        const differs = step5(0.5 / 255, abs3(id.x.sub(id0.x)).add(abs3(id.y.sub(id0.y))));
+        const notCloser = step5(d0.mul(0.999), k === 0 ? da : db);
+        idEdge.assign(max4(idEdge, differs.mul(notCloser)));
       }
     }
-    const th = u.depthThreshold.div(abs(n0.z).clamp(0.25, 1));
-    const silhouette = smoothstep4(th.mul(0.5), th, depthEdge).mul(u.silhouette);
-    const crease = smoothstep4(u.creaseThreshold.mul(0.8), u.creaseThreshold.mul(1.25), normalEdge).mul(u.crease);
-    const edge = max3(silhouette, max3(crease, idEdge.mul(u.idWeight))).mul(step3(0.01, radius));
+    const th = u.depthThreshold.div(abs3(n0.z).clamp(0.25, 1));
+    const silhouette = smoothstep7(th.mul(0.5), th, depthEdge).mul(u.silhouette);
+    const crease = smoothstep7(u.creaseThreshold.mul(0.8), u.creaseThreshold.mul(1.25), normalEdge).mul(u.crease);
+    const edge = max4(silhouette, max4(crease, idEdge.mul(u.idWeight))).mul(step5(0.01, radius));
     const fade = fogFactor(atmos, d0).mul(u.followFog).oneMinus();
-    return vec34(mix3(color.rgb, u.color, edge.clamp().mul(fade)));
+    return vec37(mix6(color.rgb, u.color, edge.clamp().mul(fade)));
   })();
 }
 
-// src/runtime/post/graph.js
-var TONE_MAPPING = {
-  none: THREE3.NoToneMapping,
-  linear: THREE3.LinearToneMapping,
-  reinhard: THREE3.ReinhardToneMapping,
-  cineon: THREE3.CineonToneMapping,
-  aces: THREE3.ACESFilmicToneMapping,
-  agx: THREE3.AgXToneMapping,
-  neutral: THREE3.NeutralToneMapping
-};
-function setDisplayColor(u, hex) {
-  const [r, g, b] = hexToRgb(hex);
-  u.value.setRGB(r, g, b, THREE3.LinearSRGBColorSpace);
+// src/runtime/post/stage-medium.js
+var MEDIUM2 = [
+  {
+    id: "lines.screen",
+    label: "Screen-space ink",
+    stage: "medium",
+    enabled: (v) => v["lines.screen.enabled"],
+    requires: () => ["depth", "normal", "ids"],
+    build(c, ctx) {
+      return screenLines(c, { depth: ctx.tex("depth"), normal: ctx.tex("normal"), ids: ctx.tex("ids") }, ctx.U.lines, ctx.atmos, { uv: ctx.uv, texel: ctx.texel, scale: ctx.lineScale });
+    }
+  },
+  {
+    id: "retro.pixel",
+    label: "Pixelation and pixel edges",
+    stage: "medium",
+    enabled: (v) => v["retro.pixel.enabled"],
+    requires: () => ["depth", "normal"],
+    build(c, ctx) {
+      const { U } = ctx;
+      const depth = ctx.tex("depth"), normal = ctx.tex("normal");
+      const strength = ctx.P.get("retro.pixel.edges");
+      return Fn8(() => {
+        const dist = (uv) => perspectiveDepthToViewZ2(depth.sample(uv).r, U.lines.near, U.lines.far).negate();
+        const d0 = dist(ctx.uv).toVar();
+        const n0 = colorToDirection3(normal.sample(ctx.uv).rgb).toVar();
+        const depthEdge = float8(0).toVar(), normalEdge = float8(0).toVar();
+        for (const [x, y] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const uv = ctx.uv.add(vec23(x, y).mul(ctx.texel));
+          const d = dist(uv);
+          const n = colorToDirection3(normal.sample(uv).rgb);
+          depthEdge.assign(max5(depthEdge, d.sub(d0).div(d0).clamp(0, 1)));
+          const facing = smoothstep8(-0.01, 0.01, n0.sub(n).dot(vec38(-1, 1, 1).normalize()));
+          const sameSurface = smoothstep8(0, 0.02, d.sub(d0).div(d0).abs()).oneMinus();
+          normalEdge.assign(max5(normalEdge, n0.dot(n).oneMinus().mul(facing).mul(sameSurface)));
+        }
+        const dark = smoothstep8(0.03, 0.06, depthEdge);
+        const light = smoothstep8(0.08, 0.15, normalEdge).mul(dark.oneMinus());
+        return c.mul(float8(1).sub(dark.mul(strength).mul(0.6))).mul(float8(1).add(light.mul(strength).mul(0.5)));
+      })();
+    }
+  },
+  {
+    id: "quality.fxaa",
+    label: "FXAA",
+    stage: "medium",
+    always: true,
+    // The pass renders without MSAA whenever it writes extra buffers; pixel looks stay crisp.
+    enabled: (v, ctx) => ctx.samples === 0 && !v["retro.pixel.enabled"],
+    requires: () => [],
+    build(c, ctx) {
+      return vec38(ctx.own(fxaa(vec43(c, 1))).rgb);
+    }
+  }
+];
+
+// src/runtime/post/stage-display.js
+import * as THREE6 from "three/webgpu";
+import { Fn as Fn9, vec2 as vec24, vec3 as vec39, float as float9, int as int4, ivec2, mix as mix7, max as max6, step as step6, smoothstep as smoothstep9, sin as sin2, cos as cos2, dot as dot3, fract as fract4, floor as floor4, length, select as select3, luminance as luminance4, textureLoad, interleavedGradientNoise as interleavedGradientNoise2, uniform as uniform6, uniformArray as uniformArray3, screenUV, screenSize, screenCoordinate as screenCoordinate2, If as If2, Loop as Loop3 } from "three/tsl";
+var MAX_PALETTE = 16;
+function bayerTexture() {
+  const data = new Uint8Array(16 * 64);
+  [16, 8, 4, 2].forEach((n, block) => {
+    const m = bayerMatrix(n);
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) data[(block * 16 + y) * 16 + x] = Math.round((m[y % n][x % n] + 0.5) / (n * n) * 255);
+  });
+  const t = new THREE6.DataTexture(data, 16, 64, THREE6.RedFormat, THREE6.UnsignedByteType);
+  t.minFilter = t.magFilter = THREE6.NearestFilter;
+  t.needsUpdate = true;
+  return t;
 }
-var displayColor = (hex) => {
-  const u = uniform4(new THREE3.Color());
-  setDisplayColor(u, hex);
-  return u;
-};
-function createPostUniforms() {
+var bayer = null;
+function ditherThreshold(coord, pattern) {
+  bayer ??= bayerTexture();
+  const row = float9(3).sub(pattern).clamp(0, 3).mul(16);
+  const ordered = textureLoad(bayer, ivec2(int4(coord.x).mod(16), int4(coord.y).mod(16).add(int4(row)))).r;
+  return select3(pattern.greaterThan(3.5), interleavedGradientNoise2(coord), ordered);
+}
+function createDisplayLists() {
   return {
-    exposure: uniform4(new THREE3.Vector3(1, 1, 1)),
-    contrast: uniform4(1),
-    saturation: uniform4(1),
-    splitAmount: uniform4(0),
-    splitShadows: displayColor("#2e5f8a"),
-    splitHighlights: displayColor("#ffb46b"),
-    splitBalance: uniform4(0),
-    vignetteAmount: uniform4(0),
-    vignetteSoftness: uniform4(0.5),
-    vignetteRoundness: uniform4(1),
-    vignetteColor: displayColor("#000000"),
-    grainAmount: uniform4(0),
-    grainSize: uniform4(1.5),
-    grainAnimated: uniform4(1),
-    lines: {
-      thickness: uniform4(1.5),
-      color: displayColor("#0e0e12"),
-      silhouette: uniform4(1),
-      crease: uniform4(0.5),
-      creaseThreshold: uniform4(0.18),
-      depthThreshold: uniform4(0.03),
-      idWeight: uniform4(1),
-      followFog: uniform4(1),
-      near: uniform4(0.1),
-      far: uniform4(1e3)
-    },
-    // Compare composite (§6.9): hold, split wipe and flicker never rebuild.
-    hold: uniform4(0),
-    split: uniform4(0),
-    splitPos: uniform4(0.5),
-    flicker: uniform4(0),
-    time: uniform4(0)
+    paletteRgb: uniformArray3(Array.from({ length: MAX_PALETTE }, () => new THREE6.Vector3()), "vec3"),
+    paletteLab: uniformArray3(Array.from({ length: MAX_PALETTE }, () => new THREE6.Vector3()), "vec3"),
+    paletteCount: uniform6(2)
   };
 }
-function applyPostValues(U, v) {
+function quantizePalette(v) {
+  const id = v["retro.quantize.palette"];
+  const colors = id === "look" ? v["palette.colors"] : PALETTES[id];
+  return (colors && colors.length >= 2 ? colors : PALETTES.onebit).slice(0, MAX_PALETTE);
+}
+function applyDisplayLists(L, v) {
+  const colors = quantizePalette(v);
+  colors.forEach((hex, i) => {
+    L.paletteRgb.array[i].set(...hexToRgb(hex));
+    L.paletteLab.array[i].set(...hexToOklab(hex));
+  });
+  L.paletteCount.value = colors.length;
+}
+var DISPLAY = [
+  {
+    id: "retro.quantize",
+    label: "Color depth and dithering",
+    stage: "display",
+    enabled: (v) => v["retro.quantize.mode"] !== "off",
+    requires: () => [],
+    key: (v) => v["retro.quantize.mode"],
+    build(c, ctx) {
+      const P = ctx.P, L = ctx.lists;
+      const d = ditherThreshold(ctx.coord, P.get("retro.dither.pattern")).sub(0.5).mul(P.get("retro.dither.amount"));
+      if (ctx.v["retro.quantize.mode"] === "posterize") {
+        const n = P.get("retro.quantize.levels").sub(1);
+        return floor4(c.clamp(0, 1).mul(n).add(0.5).add(d)).div(n).clamp(0, 1);
+      }
+      return Fn9(() => {
+        const spread = float9(1).div(float9(L.paletteCount).sqrt());
+        const lab = displayToOklab(c.add(d.mul(spread))).toVar();
+        const best = vec39(0).toVar(), bestD = float9(1e9).toVar();
+        Loop3({ start: int4(0), end: int4(L.paletteCount), type: "int", condition: "<" }, ({ i }) => {
+          const delta = lab.sub(L.paletteLab.element(i));
+          const dd = dot3(delta, delta);
+          If2(dd.lessThan(bestD), () => {
+            bestD.assign(dd);
+            best.assign(L.paletteRgb.element(i));
+          });
+        });
+        return best;
+      })();
+    }
+  },
+  {
+    id: "lens.ca",
+    label: "Chromatic aberration",
+    stage: "display",
+    neighborhood: true,
+    enabled: (v) => v["lens.ca.enabled"],
+    requires: () => [],
+    build(c, ctx) {
+      const tex = ctx.texture(c);
+      const p12 = screenUV.sub(0.5);
+      const o = p12.mul(length(p12).mul(2)).mul(ctx.P.get("lens.ca.amount").mul(0.012));
+      return vec39(tex.sample(screenUV.add(o)).r, tex.sample(screenUV).g, tex.sample(screenUV.sub(o)).b);
+    }
+  },
+  {
+    id: "lens.distortion",
+    label: "Lens distortion",
+    stage: "display",
+    neighborhood: true,
+    enabled: (v) => v["lens.distortion.enabled"],
+    requires: () => [],
+    build(c, ctx) {
+      const tex = ctx.texture(c);
+      const k = ctx.P.get("lens.distortion.amount").mul(1.6);
+      const aspect = screenSize.x.div(screenSize.y);
+      const p12 = screenUV.sub(0.5).mul(vec24(aspect, 1));
+      const r2 = dot3(p12, p12);
+      const corner = aspect.mul(aspect).add(1).mul(0.25);
+      const zoom = float9(1).div(float9(1).add(max6(k, 0).mul(corner)));
+      const q = p12.mul(r2.mul(k).add(1)).mul(zoom).div(vec24(aspect, 1)).add(0.5);
+      return tex.sample(q.clamp(0, 1)).rgb;
+    }
+  },
+  {
+    id: "lens.vignette",
+    label: "Vignette",
+    stage: "display",
+    always: true,
+    enabled: () => true,
+    requires: () => [],
+    build(c, ctx) {
+      const P = ctx.P;
+      const aspect = screenSize.x.div(screenSize.y);
+      const sx = mix7(1, aspect, P.get("lens.vignette.roundness"));
+      const p12 = ctx.uv.sub(0.5).mul(2).mul(vec24(sx, 1));
+      const r = length(p12).div(length(vec24(sx, 1)));
+      const softness = P.get("lens.vignette.softness");
+      const v = smoothstep9(softness.oneMinus(), softness.mul(0.2).add(1), r).mul(P.get("lens.vignette.amount"));
+      return mix7(c, P.get("lens.vignette.color"), v);
+    }
+  },
+  {
+    id: "media.grain",
+    label: "Film grain",
+    stage: "display",
+    always: true,
+    enabled: () => true,
+    requires: () => [],
+    build(c, ctx) {
+      const P = ctx.P;
+      const cell = floor4(ctx.coord.div(P.get("media.grain.size").mul(ctx.gridSize.y.div(1080)).max(1)));
+      const seed = floor4(ctx.U.time.mul(24)).mul(P.get("media.grain.animated"));
+      const n = fract4(sin2(dot3(cell.add(vec24(seed.mul(17.13), seed.mul(41.7))), vec24(12.9898, 78.233))).mul(43758.5453)).sub(0.5);
+      const response = luminance4(c).sub(0.5).mul(2).pow(2).mul(0.6).oneMinus();
+      return c.add(n.mul(P.get("media.grain.amount")).mul(2).mul(response));
+    }
+  },
+  {
+    id: "lens.letterbox",
+    label: "Letterbox",
+    stage: "display",
+    always: true,
+    enabled: () => true,
+    requires: () => [],
+    build(c, ctx) {
+      const P = ctx.P;
+      const screen = screenSize.x.div(screenSize.y), target = P.get("lens.letterbox.aspect");
+      const amount = P.get("lens.letterbox.amount");
+      const barY = float9(1).sub(screen.div(target)).max(0).mul(0.5).mul(amount);
+      const barX = float9(1).sub(target.div(screen)).max(0).mul(0.5).mul(amount);
+      const uv = ctx.uv;
+      const bar = max6(max6(step6(uv.y, barY), step6(barY.oneMinus(), uv.y)).mul(step6(1e-4, barY)), max6(step6(uv.x, barX), step6(barX.oneMinus(), uv.x)).mul(step6(1e-4, barX)));
+      return mix7(c, P.get("lens.letterbox.color"), bar);
+    }
+  },
+  {
+    id: "retro.crt",
+    label: "CRT",
+    stage: "display",
+    neighborhood: true,
+    enabled: (v) => v["retro.crt.enabled"],
+    requires: () => [],
+    build(c, ctx) {
+      const P = ctx.P;
+      const tex = ctx.texture(c);
+      return Fn9(() => {
+        const k = P.get("retro.crt.curvature");
+        const p12 = screenUV.mul(2).sub(1).toVar();
+        p12.addAssign(p12.mul(p12.yx.mul(p12.yx)).mul(k));
+        const uv = p12.mul(0.5).add(0.5);
+        const edge = smoothstep9(0, 0.012, uv.x).mul(smoothstep9(0, 0.012, uv.x.oneMinus())).mul(smoothstep9(0, 0.012, uv.y)).mul(smoothstep9(0, 0.012, uv.y.oneMinus()));
+        const px = vec24(2).div(screenSize).mul(screenSize.y.div(1080));
+        const col = tex.sample(uv).rgb.toVar();
+        const glow = tex.sample(uv.add(vec24(px.x, 0))).rgb.add(tex.sample(uv.sub(vec24(px.x, 0))).rgb).add(tex.sample(uv.add(vec24(0, px.y))).rgb).add(tex.sample(uv.sub(vec24(0, px.y))).rgb).mul(0.25);
+        col.assign(mix7(col, max6(col, glow), P.get("retro.crt.glow")).add(glow.mul(P.get("retro.crt.glow")).mul(0.2)));
+        const rows = ctx.pixel ? ctx.gridSize.y : screenSize.y.div(screenSize.y.div(360).max(2));
+        const phase = fract4(uv.y.mul(rows));
+        const scan = float9(1).sub(P.get("retro.crt.scanlines").mul(cos2(phase.mul(Math.PI)).pow(2)));
+        const triad = floor4(screenCoordinate2.x).mod(3);
+        const maskRgb = vec39(select3(triad.lessThan(0.5), 1.25, 0.8), select3(triad.lessThan(0.5).or(triad.greaterThan(1.5)), 0.8, 1.25), select3(triad.greaterThan(1.5), 1.25, 0.8));
+        const mask = mix7(vec39(1), maskRgb, P.get("retro.crt.mask"));
+        const flicker = float9(1).add(sin2(ctx.U.time.mul(59)).mul(P.get("retro.crt.flicker")));
+        const gain = float9(1).add(P.get("retro.crt.scanlines").mul(0.4));
+        return col.mul(scan).mul(mask).mul(flicker).mul(gain).mul(edge);
+      })();
+    }
+  }
+];
+
+// src/runtime/post/params.js
+import * as THREE7 from "three/webgpu";
+import { uniform as uniform7 } from "three/tsl";
+function setDisplayColor(u, hex) {
+  const [r, g, b] = hexToRgb(hex);
+  u.value.setRGB(r, g, b, THREE7.LinearSRGBColorSpace);
+}
+function write(u, entry, value) {
+  switch (entry.type) {
+    case "color":
+      setDisplayColor(u, value);
+      break;
+    case "bool":
+      u.value = value ? 1 : 0;
+      break;
+    case "enum":
+      u.value = Math.max(0, entry.options.findIndex((o) => o.value === value));
+      break;
+    default:
+      u.value = value;
+  }
+}
+var ParamUniforms = class {
+  constructor() {
+    this.map = /* @__PURE__ */ new Map();
+    this.values = null;
+  }
+  /** The uniform for registry parameter `id` (created on first use). */
+  get(id) {
+    let u = this.map.get(id);
+    if (u) return u;
+    const entry = byId.get(id);
+    if (!entry) throw new Error(`ParamUniforms: unknown parameter ${id}`);
+    if (entry.type === "palette") throw new Error(`ParamUniforms: ${id} is a palette; effects handle palettes themselves`);
+    u = entry.type === "color" ? uniform7(new THREE7.Color()) : uniform7(0, "float");
+    u.name = `p_${id.replace(/[^a-zA-Z0-9]/g, "_")}`;
+    this.map.set(id, u);
+    if (this.values) write(u, entry, this.values[id]);
+    return u;
+  }
+  apply(values) {
+    this.values = values;
+    for (const [id, u] of this.map) write(u, byId.get(id), values[id]);
+  }
+};
+
+// src/runtime/post/graph.js
+var EFFECTS = [...CAMERA, ...GRADE, ...MEDIUM2, ...DISPLAY];
+function createPostUniforms() {
+  return {
+    exposure: uniform8(new THREE8.Vector3(1, 1, 1)),
+    lines: {
+      thickness: uniform8(1.5),
+      color: uniform8(new THREE8.Color()),
+      silhouette: uniform8(1),
+      crease: uniform8(0.5),
+      creaseThreshold: uniform8(0.18),
+      depthThreshold: uniform8(0.03),
+      idWeight: uniform8(1),
+      followFog: uniform8(1),
+      near: uniform8(0.1),
+      far: uniform8(1e3)
+    },
+    // Per-frame camera-derived values (StyleRuntime.update).
+    sunScreen: uniform8(new THREE8.Vector2(0.5, 0.2)),
+    sunVisible: uniform8(0),
+    focusDistance: uniform8(10),
+    proj: uniform8(new THREE8.Matrix4()),
+    projInv: uniform8(new THREE8.Matrix4()),
+    lightView: uniform8(new THREE8.Vector3(0, 1, 0)),
+    pixelSize: uniform8(1),
+    lowRes: uniform8(new THREE8.Vector2(1, 1)),
+    // Compare composite (§6.9): hold, split wipe and flicker never rebuild.
+    hold: uniform8(0),
+    split: uniform8(0),
+    splitPos: uniform8(0.5),
+    flicker: uniform8(0),
+    time: uniform8(0)
+  };
+}
+function createPostLists() {
+  return { ...createGradeLists(), ...createDisplayLists() };
+}
+function applyPostValues(U, P, lists, v) {
+  P.apply(v);
   const ev = Math.pow(2, v["grade.exposure"]);
   const wb = whiteBalanceGains(v["grade.temperature"], v["grade.tint"]);
   U.exposure.value.set(wb[0] * ev, wb[1] * ev, wb[2] * ev);
-  U.contrast.value = v["grade.contrast"];
-  U.saturation.value = v["grade.saturation"];
-  U.splitAmount.value = v["grade.split.amount"];
-  setDisplayColor(U.splitShadows, v["grade.split.shadows"]);
-  setDisplayColor(U.splitHighlights, v["grade.split.highlights"]);
-  U.splitBalance.value = v["grade.split.balance"];
-  U.vignetteAmount.value = v["lens.vignette.amount"];
-  U.vignetteSoftness.value = v["lens.vignette.softness"];
-  U.vignetteRoundness.value = v["lens.vignette.roundness"];
-  setDisplayColor(U.vignetteColor, v["lens.vignette.color"]);
-  U.grainAmount.value = v["media.grain.amount"];
-  U.grainSize.value = v["media.grain.size"];
-  U.grainAnimated.value = v["media.grain.animated"] ? 1 : 0;
   const L = U.lines;
   L.thickness.value = v["lines.screen.thickness"];
-  setDisplayColor(L.color, v["lines.screen.color"]);
   L.silhouette.value = v["lines.screen.silhouette"];
   L.crease.value = v["lines.screen.crease"];
   L.creaseThreshold.value = 1 - Math.cos(v["lines.screen.creaseAngle"] * Math.PI / 180);
   L.depthThreshold.value = v["lines.screen.depthThreshold"];
   L.idWeight.value = v["lines.screen.idWeight"];
   L.followFog.value = v["lines.screen.followFog"];
+  applyGradeLists(lists, v);
+  applyDisplayLists(lists, v);
 }
-var graphKey = (v) => [v["grade.toneMapping"], v["lens.bloom.enabled"] ? "bloom" : "", v["lines.screen.enabled"] ? "lines" : ""].join("|");
-var needsMRT = (v) => v["lines.screen.enabled"] === true;
-function grade(c, U) {
-  let x = c.sub(0.5).mul(U.contrast).add(0.5).max(0);
-  x = saturation(x, U.saturation);
-  const h = smoothstep5(0.05, 0.95, luminance2(x).sub(U.splitBalance.mul(0.25)));
-  const tone = mix4(U.splitShadows, U.splitHighlights, h);
-  const softLight = x.mul(x).mul(tone.mul(2).oneMinus()).add(x.mul(tone).mul(2));
-  return mix4(x, softLight, U.splitAmount);
+function passRequirements(v) {
+  const out = /* @__PURE__ */ new Set();
+  for (const e of EFFECTS) if (!e.always && e.enabled(v, { samples: 0 })) for (const b of e.requires(v)) out.add(b);
+  return out;
 }
-function display(c, U) {
-  const aspect = screenSize2.x.div(screenSize2.y);
-  const sx = mix4(1, aspect, U.vignetteRoundness);
-  const p10 = screenUV2.sub(0.5).mul(2).mul(vec22(sx, 1));
-  const r = length(p10).div(length(vec22(sx, 1)));
-  const v = smoothstep5(U.vignetteSoftness.oneMinus(), U.vignetteSoftness.mul(0.2).add(1), r).mul(U.vignetteAmount);
-  let x = mix4(c, U.vignetteColor, v);
-  const cell = floor3(screenCoordinate.xy.div(U.grainSize.mul(screenSize2.y.div(1080)).max(1)));
-  const seed = floor3(U.time.mul(24)).mul(U.grainAnimated);
-  const n = fract3(sin2(dot2(cell.add(vec22(seed.mul(17.13), seed.mul(41.7))), vec22(12.9898, 78.233))).mul(43758.5453)).sub(0.5);
-  const response = luminance2(x).sub(0.5).mul(2).pow(2).mul(0.6).oneMinus();
-  x = x.add(n.mul(U.grainAmount).mul(2).mul(response));
-  return x;
+function activeEffects(v) {
+  return EFFECTS.filter((e) => !e.always && e.enabled(v, { samples: 0 })).map((e) => e.id);
 }
-function buildGraph({ styledPass, plainPass, values, U, atmos }) {
+function graphKey(v, passKey) {
+  const ctx = { samples: passKey.startsWith("0|") ? 0 : 4 };
+  return [passKey, ...EFFECTS.filter((e) => e.enabled(v, ctx)).map((e) => `${e.id}${e.key ? ":" + e.key(v) : ""}`)].join("|");
+}
+function buildGraph({ styledPass, plainPass, values, P, U, lists, atmos, camera, light, samples }) {
   const owned = [];
-  const hdr = styledPass.getTextureNode("output");
-  let c = vec35(hdr.rgb);
-  let bloomNode = null;
-  if (values["lens.bloom.enabled"]) {
-    bloomNode = bloom(hdr, values["lens.bloom.strength"], values["lens.bloom.radius"], values["lens.bloom.threshold"]);
-    owned.push(bloomNode);
-    c = c.add(bloomNode.rgb);
+  const pixel = values["retro.pixel.enabled"] === true;
+  const textures = /* @__PURE__ */ new Map();
+  const ctx = {
+    v: values,
+    P,
+    U,
+    lists,
+    atmos,
+    camera,
+    light,
+    samples,
+    pixel,
+    pass: styledPass,
+    tex: (name) => {
+      if (!textures.has(name)) textures.set(name, styledPass.getTextureNode(name));
+      return textures.get(name);
+    },
+    own: (node) => {
+      owned.push(node);
+      return node;
+    },
+    /** A texture boundary: renders `c` to a target so the next effect can sample neighbors. */
+    texture: (c2) => ctx.own(convertToTexture(vec44(c2, 1)))
+  };
+  if (pixel) {
+    ctx.coord = floor5(screenCoordinate3.xy.div(U.pixelSize));
+    ctx.uv = ctx.coord.add(0.5).div(U.lowRes);
+    ctx.texel = vec25(1).div(U.lowRes);
+    ctx.gridSize = U.lowRes;
+    ctx.lineScale = 2 / 3;
+  } else {
+    ctx.coord = floor5(screenCoordinate3.xy);
+    ctx.uv = screenUV2;
+    ctx.texel = vec25(1).div(screenSize2);
+    ctx.gridSize = screenSize2;
+    ctx.lineScale = screenSize2.y.div(1080);
   }
-  c = c.mul(U.exposure);
-  c = renderOutput(vec42(c, 1), TONE_MAPPING[values["grade.toneMapping"]], THREE3.SRGBColorSpace).rgb;
-  c = grade(c, U);
-  if (values["lines.screen.enabled"]) {
-    c = screenLines(c, { depth: styledPass.getTextureNode("depth"), normal: styledPass.getTextureNode("normal"), ids: styledPass.getTextureNode("ids") }, U.lines, atmos);
-    const aa = fxaa(vec42(c, 1));
-    owned.push(aa);
-    c = vec35(aa.rgb);
-  }
-  c = display(c, U);
-  const plain = renderOutput(plainPass.getTextureNode("output"), THREE3.ACESFilmicToneMapping, THREE3.SRGBColorSpace).rgb;
-  const showPlain = max4(U.hold, max4(U.flicker, U.split.mul(step4(screenUV2.x, U.splitPos))));
-  let out = mix4(c, plain, showPlain);
-  const divider = smoothstep5(0.5, 1.5, abs2(screenUV2.x.sub(U.splitPos)).mul(screenSize2.x)).oneMinus();
-  out = mix4(out, vec35(1), divider.mul(U.split).mul(U.hold.oneMinus()));
-  return { node: vec42(out, 1), bloomNode, owned };
+  let c = vec310(ctx.tex("output").sample(ctx.uv).rgb);
+  for (const e of EFFECTS) if (e.enabled(values, ctx)) c = e.build(c, ctx);
+  const plain = renderOutput2(plainPass.getTextureNode("output"), THREE8.ACESFilmicToneMapping, THREE8.SRGBColorSpace).rgb;
+  const showPlain = max7(U.hold, max7(U.flicker, U.split.mul(step7(screenUV2.x, U.splitPos))));
+  let out = mix8(c, plain, showPlain);
+  const divider = smoothstep10(0.5, 1.5, abs4(screenUV2.x.sub(U.splitPos)).mul(screenSize2.x)).oneMinus();
+  out = mix8(out, vec310(1), divider.mul(U.split).mul(U.hold.oneMinus()));
+  return { node: vec44(out, 1), owned };
 }
 function disposeOwned(owned) {
   for (const node of owned) {
     node.dispose?.();
     node.textureNode?.dispose?.();
+    node.renderTarget?.dispose?.();
   }
 }
 
+// src/runtime/render/passes.js
+import { PassNode } from "three/webgpu";
+function pixelGrid(W, H, rows) {
+  const p12 = Math.max(1, Math.round(H / Math.max(1, rows)));
+  return { p: p12, width: Math.ceil(W / p12), height: Math.ceil(H / p12) };
+}
+var StylePassNode = class extends PassNode {
+  constructor(scene, camera, options) {
+    super(PassNode.COLOR, scene, camera, options);
+    this.pixelRows = null;
+  }
+  setSize(width, height) {
+    if (this.pixelRows === null) return super.setSize(width, height);
+    this._width = width;
+    this._height = height;
+    const g = pixelGrid(Math.floor(width * this._pixelRatio), Math.floor(height * this._pixelRatio), this.pixelRows);
+    this.renderTarget.setSize(g.width, g.height);
+  }
+};
+
 // src/runtime/render/rigs.js
-import * as THREE4 from "three/webgpu";
+import * as THREE9 from "three/webgpu";
 function sun(layer) {
-  const light = new THREE4.DirectionalLight(16777215, 2);
+  const light = new THREE9.DirectionalLight(16777215, 2);
   light.layers.set(layer);
   light.castShadow = true;
   light.shadow.mapSize.set(2048, 2048);
@@ -2136,23 +3967,23 @@ function sun(layer) {
   return light;
 }
 function hemisphere(layer) {
-  const light = new THREE4.HemisphereLight(16777215, 4473924, 1);
+  const light = new THREE9.HemisphereLight(16777215, 4473924, 1);
   light.layers.set(layer);
   return light;
 }
 function lightDirection(elevation, azimuth, base) {
   const el = elevation * Math.PI / 180, az = azimuth * Math.PI / 180 + base;
-  return new THREE4.Vector3(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az));
+  return new THREE9.Vector3(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az));
 }
 var Rigs = class {
   constructor(scene) {
     this.styled = { sun: sun(LAYER_STYLED), hemi: hemisphere(LAYER_STYLED) };
     this.plain = { sun: sun(LAYER_PLAIN), hemi: hemisphere(LAYER_PLAIN) };
-    this.frame = { center: new THREE4.Vector3(), radius: 10, base: 0 };
+    this.frame = { center: new THREE9.Vector3(), radius: 10, base: 0 };
     for (const rig of [this.styled, this.plain]) {
       scene.add(rig.sun, rig.sun.target, rig.hemi);
     }
-    this.direction = new THREE4.Vector3(0, 1, 0);
+    this.direction = new THREE9.Vector3(0, 1, 0);
   }
   /** Fits the shadow cameras to a scene and sets the azimuth reference (the hero shot). */
   setFrame({ center, radius, heroPos, heroTarget }) {
@@ -2181,6 +4012,12 @@ var Rigs = class {
     s.intensity = v["lighting.key.intensity"];
     s.castShadow = v["lighting.shadows.enabled"];
     s.shadow.radius = v["lighting.shadows.softness"];
+    const size = v["lighting.shadows.mapSize"];
+    if (s.shadow.mapSize.x !== size) {
+      s.shadow.mapSize.set(size, size);
+      s.shadow.map?.dispose();
+      s.shadow.map = null;
+    }
     hemi.color.set(v["lighting.ambient.sky"]);
     hemi.groundColor.set(v["lighting.ambient.ground"]);
     hemi.intensity = v["lighting.ambient.intensity"];
@@ -2195,6 +4032,46 @@ var Rigs = class {
     }
   }
 };
+
+// src/runtime/look/timeofday.js
+var KEYS = [
+  [4, 25, "#8fa4ff", 0.45, "#0b1030", "#28305a", "#3a4a8a", "#1a1a26", 0.45, 1.5],
+  [6, 4, "#ff9a7a", 1.6, "#3b4f9a", "#ffb08a", "#8a8ad0", "#4a3a3a", 0.55, 5],
+  [7.5, 15, "#ffc890", 2.6, "#4a78c8", "#ffd6b0", "#9ab4e8", "#6a5a4a", 0.6, 6],
+  [10, 45, "#fff0dc", 3, "#3b82d8", "#c8e2ff", "#a8ccff", "#6b6b5a", 0.65, 6],
+  [13, 65, "#fffaf2", 3.2, "#2f7ae0", "#bfe0ff", "#b0d0ff", "#707060", 0.7, 6],
+  [16, 38, "#fff0d6", 3, "#3a7ad0", "#d6e6ff", "#a0c0f0", "#706050", 0.62, 6],
+  [17.5, 12, "#ffb066", 3.6, "#3b4c99", "#ff9d5c", "#6e7fd6", "#8b5b3c", 0.5, 8],
+  [18.5, 3, "#ff7a48", 2.4, "#2b2a5e", "#ff7a5c", "#6a5a9a", "#3a2a30", 0.45, 8],
+  [19.5, 6, "#6d7fd8", 0.6, "#1a2050", "#4a5aa0", "#5060b0", "#202030", 0.55, 1.5],
+  [21, 30, "#9fb4ff", 0.55, "#070b20", "#1c2448", "#3a4a8a", "#141420", 0.45, 1.5],
+  [22, 30, "#9fb4ff", 0.5, "#070b20", "#1c2448", "#3a4a8a", "#141420", 0.42, 1.5]
+];
+function timeOfDay(hour, azimuth = 45) {
+  const h = Math.min(KEYS[KEYS.length - 1][0], Math.max(KEYS[0][0], hour));
+  let i = 0;
+  while (i < KEYS.length - 2 && KEYS[i + 1][0] < h) i++;
+  const a = KEYS[i], b = KEYS[i + 1];
+  const t = (h - a[0]) / (b[0] - a[0]);
+  const num = (k) => a[k] + (b[k] - a[k]) * t;
+  const col = (k) => mixHex(a[k], b[k], t);
+  const day = h >= 6 && h <= 19;
+  const swing = day ? (h - 12) * 10 : 0;
+  return {
+    "lighting.key.elevation": Math.round(num(1) * 10) / 10,
+    "lighting.key.azimuth": (azimuth + swing + 540) % 360 - 180,
+    "lighting.key.color": col(2),
+    "lighting.key.intensity": Math.round(num(3) * 100) / 100,
+    "atmosphere.sky.zenith": col(4),
+    "atmosphere.sky.horizon": col(5),
+    "atmosphere.sky.ground": col(5),
+    "atmosphere.fog.color": col(5),
+    "lighting.ambient.sky": col(6),
+    "lighting.ambient.ground": col(7),
+    "lighting.ambient.intensity": Math.round(num(8) * 100) / 100,
+    "atmosphere.sky.sunIntensity": Math.round(num(9) * 10) / 10
+  };
+}
 
 // src/runtime/look/resolve.js
 var PART_PARENT = { hero: "characters" };
@@ -2237,14 +4114,21 @@ function resolveLook({ look, sceneParams = {}, overrides = {}, partOverrides = {
   if (!look.baseline) layer(sceneParams, "scene");
   layer(look.params, "look");
   layer(overrides, "override");
+  if (values["lighting.tod.enabled"]) {
+    for (const [id, v] of Object.entries(timeOfDay(values["lighting.tod.hour"], values["lighting.key.azimuth"]))) {
+      if (id in overrides) continue;
+      values[id] = v;
+      sources[id] = "time of day";
+    }
+  }
   const parts = {};
   for (const part of PARTS) {
     const map = {};
     for (const id of PART_PARAMS) map[id] = clone(values[id]);
     const chain = PART_PARENT[part] ? [PART_PARENT[part], part] : [part];
-    for (const p10 of chain) Object.assign(map, look.parts?.[p10]?.params);
+    for (const p12 of chain) Object.assign(map, look.parts?.[p12]?.params);
     for (const id of PART_PARAMS) if (id in overrides) map[id] = clone(overrides[id]);
-    for (const p10 of chain) Object.assign(map, partOverrides[p10]);
+    for (const p12 of chain) Object.assign(map, partOverrides[p12]);
     parts[part] = applyStrength(map, strength);
   }
   return { global: applyStrength(values, strength), parts, sources };
@@ -2257,35 +4141,46 @@ function lookValue(look, sceneParams, id) {
 
 // src/runtime/style.js
 var layers = (n) => {
-  const l = new THREE5.Layers();
+  const l = new THREE10.Layers();
   l.set(n);
   return l;
 };
+var _size2 = new THREE10.Vector2();
+var _v = new THREE10.Vector3();
+var _fwd = new THREE10.Vector3();
 var StyleRuntime = class {
   /**
    * @param {object} o
    * @param {THREE.WebGPURenderer} o.renderer
-   * @param {THREE.PerspectiveCamera} o.camera
+   * @param {THREE.PerspectiveCamera} o.camera - the viewer's camera (the plain set renders with it)
    */
   constructor({ renderer, camera }) {
     this.renderer = renderer;
     this.camera = camera;
-    this.scene = new THREE5.Scene();
+    this.styledCamera = camera.clone();
+    this.styledCamera.name = "styled camera";
+    this.scene = new THREE10.Scene();
     this.U = createPostUniforms();
+    this.P = new ParamUniforms();
+    this.U.lines.color = this.P.get("lines.screen.color");
+    this.lists = createPostLists();
     this.atmos = createAtmosphereUniforms();
     this.scene.fogNode = createFogNode(this.atmos);
     this.materials = new StyleMaterials({ time: this.U.time, keyDirection: this.atmos.sunDirection });
     this.rigs = new Rigs(this.scene);
     this.domes = createSkyDomes(this.atmos, { layerStyled: LAYER_STYLED, layerPlain: LAYER_PLAIN, idsNode: idsNode("sky") });
     this.scene.add(this.domes.styled, this.domes.plain);
-    this.post = new THREE5.PostProcessing(renderer);
+    this.post = new THREE10.PostProcessing(renderer);
     this.post.outputColorTransform = false;
-    this.plainPass = pass(this.scene, camera, { samples: 4 }).setLayers(layers(LAYER_PLAIN));
+    this.plainPass = new StylePassNode(this.scene, camera, { samples: 4 }).setLayers(layers(LAYER_PLAIN));
     this.styledPass = null;
     this.passKey = null;
     this.graph = null;
     this.graphKey = null;
+    this.grid = null;
     this.root = null;
+    this.practicals = [];
+    this.focus = new THREE10.Vector3();
     this.values = null;
     this.info = { materialBuilds: 0, graphBuilds: 0, passBuilds: 0, lastRebuild: null, lastCompileMs: null };
     this.pendingCompile = null;
@@ -2306,18 +4201,35 @@ var StyleRuntime = class {
     this.root = root;
     this.scene.add(root);
     this.materials.register(root);
+    this.materials.blobs.setScene(root);
+    this.practicals = [];
+    const lights = [];
     root.traverse((o) => {
-      if (!o.isLight) return;
-      o.layers.set(LAYER_STYLED);
-      o.layers.enable(LAYER_PLAIN);
-      o.castShadow = false;
+      if (o.isLight) lights.push(o);
     });
+    for (const light of lights) {
+      light.castShadow = false;
+      light.layers.set(LAYER_STYLED);
+      const twin = light.clone();
+      twin.layers.set(LAYER_PLAIN);
+      twin.name = "plain twin";
+      light.parent.add(twin);
+      const base = { intensity: light.intensity, flicker: light.userData.practical?.flicker ?? 0, seed: light.userData.practical?.seed ?? 0 };
+      this.practicals.push({ light, twin, base });
+    }
     const hero = def.shots[def.defaultShot];
     this.rigs.setFrame({ center: def.shadow.center, radius: def.shadow.radius, heroPos: hero.pos, heroTarget: hero.target });
     this.camera.far = def.far;
     this.camera.updateProjectionMatrix();
     this.apply(this.resolved);
     this.markCompile("scene");
+  }
+  /** Buffers the styled pass writes for the current values, and whether it can use MSAA. */
+  passConfig(v) {
+    const buffers = passRequirements(v);
+    const pixel = v["retro.pixel.enabled"] === true;
+    const samples = buffers.size || pixel ? 0 : 4;
+    return { buffers, samples, pixel, key: `${samples}|${[...buffers].sort().join(",")}` };
   }
   /**
    * Applies a resolved look (resolveLook()). Returns what was rebuilt.
@@ -2327,7 +4239,7 @@ var StyleRuntime = class {
     this.resolved = resolved;
     const v = this.values = resolved.global;
     const before = this.materials.built;
-    const parts = this.materials.apply(resolved.parts);
+    const parts = this.materials.apply(resolved.parts, v);
     const dir = this.rigs.apply(v);
     const a = this.atmos;
     a.sunDirection.value.copy(dir);
@@ -2346,34 +4258,36 @@ var StyleRuntime = class {
     a.fogColor.value.set(v["atmosphere.fog.color"]);
     a.fogSkyTint.value = v["atmosphere.fog.skyTint"];
     a.fogBands.value = v["atmosphere.fog.bands"];
-    applyPostValues(this.U, v);
-    const passKey = needsMRT(v) ? "mrt" : "msaa";
-    const passRebuilt = passKey !== this.passKey;
+    applyPostValues(this.U, this.P, this.lists, v);
+    const cfg = this.passConfig(v);
+    const passRebuilt = cfg.key !== this.passKey;
     if (passRebuilt) {
       this.styledPass?.dispose();
-      const p10 = pass(this.scene, this.camera, { samples: passKey === "mrt" ? 0 : 4 }).setLayers(layers(LAYER_STYLED));
-      if (passKey === "mrt") p10.setMRT(mrt3({ output: output3, normal: directionToColor(normalView2), ids: vec43(0) }));
-      this.styledPass = p10;
-      this.passKey = passKey;
+      const p12 = new StylePassNode(this.scene, this.styledCamera, { samples: cfg.samples }).setLayers(layers(LAYER_STYLED));
+      if (cfg.buffers.size) {
+        const outputs = { output: output3 };
+        if (cfg.buffers.has("normal")) outputs.normal = directionToColor(normalView2);
+        if (cfg.buffers.has("ids")) outputs.ids = vec45(0);
+        if (cfg.buffers.has("velocity")) outputs.velocity = velocity;
+        if (cfg.buffers.has("emissive")) outputs.emissive = emissive;
+        p12.setMRT(mrt3(outputs));
+      }
+      this.styledPass = p12;
+      this.passKey = cfg.key;
       this.info.passBuilds++;
     }
-    this.styledPass.setResolutionScale(v["quality.resolution"]);
-    const key = `${graphKey(v)}|${passKey}`;
+    this.styledPass.pixelRows = cfg.pixel ? v["retro.pixel.height"] : null;
+    this.styledPass.setResolutionScale(cfg.pixel ? 1 : v["quality.resolution"]);
+    const key = graphKey(v, cfg.key);
     const graphRebuilt = key !== this.graphKey;
     if (graphRebuilt) {
       const previous = this.graph;
-      this.graph = buildGraph({ styledPass: this.styledPass, plainPass: this.plainPass, values: v, U: this.U, atmos: this.atmos });
+      this.graph = buildGraph({ styledPass: this.styledPass, plainPass: this.plainPass, values: v, P: this.P, U: this.U, lists: this.lists, atmos: this.atmos, camera: this.styledCamera, light: this.rigs.styled.sun, samples: cfg.samples });
       this.post.outputNode = this.graph.node;
       this.post.needsUpdate = true;
       if (previous) disposeOwned(previous.owned);
       this.graphKey = key;
       this.info.graphBuilds++;
-    }
-    const b = this.graph.bloomNode;
-    if (b) {
-      b.strength.value = v["lens.bloom.strength"];
-      b.radius.value = v["lens.bloom.radius"];
-      b.threshold.value = v["lens.bloom.threshold"];
     }
     this.info.materialBuilds += this.materials.built - before;
     const rebuilt = { parts, pass: passRebuilt, graph: graphRebuilt };
@@ -2382,6 +4296,10 @@ var StyleRuntime = class {
       this.markCompile("rebuild");
     }
     return rebuilt;
+  }
+  /** The enabled post and pass effects of the current look, in pipeline order. */
+  activeEffects() {
+    return activeEffects(this.values);
   }
   /** Reassigns one mesh's part (pick tool); applies the part's look on the next frame. */
   setPart(mesh, part) {
@@ -2399,16 +4317,69 @@ var StyleRuntime = class {
     if (splitPos !== void 0) this.U.splitPos.value = Math.min(1, Math.max(0, splitPos));
     if (flicker !== void 0) this.U.flicker.value = flicker ? 1 : 0;
   }
-  /** Per-frame state: time (freezable by the host), dome placement, depth range for lines. */
-  update(t) {
-    this.U.time.value = t;
+  /**
+   * Per-frame state: time (freezable and steppable by the host), the styled camera
+   * and pixel grid, dome placement, depth range, the sun's screen position, the
+   * focus distance for depth of field, practical lights and blob shadows.
+   * @param {number} t - animation time in seconds
+   * @param {object} [o] - { focus: Vector3 } the point the camera looks at
+   */
+  update(t, { focus } = {}) {
+    const v = this.values;
+    const U = this.U;
+    U.time.value = t;
+    if (focus) this.focus.copy(focus);
+    this.syncStyledCamera(v);
     const r = this.camera.far * 0.9;
     for (const d of [this.domes.styled, this.domes.plain]) {
       d.position.copy(this.camera.position);
       d.scale.setScalar(r);
     }
-    this.U.lines.near.value = this.camera.near;
-    this.U.lines.far.value = this.camera.far;
+    U.lines.near.value = this.camera.near;
+    U.lines.far.value = this.camera.far;
+    const cam = this.styledCamera;
+    _v.copy(this.atmos.sunDirection.value).multiplyScalar(cam.far * 0.5).add(cam.position).project(cam);
+    U.sunScreen.value.set(_v.x * 0.5 + 0.5, 0.5 - _v.y * 0.5);
+    cam.getWorldDirection(_fwd);
+    const facing = _fwd.dot(this.atmos.sunDirection.value);
+    const off = Math.max(Math.abs(_v.x), Math.abs(_v.y));
+    U.sunVisible.value = Math.max(0, Math.min(1, facing * 4)) * Math.max(0, Math.min(1, (2.2 - off) / 1.2));
+    U.proj.value.copy(cam.projectionMatrix);
+    U.projInv.value.copy(cam.projectionMatrixInverse);
+    U.lightView.value.copy(this.atmos.sunDirection.value).transformDirection(cam.matrixWorldInverse);
+    U.focusDistance.value = Math.max(0.1, _v.copy(this.focus).sub(cam.position).dot(_fwd) + v["lens.dof.offset"]);
+    for (const { light, base } of this.practicals) {
+      const n = Math.sin(t * 11.3 + base.seed) * 0.5 + Math.sin(t * 23.7 + base.seed * 2.1) * 0.3 + Math.sin(t * 5.1 + base.seed * 0.7) * 0.2;
+      light.intensity = base.intensity * v["lighting.practicals.intensity"] * (1 + n * base.flicker * v["lighting.practicals.flicker"] * 0.35);
+    }
+    this.root?.updateMatrixWorld();
+    this.materials.blobs.update();
+  }
+  /** Copies the viewer's camera; in pixel looks widens it to whole low-res texels. */
+  syncStyledCamera(v) {
+    const src = this.camera, cam = this.styledCamera;
+    cam.position.copy(src.position);
+    cam.quaternion.copy(src.quaternion);
+    cam.fov = src.fov;
+    cam.aspect = src.aspect;
+    cam.near = src.near;
+    cam.far = src.far;
+    cam.zoom = src.zoom;
+    this.renderer.getDrawingBufferSize(_size2);
+    const W = Math.floor(_size2.x), H = Math.floor(_size2.y);
+    const view = src.view && src.view.enabled ? src.view : null;
+    if (v["retro.pixel.enabled"]) {
+      const g = this.grid = pixelGrid(W, H, v["retro.pixel.height"]);
+      cam.setViewOffset(W, H, view ? view.offsetX * W / view.fullWidth : 0, view ? view.offsetY * H / view.fullHeight : 0, g.width * g.p, g.height * g.p);
+      this.U.pixelSize.value = g.p;
+      this.U.lowRes.value.set(g.width, g.height);
+    } else {
+      this.grid = null;
+      if (view) cam.setViewOffset(view.fullWidth, view.fullHeight, view.offsetX, view.offsetY, view.width, view.height);
+      else cam.clearViewOffset();
+    }
+    cam.updateProjectionMatrix();
+    cam.updateMatrixWorld();
   }
   render() {
     if (this.pendingCompile) {
@@ -2488,9 +4459,9 @@ var MIGRATIONS = {};
 function migrateLook(look) {
   let current = look;
   while (current.schema !== LOOK_SCHEMA) {
-    const step5 = MIGRATIONS[current.schema];
-    if (!step5) throw new Error(`Can't read look schema ${current.schema}`);
-    current = step5(current);
+    const step8 = MIGRATIONS[current.schema];
+    if (!step8) throw new Error(`Can't read look schema ${current.schema}`);
+    current = step8(current);
   }
   return current;
 }
@@ -2548,8 +4519,8 @@ function keywordPart(name) {
   return null;
 }
 var explicitPart = (userData = {}) => {
-  const p10 = userData.part ?? userData.stylePart ?? userData.style?.part;
-  return PARTS.includes(p10) ? p10 : null;
+  const p12 = userData.part ?? userData.stylePart ?? userData.style?.part;
+  return PARTS.includes(p12) ? p12 : null;
 };
 function guessParts(items) {
   const out = items.map((it) => {
@@ -2589,10 +4560,13 @@ function guessParts(items) {
 }
 
 // src/runtime/index.js
-var RUNTIME_VERSION = "0.3.0";
+var RUNTIME_VERSION = "0.4.0";
 export {
+  EFFECTS,
   LOOK_SCHEMA,
+  LUT_PRESETS,
   MODULES,
+  PALETTES,
   PARTS,
   PART_INDEX,
   PART_KEYWORDS,
@@ -2601,7 +4575,10 @@ export {
   StyleLightingModel,
   StyleRuntime,
   StyleSurfaceMaterial,
+  activeEffects,
   applyStrength,
+  bakeLut,
+  bayerMatrix,
   byId,
   checkValue,
   color_exports as color,
@@ -2616,7 +4593,10 @@ export {
   measureFrames,
   migrateLook,
   mixValue,
+  passRequirements,
+  pixelGrid,
   resolveLook,
+  timeOfDay,
   timestampsSupported,
   validateLook,
   valueLabel
