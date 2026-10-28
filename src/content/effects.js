@@ -3,11 +3,13 @@
 // drives the effects contact sheet in the Verify panel (cells E01, E02, …) and the smoke
 // test, which checks that every demo renders without errors and changes the image.
 //
-// `params` are Tune overrides on top of `look`; `minDiff` is the smallest mean pixel
-// change that counts as visible for that effect; `advance` moves time between the two
-// frames of a capture, for effects that need motion (motion blur).
+// `params` are Tune overrides on top of `look`; `parts` are per-part values (a derived
+// look is applied for those); `minDiff` is the smallest mean pixel change that counts as
+// visible for that effect; `advance` moves time between the two frames of a capture, for
+// effects that need motion (motion blur). Pattern sizes are enlarged in some demos so
+// dots and hatch lines still show in a thumbnail-sized cell.
 
-const demo = ( id, label, o ) => ( { id, label, scene: 'lookdev', look: 'phone-safe-toon', shot: null, minDiff: 0.01, ...o } );
+const demo = ( id, label, o ) => ( { id, label, scene: 'lookdev', look: 'phone-safe-toon', shot: null, minDiff: 0.01, params: {}, parts: null, ...o } );
 
 export const EFFECT_DEMOS = [
 	// A. Light and shadow
@@ -49,6 +51,39 @@ export const EFFECT_DEMOS = [
 	demo( 'crt', 'CRT', { milestone: 'M3a', effect: 'retro.crt', scene: 'platforms', look: 'sea-breeze', params: { 'retro.crt.enabled': true, 'retro.crt.scanlines': 0.7, 'retro.crt.curvature': 0.12, 'retro.crt.mask': 0.4 } } ),
 	// I. Motion
 	demo( 'stepped', 'Animate on eights', { milestone: 'M3a', effect: 'motion.stepped', scene: 'kart', look: 'sea-breeze', shot: 'gameplay', params: { 'motion.stepped.fps': 8 }, minDiff: 0.001 } ),
+	// G. Media (M3b)
+	demo( 'kuwahara', 'Painterly (Kuwahara)', { milestone: 'M3b', effect: 'media.kuwahara', scene: 'harbor', look: 'sea-breeze', params: { 'media.kuwahara.enabled': true, 'media.kuwahara.radius': 6 }, minDiff: 0.004 } ),
+	demo( 'watercolor', 'Watercolor on cold-press', { milestone: 'M3b', effect: 'media.watercolor', look: 'sea-breeze', params: { 'media.watercolor.enabled': true, 'media.paper.enabled': true, 'media.paper.type': 'watercolor', 'media.paper.strength': 0.5 } } ),
+	demo( 'halftone-mono', 'Halftone (mono)', { milestone: 'M3b', effect: 'media.halftone', scene: 'plaza', look: 'graffiti-rush', params: { 'media.halftone.enabled': true, 'media.halftone.size': 14, 'media.halftone.shadows': 0.5 } } ),
+	demo( 'halftone-cmyk', 'Halftone (CMYK)', { milestone: 'M3b', effect: 'media.halftone', look: 'sea-breeze', params: { 'media.halftone.enabled': true, 'media.halftone.mode': 'cmyk', 'media.halftone.size': 12 } } ),
+	demo( 'hatching-post', 'Hatching (post)', { milestone: 'M3b', effect: 'media.hatching', look: 'golden-hour', params: { 'media.hatching.enabled': true, 'media.hatching.spacing': 14 } } ),
+	demo( 'misregistration', 'Print misregistration', { milestone: 'M3b', effect: 'media.misregistration', scene: 'plaza', look: 'graffiti-rush', params: { 'media.misregistration.enabled': true, 'media.misregistration.offset': 3 }, minDiff: 0.004 } ),
+	demo( 'paper-canvas', 'Paper: canvas', { milestone: 'M3b', effect: 'media.paper', params: { 'media.paper.enabled': true, 'media.paper.type': 'canvas', 'media.paper.strength': 0.8 } } ),
+	demo( 'paper-kraft', 'Paper: kraft', { milestone: 'M3b', effect: 'media.paper', look: 'graffiti-rush', params: { 'media.paper.enabled': true, 'media.paper.type': 'kraft', 'media.paper.color': '#c9a477', 'media.paper.strength': 0.8 } } ),
+	// B. Surface patterns and color (M3b)
+	demo( 'halftone-shading', 'Halftone shading (3 bands)', { milestone: 'M3b', effect: 'surface.halftone', params: { 'surface.bands': 3, 'surface.halftone.enabled': true, 'surface.halftone.size': 16 } } ),
+	demo( 'halftone-world', 'Halftone shading, world space', { milestone: 'M3b', effect: 'surface.halftone', params: { 'surface.bands': 3, 'surface.halftone.enabled': true, 'surface.halftone.space': 'world', 'surface.halftone.size': 12 } } ),
+	demo( 'hatching-shading', 'Hatching shading', { milestone: 'M3b', effect: 'surface.hatching', params: { 'surface.bands': 3, 'surface.hatching.enabled': true, 'surface.hatching.threshold': 0.6, 'surface.hatching.layers': 3, 'surface.hatching.spacing': 14 } } ),
+	demo( 'dither-shading', 'Dithered 1-bit shading', { milestone: 'M3b', effect: 'surface.dither', params: { 'surface.bands': 2, 'surface.dither.enabled': true, 'surface.softness': 0.5 }, minDiff: 0.006 } ),
+	demo( 'variation', 'Color variation', { milestone: 'M3b', effect: 'surface.variation', scene: 'meadow', params: { 'surface.variation.enabled': true, 'surface.variation.amount': 0.3, 'surface.variation.scale': 0.4 }, minDiff: 0.004 } ),
+	demo( 'gradient', 'Vertical gradient', { milestone: 'M3b', effect: 'surface.gradient', params: { 'surface.gradient.enabled': true, 'surface.gradient.amount': 0.6, 'surface.gradient.height': 2 } } ),
+	demo( 'toon-water', 'Toon water', { milestone: 'M3b', effect: 'surface.toonWater', scene: 'harbor', look: 'sea-breeze', parts: { water: { 'surface.model': 'toonWater', 'palette.tintAmount': 0 } } } ),
+	demo( 'wind', 'Wind ×3', { milestone: 'M3b', effect: 'surface.wind', scene: 'meadow', params: { 'surface.wind.strength': 3, 'surface.wind.speed': 1.5 }, minDiff: 0.003 } ),
+	demo( 'wind-trees', 'Wind sway on all foliage', { milestone: 'M3b', effect: 'surface.wind', scene: 'meadow', parts: { foliage: { 'surface.wind.enabled': true, 'surface.wind.strength': 3 } }, minDiff: 0.002 } ),
+	// C. Lines (M3b)
+	demo( 'lines-weight', 'Lines thicker in shadow', { milestone: 'M3b', effect: 'lines.screen', look: 'graffiti-rush', params: { 'lines.screen.lightWeight': 2 }, minDiff: 0.004 } ),
+	demo( 'lines-wobble', 'Line wobble', { milestone: 'M3b', effect: 'lines.screen', look: 'graffiti-rush', params: { 'lines.screen.wobble': 4, 'lines.screen.wobbleScale': 1.5 }, minDiff: 0.0008 } ),
+	demo( 'lines-pencil', 'Pencil lines', { milestone: 'M3b', effect: 'lines.screen', look: 'graffiti-rush', params: { 'lines.screen.texture': 'pencil', 'lines.screen.textureAmount': 1, 'lines.screen.color': '#4a4a52' }, minDiff: 0.004 } ),
+	demo( 'lines-brush', 'Brush lines', { milestone: 'M3b', effect: 'lines.screen', look: 'graffiti-rush', params: { 'lines.screen.texture': 'brush', 'lines.screen.textureAmount': 1 }, minDiff: 0.001 } ),
+	demo( 'lines-colored', 'Colored lines', { milestone: 'M3b', effect: 'lines.screen', look: 'graffiti-rush', params: { 'lines.screen.colorFromSurface': 1 }, minDiff: 0.004 } ),
+	demo( 'lines-fade', 'Lines fade with distance', { milestone: 'M3b', effect: 'lines.screen', scene: 'meadow', look: 'graffiti-rush', params: { 'lines.screen.fade': 1, 'lines.screen.fadeStart': 8, 'lines.screen.fadeEnd': 40 } } ),
+	// D. Atmosphere (M3b)
+	demo( 'height-fog', 'Height fog', { milestone: 'M3b', effect: 'atmosphere.heightFog', scene: 'campsite', look: 'sea-breeze', params: { 'atmosphere.heightFog.density': 0.08, 'atmosphere.heightFog.falloff': 0.3 } } ),
+	demo( 'clouds', 'Toon clouds', { milestone: 'M3b', effect: 'atmosphere.clouds', scene: 'harbor', look: 'sea-breeze', params: { 'atmosphere.clouds.amount': 1, 'atmosphere.clouds.coverage': 0.55 }, minDiff: 0.004 } ),
+	// J. Anti-aliasing (M3b)
+	demo( 'aa-smaa', 'SMAA', { milestone: 'M3b', effect: 'quality.aa', look: 'graffiti-rush', params: { 'quality.aa': 'smaa' }, minDiff: 0.0003 } ),
+	demo( 'aa-traa', 'TRAA', { milestone: 'M3b', effect: 'quality.aa', look: 'graffiti-rush', params: { 'quality.aa': 'traa' }, minDiff: 0.0003 } ),
+	demo( 'aa-none', 'No anti-aliasing', { milestone: 'M3b', effect: 'quality.aa', params: { 'quality.aa': 'none' }, minDiff: 0.0003 } ),
 ];
 
 export const demoById = new Map( EFFECT_DEMOS.map( ( d ) => [ d.id, d ] ) );

@@ -10,7 +10,7 @@
 
 import * as THREE from 'three/webgpu';
 import * as TSL from 'three/tsl';
-import { uniform, vec3, vec4, mrt, output, fract, sin, cos, dot, floor, float, smoothstep, modelWorldMatrix, modelViewProjection, positionLocal, materialColor, Fn } from 'three/tsl';
+import { uniform, vec3, vec4, mrt, output, fract, sin, cos, dot, floor, float, mix, step, smoothstep, modelWorldMatrix, modelViewProjection, positionLocal, positionWorld, positionView, materialColor, hue, mx_noise_float, mx_worley_noise_float, viewportDepthTexture, perspectiveDepthToViewZ, cameraNear, cameraFar, Fn } from 'three/tsl';
 import { StyleSurfaceMaterial, StyleStandardMaterial, createSurfaceUniforms } from './StyleLightingModel.js';
 import { createHullMaterial, computeOutlineNormals, snapClip } from './outline.js';
 import { BlobShadows } from '../render/blobs.js';
@@ -32,7 +32,7 @@ export const objectIdNode = Fn( () => {
 /** Value written to the `ids` attachment: R = part id, G = object id. */
 export const idsNode = ( part ) => vec4( PART_INDEX[ part ] / 255, objectIdNode(), 0, 1 );
 
-const deformKey = ( s ) => s.wave ? `wave:${s.wave.amplitude}/${s.wave.frequency}/${s.wave.falloff ?? 90}` : s.wind ? `wind:${s.wind.strength}/${s.wind.height}` : '';
+const deformKey = ( s, wind = s.wind ) => s.wave ? `wave:${s.wave.amplitude}/${s.wave.frequency}/${s.wave.falloff ?? 90}` : wind ? `wind:${wind.strength}/${wind.height}` : '';
 
 /** Everything about a kit mesh's style that needs its own material (colors are uniforms but cache by value). */
 const styleKey = ( s ) => [ s.color, s.emissive, s.emissiveIntensity, s.roughness, s.metalness ?? 0, s.opacity ?? 1, deformKey( s ), s.doubleSided, s.map?.uuid ?? '', s.vertexColors ? 'vc' : '' ].join( '|' );
@@ -48,7 +48,30 @@ export function paletteColor( hex, v ) {
 }
 
 /** A part's structural key: everything that changes its shaders. `blobs` = materials receive blob shadows. */
-const structKey = ( v, blobs ) => [ v[ 'surface.model' ], v[ 'surface.model' ] === 'pbr' ? 0 : v[ 'surface.bands' ], v[ 'surface.flatNormals' ] ? 'flat' : '', v[ 'retro.vertexSnap.enabled' ] ? 'snap' : '', blobs ? 'blob' : '' ].join( '|' );
+const structKey = ( v, blobs ) => [
+	v[ 'surface.model' ], v[ 'surface.model' ] === 'pbr' ? 0 : v[ 'surface.bands' ], v[ 'surface.flatNormals' ] ? 'flat' : '',
+	v[ 'retro.vertexSnap.enabled' ] ? 'snap' : '',
+	v[ 'surface.halftone.enabled' ] ? `dots-${v[ 'surface.halftone.space' ]}` : '', v[ 'surface.hatching.enabled' ] ? `hatch-${v[ 'surface.hatching.space' ]}` : '', v[ 'surface.dither.enabled' ] ? 'dither' : '',
+	v[ 'surface.variation.enabled' ] ? `var-${v[ 'surface.variation.space' ]}` : '', v[ 'surface.gradient.enabled' ] ? 'grad' : '', v[ 'surface.wind.enabled' ] ? 'wind' : '',
+	blobs ? 'blob' : '',
+].join( '|' );
+
+/** Registry value → part uniform, for the continuous surface parameters. */
+const SURFACE_UNIFORMS = {
+	'surface.threshold': 'threshold', 'surface.softness': 'softness', 'surface.shadowTintStrength': 'tintStrength',
+	'surface.spec.intensity': 'specIntensity', 'surface.spec.size': 'specSize', 'surface.spec.softness': 'specSoftness',
+	'surface.rim.intensity': 'rimIntensity', 'surface.rim.width': 'rimWidth', 'surface.rim.softness': 'rimSoftness',
+	'surface.halftone.size': 'halftoneSize', 'surface.halftone.angle': 'halftoneAngle', 'surface.halftone.threshold': 'halftoneThreshold', 'surface.halftone.amount': 'halftoneAmount',
+	'surface.hatching.spacing': 'hatchSpacing', 'surface.hatching.angle': 'hatchAngle', 'surface.hatching.layers': 'hatchLayers', 'surface.hatching.threshold': 'hatchThreshold', 'surface.hatching.amount': 'hatchAmount',
+	'surface.variation.amount': 'variationAmount', 'surface.variation.scale': 'variationScale', 'surface.variation.hue': 'variationHue',
+	'surface.gradient.amount': 'gradientAmount', 'surface.gradient.height': 'gradientHeight',
+	'surface.water.depth': 'waterDepth', 'surface.water.bands': 'waterBands', 'surface.water.foam': 'waterFoam', 'surface.water.pattern': 'waterPattern',
+	'surface.wind.strength': 'windStrength', 'surface.wind.speed': 'windSpeed', 'surface.wind.gusts': 'windGusts',
+};
+const SURFACE_COLORS = {
+	'surface.shadowTint': 'shadowTint', 'surface.rim.color': 'rimColor', 'surface.halftone.color': 'halftoneColor', 'surface.hatching.color': 'hatchColor',
+	'surface.water.shallow': 'waterShallow', 'surface.water.deep': 'waterDeep', 'surface.water.foamColor': 'waterFoamColor',
+};
 
 export class StyleMaterials {
 
@@ -92,21 +115,90 @@ export class StyleMaterials {
 
 	}
 
-	/** Grass and foliage sway: offset grows with height above the mesh origin. */
-	windNode( wind ) {
+	/**
+	 * Grass and foliage sway: offset grows with height above the mesh origin. With a part's
+	 * uniforms (`u`), the look scales strength and speed and adds gusts; the plain twin
+	 * passes none and keeps the scene's own motion.
+	 */
+	windNode( wind, u = null ) {
 
 		const { strength = 0.12, height = 0.5 } = wind;
-		const t = this.time;
+		const t = u ? this.time.mul( u.windSpeed ) : this.time;
 		const h = positionLocal.y.div( height ).clamp( 0, 1.5 ).pow( 2 );
-		const phase = positionLocal.x.mul( 0.35 ).add( positionLocal.z.mul( 0.2 ) );
-		const sway = sin( t.mul( 1.7 ).add( phase ) ).add( sin( t.mul( 3.1 ).add( positionLocal.x.mul( 0.9 ) ) ).mul( 0.3 ) ).mul( strength );
+		const origin = modelWorldMatrix.element( 3 ).xz;
+		const phase = positionLocal.x.mul( 0.35 ).add( positionLocal.z.mul( 0.2 ) ).add( origin.x.mul( 0.13 ) ).add( origin.y.mul( 0.07 ) );
+		let sway = sin( t.mul( 1.7 ).add( phase ) ).add( sin( t.mul( 3.1 ).add( positionLocal.x.mul( 0.9 ) ) ).mul( 0.3 ) ).mul( strength );
+		// Gusts: slow waves of stronger wind rolling across the scene.
+		if ( u ) sway = sway.mul( u.windStrength ).mul( sin( t.mul( 0.45 ).add( origin.x.mul( 0.06 ) ).add( origin.y.mul( 0.04 ) ) ).mul( u.windGusts ).add( 1 ) );
 		return positionLocal.add( vec3( sway, 0, sway.mul( 0.6 ) ).mul( h ) );
 
 	}
 
-	deformNode( style ) {
+	deformNode( style, wind = style.wind, u = null ) {
 
-		return style.wave ? this.waveNode( style.wave ) : style.wind ? this.windNode( style.wind ) : null;
+		return style.wave ? this.waveNode( style.wave ) : wind ? this.windNode( wind, u ) : null;
+
+	}
+
+	/** Wind for a mesh of a part with Wind sway on: the kit's own, or a gentle sway scaled to the mesh. */
+	effectiveWind( entry ) {
+
+		if ( entry.style.wind ) return entry.style.wind;
+		if ( ! this.parts[ entry.part ].values[ 'surface.wind.enabled' ] || entry.style.wave ) return null;
+		const g = entry.mesh.geometry;
+		if ( ! g.boundingBox ) g.computeBoundingBox();
+		const height = Math.max( 0.3, g.boundingBox.max.y );
+		return { strength: Math.min( 0.25, 0.03 * height ), height };
+
+	}
+
+	/** Toon water's base color: banded depth color, shore foam and drifting foam lines. */
+	waterColorNode( u ) {
+
+		return Fn( () => {
+
+			// Depth of the scene behind the water (the pass copies its depth before transparent objects).
+			const sceneZ = perspectiveDepthToViewZ( viewportDepthTexture().r, cameraNear, cameraFar );
+			const depth = positionView.z.sub( sceneZ ).max( 0 );
+			const t = depth.div( u.waterDepth ).clamp( 0, 1 ).toVar();
+			const banded = floor( t.mul( u.waterBands ).add( 0.5 ) ).div( u.waterBands.max( 1 ) );
+			const k = mix( t, banded, step( 0.5, u.waterBands ) );
+			const base = mix( u.waterShallow, u.waterDeep, k );
+			const foam = smoothstep( u.waterFoam.mul( 0.7 ), u.waterFoam, depth ).oneMinus().mul( step( 0.001, u.waterFoam ) );
+			const cells = mx_worley_noise_float( vec3( positionWorld.xz.mul( 0.22 ), this.time.mul( 0.15 ) ) );
+			const lines = smoothstep( 0.62, 0.7, cells ).mul( u.waterPattern );
+			return mix( base, u.waterFoamColor, foam.max( lines ) );
+
+		} )();
+
+	}
+
+	/** The styled base color: material (or toon water) → color variation → vertical gradient → blob shadows. */
+	colorNode( v, u, blobs ) {
+
+		const water = v[ 'surface.model' ] === 'toonWater';
+		const variation = v[ 'surface.variation.enabled' ], gradient = v[ 'surface.gradient.enabled' ];
+		if ( ! water && ! variation && ! gradient && ! blobs ) return null;
+		let c = water ? this.waterColorNode( u ) : materialColor.rgb;
+
+		if ( variation ) {
+
+			const p = v[ 'surface.variation.space' ] === 'object' ? positionLocal : positionWorld;
+			const n = mx_noise_float( p.mul( u.variationScale ) ).mul( 2 ).clamp( - 1, 1 );
+			const amount = u.variationAmount.mul( n );
+			c = hue( c.mul( amount.mul( u.variationHue.oneMinus() ).add( 1 ) ), amount.mul( u.variationHue ).mul( 2.5 ) );
+
+		}
+
+		if ( gradient ) {
+
+			const h = positionWorld.y.sub( modelWorldMatrix.element( 3 ).y ).div( u.gradientHeight ).clamp( 0, 1 );
+			c = c.mul( mix( u.gradientAmount.oneMinus(), u.gradientAmount.mul( 0.35 ).add( 1 ), h ) );
+
+		}
+
+		if ( blobs ) c = c.mul( float( 1 ).sub( this.blobs.shade() ) );
+		return vec4( c, materialColor.a );
 
 	}
 
@@ -122,15 +214,23 @@ export class StyleMaterials {
 
 	}
 
-	styledMaterial( style, part ) {
+	/** The styled material of a mesh entry ({ mesh, style, part }), cached by part structure and style. */
+	styledMaterial( entry ) {
 
+		const { style, part } = entry;
 		const pv = this.parts[ part ];
-		const key = `${part}|${pv.struct}|${styleKey( style )}`;
+		const wind = this.effectiveWind( entry );
+		const key = `${part}|${pv.struct}|${styleKey( style )}|${deformKey( style, wind )}`;
 		let material = this.styled.get( key );
 		if ( material ) return material;
 
 		const v = pv.values;
-		const surface = { model: v[ 'surface.model' ], bands: v[ 'surface.bands' ], uniforms: pv.surface };
+		const patterns = {
+			halftone: v[ 'surface.halftone.enabled' ] ? v[ 'surface.halftone.space' ] : null,
+			hatching: v[ 'surface.hatching.enabled' ] ? v[ 'surface.hatching.space' ] : null,
+			dither: v[ 'surface.dither.enabled' ],
+		};
+		const surface = { model: v[ 'surface.model' ], bands: v[ 'surface.bands' ], uniforms: pv.surface, patterns };
 		material = surface.model === 'pbr'
 			? new StyleStandardMaterial( surface, this.keyDirection, { roughness: style.roughness, metalness: style.metalness ?? 0 } )
 			: new StyleSurfaceMaterial( surface );
@@ -138,9 +238,12 @@ export class StyleMaterials {
 		material.name = `style:${part}:${surface.model}`;
 		material.flatShading = v[ 'surface.flatNormals' ];
 		this.common( material, style );
+		material.positionNode = this.deformNode( style, wind, pv.surface );
 		// PS1 jitter: the final clip position (after skinning and wind) snaps to a coarse grid.
 		if ( v[ 'retro.vertexSnap.enabled' ] ) material.vertexNode = snapClip( TSL, modelViewProjection, pv.snapRows );
-		if ( pv.struct.endsWith( 'blob' ) ) material.colorNode = materialColor.mul( float( 1 ).sub( this.blobs.shade() ) );
+		material.colorNode = this.colorNode( v, pv.surface, pv.struct.endsWith( 'blob' ) );
+		// Toon water reads the depth behind it, so it renders after the opaque scene.
+		if ( surface.model === 'toonWater' ) { material.transparent = true; material.depthWrite = true; }
 		// `output` keeps the color attachment when the pass has no MRT (MRTNode skips unknown names).
 		material.mrtNode = mrt( { output, ids: idsNode( part ) } );
 		material.userData = { sourceColor: style.color, part, key };
@@ -193,7 +296,8 @@ export class StyleMaterials {
 		for ( const mesh of meshes ) {
 
 			const style = mesh.userData.style;
-			mesh.material = this.styledMaterial( style, style.part );
+			const entry = { mesh, style, part: style.part, plain: null, hull: null };
+			mesh.material = this.styledMaterial( entry );
 			mesh.layers.set( LAYER_STYLED );
 
 			const plain = mesh.isSkinnedMesh ? new THREE.SkinnedMesh( mesh.geometry, this.plainMaterial( style ) ) : new THREE.Mesh( mesh.geometry, this.plainMaterial( style ) );
@@ -205,7 +309,7 @@ export class StyleMaterials {
 			plain.receiveShadow = mesh.receiveShadow;
 			mesh.add( plain );
 
-			const entry = { mesh, style, part: style.part, plain, hull: null };
+			entry.plain = plain;
 			this.entries.push( entry );
 			this.updateHull( entry );
 
@@ -218,7 +322,7 @@ export class StyleMaterials {
 		const pv = this.parts[ entry.part ];
 		// Deformed, skinned and see-through meshes get no hull: its extrusion wouldn't follow them.
 		const s = entry.style;
-		const want = pv.hullEnabled && pv.hullThickness.value > 0.01 && ! s.wave && ! s.wind && ! entry.mesh.isSkinnedMesh && ( s.opacity ?? 1 ) >= 1;
+		const want = pv.hullEnabled && pv.hullThickness.value > 0.01 && ! s.wave && ! this.effectiveWind( entry ) && ! entry.mesh.isSkinnedMesh && ( s.opacity ?? 1 ) >= 1;
 
 		if ( want && ! entry.hull ) {
 
@@ -267,17 +371,8 @@ export class StyleMaterials {
 			pv.values = v;
 
 			const u = pv.surface;
-			u.threshold.value = v[ 'surface.threshold' ];
-			u.softness.value = v[ 'surface.softness' ];
-			u.shadowTint.value.set( v[ 'surface.shadowTint' ] );
-			u.tintStrength.value = v[ 'surface.shadowTintStrength' ];
-			u.specIntensity.value = v[ 'surface.spec.intensity' ];
-			u.specSize.value = v[ 'surface.spec.size' ];
-			u.specSoftness.value = v[ 'surface.spec.softness' ];
-			u.rimIntensity.value = v[ 'surface.rim.intensity' ];
-			u.rimWidth.value = v[ 'surface.rim.width' ];
-			u.rimSoftness.value = v[ 'surface.rim.softness' ];
-			u.rimColor.value.set( v[ 'surface.rim.color' ] );
+			for ( const [ id, name ] of Object.entries( SURFACE_UNIFORMS ) ) u[ name ].value = v[ id ];
+			for ( const [ id, name ] of Object.entries( SURFACE_COLORS ) ) u[ name ].value.set( v[ id ] );
 			u.rimLitSide.value = v[ 'surface.rim.litSide' ] ? 1 : 0;
 			pv.hullColor.value.set( v[ 'lines.hull.color' ] );
 			pv.hullThickness.value = v[ 'lines.hull.thickness' ];
@@ -296,7 +391,7 @@ export class StyleMaterials {
 
 		for ( const entry of this.entries ) {
 
-			if ( rebuilt.includes( entry.part ) ) entry.mesh.material = this.styledMaterial( entry.style, entry.part );
+			if ( rebuilt.includes( entry.part ) ) entry.mesh.material = this.styledMaterial( entry );
 			this.updateHull( entry );
 
 		}
@@ -315,7 +410,7 @@ export class StyleMaterials {
 		const entry = this.entries.find( ( e ) => e.mesh === mesh );
 		if ( ! entry || ! this.parts[ part ] ) return false;
 		entry.part = entry.style.part = part;
-		entry.mesh.material = this.styledMaterial( entry.style, part );
+		entry.mesh.material = this.styledMaterial( entry );
 		if ( entry.hull ) { entry.mesh.remove( entry.hull ); entry.hull = null; }
 		this.updateHull( entry );
 		return true;

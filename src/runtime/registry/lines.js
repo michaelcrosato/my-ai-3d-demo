@@ -118,4 +118,84 @@ export default [
 		brief: 'Ink fades with fog (amount {value}).',
 		tags: [ 'lines', 'fog', 'depth' ],
 	} ),
+	p( {
+		id: 'lines.screen.opacity', label: 'Ink opacity', type: 'float', min: 0, max: 1, step: 0.01, default: 1, neutral: 0, enabledBy: 'lines.screen.enabled',
+		learn: { what: 'How opaque the ink is.', why: 'Translucent lines read as pencil or soft paint; opaque ones as ink.' },
+		brief: 'Ink opacity {value}.',
+		tags: [ 'lines' ],
+	} ),
+	p( {
+		id: 'lines.screen.colorFromSurface', label: 'Colored lines', type: 'float', min: 0, max: 1, step: 0.01, default: 0, enabledBy: 'lines.screen.enabled',
+		learn: {
+			what: 'Mixes the ink toward a darker, more saturated version of the color under it, instead of one fixed ink color.',
+			why: 'Colored lines (a dark red line on a red coat) are the anime and modern-illustration look: softer than black ink, but still separating shapes.',
+		},
+		brief: 'Lines take the darkened local color (amount {value}).',
+		tags: [ 'lines', 'color', 'anime' ],
+	} ),
+	p( {
+		id: 'lines.screen.darken', label: 'Colored-line darkness', type: 'float', min: 0.05, max: 1, step: 0.01, default: 0.45, enabledBy: 'lines.screen.enabled',
+		learn: { what: 'How dark colored lines are, as a fraction of the local color.', why: 'Around 0.4–0.6 keeps the hue readable while still reading as a line.' },
+		brief: 'Colored lines at {value}× the local color.',
+		tags: [ 'lines', 'color' ],
+	} ),
+	p( {
+		id: 'lines.screen.fade', label: 'Distance fade', type: 'float', min: 0, max: 1, step: 0.01, default: 0, enabledBy: 'lines.screen.enabled',
+		learn: {
+			what: 'Thins out lines between the fade start and end distances.',
+			why: 'Distant detail drawn with full-strength ink turns to noise, especially at high complexity. Illustrators draw the background lighter; fading does the same.',
+			typical: '0.7–1 on dense scenes (meadows, cities).',
+		},
+		brief: 'Lines fade with distance (amount {value}).',
+		tags: [ 'lines', 'depth', 'noise' ],
+	} ),
+	p( {
+		id: 'lines.screen.fadeStart', label: 'Fade start', type: 'float', min: 0, max: 300, step: 1, unit: 'm', default: 25, enabledBy: 'lines.screen.enabled',
+		learn: { what: 'Distance where lines start to fade.', why: 'Keep the play area fully inked.' },
+		brief: 'Line fade starts at {value} m.',
+		tags: [ 'lines' ],
+	} ),
+	p( {
+		id: 'lines.screen.fadeEnd', label: 'Fade end', type: 'float', min: 1, max: 1000, step: 1, unit: 'm', default: 120, enabledBy: 'lines.screen.enabled',
+		learn: { what: 'Distance where lines reach their minimum.', why: 'Beyond this, shapes read by value and color only.' },
+		brief: 'Line fade ends at {value} m.',
+		tags: [ 'lines' ],
+	} ),
+	p( {
+		id: 'lines.screen.lightWeight', label: 'Thicker in shadow', type: 'float', min: 0, max: 2, step: 0.01, default: 0, enabledBy: 'lines.screen.enabled',
+		learn: {
+			what: 'Makes lines thicker where the image is dark (up to +100% per 1.0).',
+			why: 'Inkers weight lines by light: thin where the light hits, heavy on the shadow side. It adds form and drama for free.',
+		},
+		brief: 'Lines up to {value}× thicker in shadow.',
+		tags: [ 'lines', 'comic', 'weight' ],
+	} ),
+	p( {
+		id: 'lines.screen.wobble', label: 'Wobble', type: 'float', min: 0, max: 4, step: 0.05, unit: 'px@1080p', default: 0, enabledBy: 'lines.screen.enabled',
+		learn: {
+			what: 'Displaces the lines irregularly, as if drawn by hand. With line boil (Motion), the wobble changes a few times a second.',
+			why: 'Perfect lines look computer-made. A little wobble reads as a human hand; boiling lines are the signature of hand-drawn animation.',
+		},
+		brief: 'Hand wobble {value} px at 1080p.',
+		tags: [ 'lines', 'hand-drawn', 'boil' ],
+	} ),
+	p( {
+		id: 'lines.screen.wobbleScale', label: 'Wobble frequency', type: 'float', min: 0.2, max: 4, step: 0.05, default: 1, enabledBy: 'lines.screen.enabled',
+		learn: { what: 'How quickly the wobble varies along a line.', why: 'Low frequency looks like a slow, confident hand; high frequency like a shaky one.' },
+		brief: 'Wobble frequency {value}.',
+		tags: [ 'lines' ],
+	} ),
+	p( {
+		id: 'lines.screen.texture', label: 'Line texture', type: 'enum', default: 'none', enabledBy: 'lines.screen.enabled',
+		options: [ { value: 'none', label: 'Clean' }, { value: 'pencil', label: 'Pencil (grainy)' }, { value: 'brush', label: 'Brush (varying width)' }, { value: 'ink', label: 'Ink (blotchy)' } ],
+		learn: { what: 'The tool the lines are drawn with.', why: 'Grainy pencil, swelling brush strokes or blotchy dip-pen ink each say a different medium.' },
+		brief: 'Line texture: {label}.',
+		tags: [ 'lines', 'texture' ],
+	} ),
+	p( {
+		id: 'lines.screen.textureAmount', label: 'Texture amount', type: 'float', min: 0, max: 1, step: 0.01, default: 0.6, enabledBy: 'lines.screen.enabled',
+		learn: { what: 'How strong the line texture is.', why: 'Subtle texture adds character without breaking the lines.' },
+		brief: 'Line texture amount {value}.',
+		tags: [ 'lines', 'texture' ],
+	} ),
 ];

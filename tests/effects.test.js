@@ -105,7 +105,7 @@ test( 'effects declare the buffers they read; sliders never change the graph key
 	assert.notEqual( graphKey( { ...on, 'grade.toneMapping': 'agx' }, '0|depth' ), key );
 
 	// Every registry switch that adds a post effect has an effect module.
-	const switches = REGISTRY.filter( ( e ) => e.type === 'bool' && e.structural && [ 'lens', 'grade', 'retro', 'atmosphere' ].includes( e.module ) && e.id !== 'retro.vertexSnap.enabled' );
+	const switches = REGISTRY.filter( ( e ) => e.type === 'bool' && e.structural && [ 'lens', 'grade', 'retro', 'atmosphere', 'media' ].includes( e.module ) && e.id !== 'retro.vertexSnap.enabled' );
 	for ( const e of switches ) assert.ok( EFFECTS.some( ( fx ) => fx.enabled( { ...v, [ e.id ]: true }, { samples: 0 } ) && ! fx.always ), e.id );
 
 } );
@@ -119,6 +119,17 @@ test( 'effect demos reference real parameters with valid values', () => {
 		ids.add( d.id );
 		assert.ok( lookById.has( d.look ), `${d.id}: look ${d.look}` );
 		for ( const [ id, value ] of Object.entries( d.params ) ) assert.equal( checkValue( byId.get( id ) || { type: 'missing' }, value ), null, `${d.id}: ${id}` );
+		for ( const [ part, params ] of Object.entries( d.parts || {} ) ) {
+
+			for ( const [ id, value ] of Object.entries( params ) ) {
+
+				const e = byId.get( id );
+				assert.ok( e && e.scope !== 'global', `${d.id}: ${part}.${id} is per part` );
+				assert.equal( checkValue( e, value ), null, `${d.id}: ${part}.${id}` );
+
+			}
+
+		}
 
 	}
 

@@ -14,6 +14,7 @@ import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { dof } from 'three/addons/tsl/display/DepthOfFieldNode.js';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { motionBlur } from 'three/addons/tsl/display/MotionBlur.js';
+import { traa } from 'three/addons/tsl/display/TRAANode.js';
 
 export const TONE_MAPPING = {
 	none: THREE.NoToneMapping,
@@ -193,6 +194,17 @@ export const CAMERA = [
 			const half = P.get( 'lens.tiltShift.width' ).mul( 0.5 );
 			const d = abs( ctx.uv.y.oneMinus().sub( P.get( 'lens.tiltShift.center' ) ) );
 			return mix( c, vec3( blurred.rgb ), smoothstep( half, half.add( 0.22 ), d ) );
+
+		},
+	},
+	{
+		id: 'quality.traa', label: 'TRAA', stage: 'camera', neighborhood: true,
+		// Temporal AA: the styled camera is jittered every frame and the history is blended.
+		enabled: ( v ) => ! v[ 'retro.pixel.enabled' ] && v[ 'quality.aa' ] === 'traa',
+		requires: () => [ 'depth', 'velocity' ],
+		build( c, ctx ) {
+
+			return vec3( ctx.own( traa( ctx.texture( c ), ctx.tex( 'depth' ), ctx.tex( 'velocity' ), ctx.camera ) ).rgb );
 
 		},
 	},

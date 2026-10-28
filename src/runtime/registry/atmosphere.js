@@ -161,4 +161,77 @@ export default [
 		brief: 'God ray decay {value}.',
 		tags: [ 'god rays' ],
 	} ),
+	p( {
+		id: 'atmosphere.heightFog.density', label: 'Height fog', type: 'float', min: 0, max: 0.3, step: 0.001, default: 0, neutral: 0,
+		learn: {
+			what: 'Fog that pools near the ground and thins out with height, like mist in a valley or haze at sea level.',
+			why: 'Low-lying fog separates layers of a landscape (each hill gets its own pale band) and makes tall things rise out of it. Combine it with distance fog.',
+			typical: '0.02–0.08.',
+		},
+		brief: 'Height fog density {value}.',
+		tags: [ 'fog', 'height fog', 'atmosphere', 'mist' ],
+	} ),
+	p( {
+		id: 'atmosphere.heightFog.base', label: 'Height fog level', type: 'float', min: - 20, max: 60, step: 0.5, unit: 'm', default: 0,
+		learn: { what: 'The height where height fog is at full density.', why: 'Set it to the valley floor or the sea.' },
+		brief: 'Height fog at {value} m.',
+		tags: [ 'height fog' ],
+	} ),
+	p( {
+		id: 'atmosphere.heightFog.falloff', label: 'Height fog falloff', type: 'float', min: 0.02, max: 2, step: 0.01, default: 0.25,
+		learn: { what: 'How quickly height fog thins with altitude.', why: 'High values make a thin layer of ground mist; low values a deep haze.' },
+		brief: 'Height fog falloff {value} per meter.',
+		tags: [ 'height fog' ],
+	} ),
+	p( {
+		id: 'atmosphere.clouds.amount', label: 'Toon clouds', type: 'float', min: 0, max: 1, step: 0.01, default: 0, neutral: 0,
+		learn: {
+			what: 'Flat, stylized clouds painted into the sky, drifting slowly.',
+			why: 'A big sky with simple, banded clouds is half of a cel-shaded adventure look, and gives the eye depth and a sense of weather.',
+		},
+		brief: 'Toon clouds (opacity {value}).',
+		tags: [ 'sky', 'clouds', 'toon' ],
+	} ),
+	p( {
+		id: 'atmosphere.clouds.coverage', label: 'Cloud coverage', type: 'float', min: 0, max: 1, step: 0.01, default: 0.45,
+		learn: { what: 'How much of the sky the clouds cover.', why: 'Scattered clouds read as fair weather; full coverage as overcast.' },
+		brief: 'Cloud coverage {value}.',
+		tags: [ 'clouds' ],
+	} ),
+	p( {
+		id: 'atmosphere.clouds.softness', label: 'Cloud softness', type: 'float', min: 0, max: 0.5, step: 0.01, default: 0.06,
+		learn: { what: 'How soft cloud edges are.', why: 'Hard edges read as graphic, cel-painted clouds; soft ones as painted or real.' },
+		brief: 'Cloud edge softness {value}.',
+		tags: [ 'clouds' ],
+	} ),
+	p( {
+		id: 'atmosphere.clouds.bands', label: 'Cloud shading bands', type: 'int', min: 0, max: 4, step: 1, default: 2,
+		learn: { what: 'Flat tones of light inside each cloud (0 is smooth).', why: 'Two tones (lit top, shaded belly) is the classic toon cloud.' },
+		brief: 'Clouds shaded in {value} bands.',
+		tags: [ 'clouds', 'toon' ],
+	} ),
+	p( {
+		id: 'atmosphere.clouds.scale', label: 'Cloud size', type: 'float', min: 0.2, max: 4, step: 0.05, unit: '×', default: 1,
+		learn: { what: 'Size of the cloud shapes.', why: 'Large clouds feel calm and close; small ones feel high and far away.' },
+		brief: 'Cloud size ×{value}.',
+		tags: [ 'clouds' ],
+	} ),
+	p( {
+		id: 'atmosphere.clouds.speed', label: 'Cloud drift', type: 'float', min: 0, max: 3, step: 0.01, default: 0.3,
+		learn: { what: 'How fast clouds drift.', why: 'Slow drift adds life to a still shot.' },
+		brief: 'Cloud drift {value}.',
+		tags: [ 'clouds', 'motion' ],
+	} ),
+	p( {
+		id: 'atmosphere.clouds.color', label: 'Cloud color', type: 'color', default: '#ffffff',
+		learn: { what: 'The lit color of the clouds.', why: 'Tint it with the sun: white at noon, peach at sunset.' },
+		brief: 'Clouds {value}.',
+		tags: [ 'clouds', 'color' ],
+	} ),
+	p( {
+		id: 'atmosphere.clouds.shade', label: 'Cloud shadow color', type: 'color', default: '#a9b8dc',
+		learn: { what: 'The color of the clouds\' shaded undersides.', why: 'A cool, sky-tinted shade keeps clouds airy; gray reads as rain.' },
+		brief: 'Cloud shade {value}.',
+		tags: [ 'clouds', 'color' ],
+	} ),
 ];

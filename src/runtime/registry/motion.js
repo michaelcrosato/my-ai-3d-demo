@@ -14,4 +14,14 @@ export default [
 		brief: 'Animation stepped at {value} fps (camera smooth); 0 = continuous.',
 		tags: [ 'motion', 'animation', 'on twos' ],
 	} ),
+	p( {
+		id: 'motion.boil.fps', label: 'Line boil', type: 'int', min: 0, max: 24, step: 1, unit: 'fps', default: 0,
+		learn: {
+			what: 'Redraws the line wobble this many times per second, so lines "boil" like hand-drawn animation. 0 keeps the wobble still.',
+			why: 'In traditional animation every frame is redrawn, so lines shimmer slightly. Boil at 8–12 fps makes a still scene feel alive and drawn.',
+			avoid: 'High boil rates: above about 12 fps it reads as noise, not drawing.',
+		},
+		brief: 'Line boil at {value} fps (0 = static).',
+		tags: [ 'motion', 'lines', 'boil', 'hand-drawn' ],
+	} ),
 ];

@@ -15,4 +15,4 @@ export { timeOfDay } from './look/timeofday.js';
 export { bakeLut, LUT_PRESETS, PALETTES, bayerMatrix } from './color/lut.js';
 export { pixelGrid } from './render/passes.js';
 
-export const RUNTIME_VERSION = '0.4.0';
+export const RUNTIME_VERSION = '0.5.0';

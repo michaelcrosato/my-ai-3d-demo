@@ -7,12 +7,14 @@
 // gives hue-shifted shadows. finish() adds the stepped specular's partner, the rim.
 
 import { Color, LightingModel, MeshToonNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
-import { float, vec3, uniform, normalView, normalWorld, diffuseColor, luminance, smoothstep, max, min, fwidth, select, step, positionViewDirection, mix, Fn, materialEmissive } from 'three/tsl';
+import { float, vec3, uniform, normalView, normalWorld, diffuseColor, luminance, smoothstep, max, min, fwidth, select, step, floor, positionViewDirection, mix, Fn, materialEmissive, screenCoordinate } from 'three/tsl';
+import { patternCoord, dotMask, lineMask } from './patterns.js';
+import { ditherThreshold } from '../post/stage-display.js';
 
 const RECIPROCAL_PI = 1 / Math.PI;
 
-/** Shading models with structural differences (registry `surface.model`). */
-export const MODELS = [ 'pbr', 'toon', 'halfLambert', 'flat' ];
+/** Shading models with structural differences (registry `surface.model`). Toon water shades like toon. */
+export const MODELS = [ 'pbr', 'toon', 'halfLambert', 'flat', 'toonWater' ];
 
 /**
  * Creates the uniforms a style material reads. Materials of the same part share
@@ -38,6 +40,16 @@ export function createSurfaceUniforms( {
 		rimSoftness: uniform( 0.05 ),
 		rimColor: uniform( new Color( '#ffffff' ) ),
 		rimLitSide: uniform( 0 ),
+		// Shading patterns (finish()).
+		halftoneSize: uniform( 6 ), halftoneAngle: uniform( 45 ), halftoneThreshold: uniform( 0.75 ), halftoneAmount: uniform( 0.85 ), halftoneColor: uniform( new Color( '#1e1d36' ) ),
+		hatchSpacing: uniform( 6 ), hatchAngle: uniform( - 45 ), hatchLayers: uniform( 2 ), hatchThreshold: uniform( 0.3 ), hatchAmount: uniform( 0.85 ), hatchColor: uniform( new Color( '#1e1d36' ) ),
+		// Base color (factory colorNode): variation, vertical gradient, toon water.
+		variationAmount: uniform( 0.1 ), variationScale: uniform( 0.6 ), variationHue: uniform( 0.4 ),
+		gradientAmount: uniform( 0.3 ), gradientHeight: uniform( 3 ),
+		waterShallow: uniform( new Color( '#45c3e0' ) ), waterDeep: uniform( new Color( '#1c6fd1' ) ), waterDepth: uniform( 4 ), waterBands: uniform( 3 ),
+		waterFoam: uniform( 0.35 ), waterPattern: uniform( 0.4 ), waterFoamColor: uniform( new Color( '#ffffff' ) ),
+		// Wind (factory positionNode).
+		windStrength: uniform( 1 ), windSpeed: uniform( 1 ), windGusts: uniform( 0.3 ),
 	};
 
 }
@@ -59,6 +71,7 @@ export class StyleLightingModel extends LightingModel {
 	 * @param {string} surface.model - 'toon' | 'halfLambert' | 'flat' (structural)
 	 * @param {number} surface.bands - Number of light bands (structural). 1 = continuous.
 	 * @param {object} surface.uniforms - From createSurfaceUniforms().
+	 * @param {object} [surface.patterns] - { halftone: 'screen'|'world'|null, hatching: …, dither: bool } (structural)
 	 */
 	constructor( surface ) {
 
@@ -79,6 +92,15 @@ export class StyleLightingModel extends LightingModel {
 	ramp( amount ) {
 
 		const bands = this.surface.bands;
+
+		// Dithered shading: the light steps between bands through an ordered (Bayer 4×4) pattern.
+		if ( this.surface.patterns?.dither ) {
+
+			const n = Math.max( 1, bands - 1 );
+			return floor( amount.mul( n ).add( ditherThreshold( floor( screenCoordinate.xy ), float( 1 ) ) ) ).div( n ).clamp( 0, 1 );
+
+		}
+
 		if ( bands <= 1 ) return amount;
 
 		const { threshold, softness } = this.surface.uniforms;
@@ -153,7 +175,38 @@ export class StyleLightingModel extends LightingModel {
 		const fill = diffuseColor.rgb.mul( u.shadowTint ).mul( u.tintStrength ).mul( this.keyRamp.oneMinus() );
 		const rim = rimTerm( u.rimWidth, u.rimSoftness ).mul( u.rimIntensity ).mul( mix( 1, this.keyRamp, u.rimLitSide ) );
 
-		builder.context.outgoingLight.addAssign( vec3( fill ).add( u.rimColor.mul( rim ) ) );
+		const outgoing = builder.context.outgoingLight;
+		outgoing.addAssign( vec3( fill ).add( u.rimColor.mul( rim ) ) );
+
+		// Patterns follow the light: dots and hatch lines grow as the key ramp falls.
+		const p = this.surface.patterns || {};
+		const light = this.keyRamp;
+
+		if ( p.halftone ) {
+
+			const coverage = u.halftoneThreshold.sub( light ).div( max( u.halftoneThreshold, 1e-3 ) ).clamp( 0, 1 );
+			const dots = dotMask( patternCoord( p.halftone, u.halftoneSize, u.halftoneAngle ), coverage );
+			outgoing.assign( mix( outgoing, u.halftoneColor, dots.mul( u.halftoneAmount ) ) );
+
+		}
+
+		if ( p.hatching ) {
+
+			let lines = float( 0 );
+			for ( let k = 0; k < 3; k ++ ) {
+
+				// Layer k appears below a lower light level and crosses the previous one.
+				const level = u.hatchThreshold.mul( 1 - k * 0.4 );
+				const on = step( float( k ).add( 0.5 ), u.hatchLayers );
+				const depth = level.sub( light ).div( max( level, 1e-3 ) ).clamp( 0, 1 );
+				const coord = patternCoord( p.hatching, u.hatchSpacing, u.hatchAngle.add( k * 70 ) );
+				lines = max( lines, lineMask( coord, depth.mul( 0.22 ).add( 0.08 ).mul( step( light, level ) ) ).mul( on ) );
+
+			}
+
+			outgoing.assign( mix( outgoing, u.hatchColor, lines.mul( u.hatchAmount ) ) );
+
+		}
 
 	}
 

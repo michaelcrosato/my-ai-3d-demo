@@ -86,6 +86,25 @@ function createCoach( app ) {
 
 }
 
+/**
+ * Mean absolute difference (0–1) between two pixel buffers. With `shift: [dx, dy]`, pixel
+ * (x, y) of `q` is compared with (x + dx, y + dy) of `p` over the overlap.
+ */
+function pixelDiff( p, q, { shift = [ 0, 0 ] } = {} ) {
+
+	const [ dx, dy ] = shift, W = p.width, H = p.height;
+	let sum = 0, n = 0;
+	for ( let y = Math.max( 0, - dy ); y < Math.min( H, H - dy ); y ++ ) for ( let x = Math.max( 0, - dx ); x < Math.min( W, W - dx ); x ++ ) {
+
+		const i = ( y * W + x ) * 4, j = ( ( y + dy ) * W + x + dx ) * 4;
+		sum += Math.abs( q.data[ i ] - p.data[ j ] ) + Math.abs( q.data[ i + 1 ] - p.data[ j + 1 ] ) + Math.abs( q.data[ i + 2 ] - p.data[ j + 2 ] ); n += 3;
+
+	}
+
+	return { mae: sum / n / 255 };
+
+}
+
 async function boot() {
 
 	const canvas = $( 'view' );
@@ -302,7 +321,7 @@ async function boot() {
 
 				toast( `Rendering ${EFFECT_DEMOS.length} effect cells…`, 60000 );
 				let n = 0;
-				const r = await api.effectSheet( { onCell: () => toast( `Rendering effect cells… ${++ n} / ${EFFECT_DEMOS.length}`, 60000 ) } );
+				const r = await api.effectSheet( { cell: [ 480, 270 ], cols: 5, onCell: () => toast( `Rendering effect cells… ${++ n} / ${EFFECT_DEMOS.length}`, 60000 ) } );
 				toast( 'Effects sheet ready.' );
 				showImage( r.url, 'Effects contact sheet (report bad cells by id)' );
 
@@ -483,11 +502,23 @@ async function boot() {
 				app.actions.setLook( d.look );
 				const saved = { ...app.overrides() };
 				const baseKey = `${d.scene}|${d.look}|${d.shot}|${d.advance || 0}`;
-				if ( ! baseCache.has( baseKey ) ) baseCache.set( baseKey, ( await api.capture( { width: w, height: hgt, advance: d.advance } ) ).id );
+				if ( ! baseCache.has( baseKey ) ) baseCache.set( baseKey, captures.get( ( await api.capture( { width: w, height: hgt, advance: d.advance } ) ).id ) );
+				// Per-part demo values go into a derived look (per-part overrides arrive with the Parts tab).
+				if ( d.parts ) {
+
+					const base = app.look();
+					const parts = { ...base.parts };
+					for ( const [ part, params ] of Object.entries( d.parts ) ) parts[ part ] = { params: { ...base.parts?.[ part ]?.params, ...params } };
+					app.actions.setLook( { ...base, id: `${base.id}-demo`, name: `${base.name} (demo)`, parts } );
+
+				}
+
 				for ( const [ id, value ] of Object.entries( d.params ) ) app.actions.setParam( id, value );
 				const shot = await api.capture( { width: w, height: hgt, advance: d.advance } );
+				app.actions.setOverrides( app.store.get().lookId, {} );
+				app.actions.setLook( d.look );
 				app.actions.setOverrides( d.look, saved );
-				const diff = api.diff( baseCache.get( baseKey ), shot.id ).mae;
+				const diff = pixelDiff( baseCache.get( baseKey ), captures.get( shot.id ) ).mae;
 				const errors = log.errors().slice( errorsBefore ).map( ( e ) => e.message.split( '\n' )[ 0 ] );
 				const x = ( i % cols ) * w, y = Math.floor( i / cols ) * ( hgt + pad );
 				ctx.putImageData( new ImageData( new Uint8ClampedArray( captures.get( shot.id ).data ), w, hgt ), x, y + pad );
@@ -523,20 +554,11 @@ async function boot() {
 		 * (x, y) of `b` is compared with (x + dx, y + dy) of `a` over the overlap: the
 		 * pixel-grid test pans the camera by whole pixels and expects an exact shift.
 		 */
-		diff: ( a, b, { shift = [ 0, 0 ] } = {} ) => {
+		diff: ( a, b, options ) => {
 
 			const p = captures.get( a ), q = captures.get( b );
 			if ( ! p || ! q || p.data.length !== q.data.length ) throw new Error( 'diff: unknown or mismatched captures' );
-			const [ dx, dy ] = shift, W = p.width, H = p.height;
-			let sum = 0, n = 0;
-			for ( let y = Math.max( 0, - dy ); y < Math.min( H, H - dy ); y ++ ) for ( let x = Math.max( 0, - dx ); x < Math.min( W, W - dx ); x ++ ) {
-
-				const i = ( y * W + x ) * 4, j = ( ( y + dy ) * W + x + dx ) * 4;
-				sum += Math.abs( q.data[ i ] - p.data[ j ] ) + Math.abs( q.data[ i + 1 ] - p.data[ j + 1 ] ) + Math.abs( q.data[ i + 2 ] - p.data[ j + 2 ] ); n += 3;
-
-			}
-
-			return { mae: sum / n / 255 };
+			return pixelDiff( p, q, options );
 
 		},
 		/** Fraction of pixels that differ from their p × p block's top-left pixel (0 = perfectly blocky). */

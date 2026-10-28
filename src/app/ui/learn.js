@@ -32,10 +32,10 @@ export const PIPELINE_CARD = `
 		<h3>How Style Lab renders a look</h3>
 		<p class="lead">Every look runs through five stages, in this order. The order is part of why looks work.</p>
 		<ol class="stages">
-			<li><b>World</b>: inside the materials. Shading model and cel bands, shadow tint, rim and specular, hull outlines, fog and sky, blob shadows, vertex snapping. Time of day drives the sun, sky, ambient and fog from one clock.</li>
+			<li><b>World</b>: inside the materials. Shading model and cel bands, shadow tint, rim and specular, halftone and hatch patterns, color variation and gradients, toon water, wind, hull outlines, fog (distance and height) and sky with clouds, blob shadows, vertex snapping. Time of day drives the sun, sky, ambient and fog from one clock.</li>
 			<li><b>Camera</b>: on the HDR image. Ambient occlusion and contact shadows darken; bloom and god rays add light; motion blur, depth of field and tilt-shift blur; then exposure, white balance and tone mapping. Light effects come before tone mapping so highlights glow and blur correctly.</li>
 			<li><b>Grade</b>: in display space. Lift, gamma and gain, contrast, saturation and vibrance, hue, split toning, selective color, a LUT and gradient maps: creative color, as in a game's LUT.</li>
-			<li><b>Medium</b>: ink lines, then pixel-art edges, then anti-aliasing. Ink goes on top of the painted image.</li>
+			<li><b>Medium</b>: painterly brush strokes, watercolor, halftone and hatching, then ink lines, pixel-art edges and anti-aliasing, then print misregistration and paper. Ink goes on top of the paint, and the paper goes under everything, so ink takes on its texture.</li>
 			<li><b>Display</b>: color depth and dithering, chromatic aberration and lens distortion, vignette, grain, letterbox, and last the CRT, which simulates the screen itself.</li>
 		</ol>
 		<h4>Compare</h4>

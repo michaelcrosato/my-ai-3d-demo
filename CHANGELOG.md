@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.5.0 — M3b: media, lines, water and anti-aliasing (2026-10-28)
+
+**What's new** (Tune tab; every new effect has its own switch)
+- **Media:** painterly brush strokes (a generalized Kuwahara filter with eight soft sectors), watercolor (edge darkening, granulation, wobble and bleed), halftone print (mono, or four rotated CMYK screens; optionally shadows only), post hatching (up to four crossing layers), print misregistration, and paper (newsprint, cold-press, canvas or kraft) under everything.
+- **Shading patterns in the materials:** halftone dots and hatch lines that follow each surface's light bands (in screen or world space), and dithered 1-bit shading.
+- **Surface:** color variation (hue and value noise, in world or object space), a vertical gradient that grounds objects, **toon water** (banded shallow-to-deep color from the real depth below the surface, shore foam and drifting foam lines) and wind controls (strength, speed, gusts, and sway for whole parts such as trees).
+- **Lines:** opacity, colored lines (the darkened local color), distance fade, thicker lines in shadow, hand wobble with line boil (Motion → Line boil), and pencil, brush or ink textures.
+- **Atmosphere:** height fog (pooled near the ground, integrated along the view ray) and drifting cel-shaded clouds.
+- **Anti-aliasing modes:** Auto, None, FXAA, SMAA, MSAA and TRAA.
+- The effects contact sheet now has 62 cells (M3a + M3b).
+
+**What to test** (🧪 Verify → Checklist; about 20 minutes with M3a):
+1. **M3-01** Render the effects sheet and report bad cells by id.
+2. **M3-10** Painterly, halftone and hatching look right at your resolution.
+3. **M3-11** No line crawl on slow orbits; boil works when you turn it on.
+4. **M3-02** and **M3-03** from v0.4.0, if you haven't yet.
+5. Optional tour: **M3-12** toon water, wind and clouds, **M3-13** anti-aliasing modes, and M3-04 to M3-09.
+
+Then Report → **Copy report** and paste it back.
+
+**Known**
+- Pattern sizes are in pixels at 1080p, so dots and hatch lines shrink in small windows. That is deliberate (a brief means the same thing at any resolution); the effects sheet enlarges a few so they show at thumbnail size.
+- Swaying meshes get no hull outline: the hull wouldn't follow the sway. Screen-space ink still works.
+- Toon water renders after the opaque scene and copies its depth, so a look with toon water renders the styled pass without MSAA (FXAA instead).
+
 ## v0.4.0 — M3a: camera, grade and retro filters (2026-10-28)
 
 **What's new** (all in the Tune tab; every new effect has its own switch, and its sliders never recompile)

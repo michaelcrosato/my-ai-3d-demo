@@ -13,6 +13,7 @@ import { createPostUniforms, createPostLists, applyPostValues, buildGraph, dispo
 import { ParamUniforms } from './post/params.js';
 import { StylePassNode, pixelGrid } from './render/passes.js';
 import { Rigs } from './render/rigs.js';
+import { PARTS } from './registry/index.js';
 import { resolveLook } from './look/resolve.js';
 
 const layers = ( n ) => { const l = new THREE.Layers(); l.set( n ); return l; };
@@ -41,6 +42,7 @@ export class StyleRuntime {
 		this.U.lines.color = this.P.get( 'lines.screen.color' );
 		this.lists = createPostLists();
 		this.atmos = createAtmosphereUniforms();
+		this.atmos.time = this.U.time;
 		this.scene.fogNode = createFogNode( this.atmos );
 		this.materials = new StyleMaterials( { time: this.U.time, keyDirection: this.atmos.sunDirection } );
 		this.rigs = new Rigs( this.scene );
@@ -114,13 +116,19 @@ export class StyleRuntime {
 
 	}
 
-	/** Buffers the styled pass writes for the current values, and whether it can use MSAA. */
-	passConfig( v ) {
+	/**
+	 * Buffers the styled pass writes for the current values, and whether it can use MSAA:
+	 * only when it writes no extra buffers, the look isn't a pixel look, the AA mode allows
+	 * it, and no part uses toon water (which copies the depth buffer mid-pass).
+	 */
+	passConfig( v, parts ) {
 
 		const buffers = passRequirements( v );
 		const pixel = v[ 'retro.pixel.enabled' ] === true;
-		const samples = buffers.size || pixel ? 0 : 4;
-		return { buffers, samples, pixel, key: `${samples}|${[ ...buffers ].sort().join( ',' )}` };
+		const water = PARTS.some( ( p ) => parts[ p ][ 'surface.model' ] === 'toonWater' );
+		const msaa = [ 'auto', 'msaa' ].includes( v[ 'quality.aa' ] ) && ! buffers.size && ! pixel && ! water;
+		const samples = msaa ? 4 : 0;
+		return { buffers, samples, pixel, key: `${samples}|${[ ...buffers ].sort().join( ',' )}${water ? '|water' : ''}` };
 
 	}
 
@@ -154,11 +162,22 @@ export class StyleRuntime {
 		a.fogColor.value.set( v[ 'atmosphere.fog.color' ] );
 		a.fogSkyTint.value = v[ 'atmosphere.fog.skyTint' ];
 		a.fogBands.value = v[ 'atmosphere.fog.bands' ];
+		a.heightDensity.value = v[ 'atmosphere.heightFog.density' ];
+		a.heightBase.value = v[ 'atmosphere.heightFog.base' ];
+		a.heightFalloff.value = v[ 'atmosphere.heightFog.falloff' ];
+		a.clouds.value = v[ 'atmosphere.clouds.amount' ];
+		a.cloudCoverage.value = v[ 'atmosphere.clouds.coverage' ];
+		a.cloudSoftness.value = v[ 'atmosphere.clouds.softness' ];
+		a.cloudBands.value = v[ 'atmosphere.clouds.bands' ];
+		a.cloudScale.value = v[ 'atmosphere.clouds.scale' ];
+		a.cloudSpeed.value = v[ 'atmosphere.clouds.speed' ];
+		a.cloudColor.value.set( v[ 'atmosphere.clouds.color' ] );
+		a.cloudShade.value.set( v[ 'atmosphere.clouds.shade' ] );
 
 		applyPostValues( this.U, this.P, this.lists, v );
 
 		// Styled scene pass: MSAA unless it writes extra buffers (MSAA would blend ids, M0 spike 2).
-		const cfg = this.passConfig( v );
+		const cfg = this.passConfig( v, resolved.parts );
 		const passRebuilt = cfg.key !== this.passKey;
 
 		if ( passRebuilt ) {
