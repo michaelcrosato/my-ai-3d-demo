@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.9.0 — M7: performance audit (2026-10-28)
+
+**What's new**
+- **⚡ Audit** (top bar, or P): ranks the current look's effects by GPU cost. It removes one effect at a time and re-measures (leave-one-out), after a warm-up, over interleaved rounds with a frozen clock, and shows a sorted bar chart of marginal costs in ms and % of the frame. Targets: desktop 1080p, phone portrait or landscape, phone at 0.75 render scale, this window, or a quick small run. It uses GPU timestamps when the browser offers them, else time to GPU idle, and says which.
+- **Phone verdicts:** a static rubric scores every effect in fullscreen-pass equivalents (FPE: passes, texture taps, extra buffers, history), a calibration pass measures what 1 FPE costs on this machine, and a device budget table turns the total into ✅ phone-safe, ⚠️ high-end phones, or ⛔ desktop only. The budgets are marked as estimates until on-device reports replace them.
+- **Recommendations:** the cheapest drops that reach each verdict ("Dropping Depth of field, Motion blur saves 6.2 ms (58%) → ✅ phone-safe"), plus draw calls, triangles, buffers, render-target memory and compile time per variant.
+- **📱 Make phone-friendly variant:** the standard substitutions (no AO, DOF, motion blur or god rays; hull outlines instead of screen-space lines; FXAA instead of TRAA/SMAA; painterly radius 2 at half scale; emissive-only bloom; 1024 shadows), saved as "‹Look› · Mobile" in My looks.
+- **📱 Open on phone:** a QR code that opens this look on your phone and runs the audit there, with a Copy report button for pasting the numbers back.
+
+**What to test** (🧪 Verify → Checklist; about 20 minutes, plus your phone):
+1. **M7-01** Run the audit and judge whether the numbers are plausible.
+2. **M7-02** Run it on your phone via the QR code and paste the report (needs the page hosted, e.g. GitHub Pages once you enable it).
+3. **M7-03** The mobile variants still look like their parents.
+4. Earlier checks you haven't done yet (M3–M6).
+
+Then Report → **Copy report** and paste it back.
+
+**Known**
+- The phone budgets in the rubric are estimates until on-device reports replace them.
+- The audit times whole frames; on browsers without GPU timestamps it measures time until the GPU is idle, which includes some CPU overhead (the report says which timer it used).
+- Always-on stages (tone mapping, the basic grade, vignette, grain, letterbox) can't be removed one at a time; their cost is part of "styled overhead".
+
 ## v0.8.0 — M6: agent brief and exports (2026-10-28)
 
 **What's new**

@@ -10,6 +10,7 @@ import { validateLook } from '../runtime/look/validate.js';
 import { checkCoherence } from '../runtime/look/coherence.js';
 import { encodeShare, decodeShare } from '../runtime/look/share.js';
 import { zoneWeights, blendZones } from '../runtime/look/zones.js';
+import { rubric, mobileSubstitutions } from '../runtime/perf/cost-model.js';
 import { byId, PARTS } from '../runtime/registry/index.js';
 import { LOOKS, lookById } from '../content/looks/index.js';
 import { SCENES, sceneById, buildScene, TIERS, DENSITY } from '../scenes/index.js';
@@ -772,6 +773,31 @@ export function createApp( { renderer, canvas, persist = true } ) {
 		},
 		setDeadzone( d ) { store.set( { deadzone: Math.max( 0.02, Math.min( 0.5, d ) ) } ); },
 
+		// Performance (§6.11)
+		/**
+		 * "Make phone-friendly variant": the standard substitutions (no AO, DOF or motion blur;
+		 * hull outlines instead of screen lines; FXAA; smaller painterly radius at half scale;
+		 * emissive-only bloom; 1024 shadows) saved as "‹Look› · Mobile" in My looks.
+		 */
+		makeMobileVariant() {
+
+			const base = look();
+			const sub = mobileSubstitutions( target.global, target.parts );
+			const parts = copy( state().parts );
+			for ( const [ p, o ] of Object.entries( sub.partOverrides ) ) parts[ p ] = { ...parts[ p ], overrides: { ...parts[ p ]?.overrides, ...o } };
+			const r = resolveRecipe( { recipe: state().recipe, getLook, parts, sceneParams: scene().params, overrides: { ...overrides(), ...sub.overrides }, strength: state().strength } );
+			const kit = rubric( r.global, r.parts );
+			const variant = lookFromResolved( r, {
+				id: `${base.id.replace( /-mobile.*$/, '' )}-mobile-${Date.now().toString( 36 ).slice( - 4 )}`, name: `${base.name.replace( / · Mobile$/, '' )} · Mobile`,
+				inspiredBy: base.inspiredBy, tags: [ ...new Set( [ ...( base.tags || [] ), 'phone-safe' ] ) ], pillars: base.pillars, mistakes: base.mistakes,
+				description: `Phone-friendly variant of ${base.name}: ${sub.changes.join( ' ' ) || 'no changes needed.'}`, phone: { safe: 'cheap', high: 'medium', desktop: 'heavy' }[ kit.verdict ],
+			} );
+			store.set( { userLooks: [ ...state().userLooks, variant ] } );
+			emit( 'library' );
+			return { look: variant, verdict: kit.label, total: kit.total, changes: sub.changes };
+
+		},
+
 	};
 
 	return {
@@ -826,6 +852,8 @@ export function createApp( { renderer, canvas, persist = true } ) {
 
 		},
 		on( fn ) { listeners.add( fn ); return () => listeners.delete( fn ); },
+		/** Lets UI modules announce events (audited, brief-tab, lesson…) to other listeners. */
+		emit,
 
 		start() {
 

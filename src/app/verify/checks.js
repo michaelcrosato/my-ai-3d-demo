@@ -5,9 +5,36 @@
 // (M4) a `recipe`, `parts` and the inspector `tab` to open, (M5) `walk: true`.
 // `learn` is what the check teaches; `signoff: false` marks optional tour steps.
 
-export const CURRENT_MILESTONE = 'M6';
+export const CURRENT_MILESTONE = 'M7';
 
 export const CHECKS = [
+	{
+		id: 'M7-01', milestone: 'M7',
+		title: 'Run the audit and judge whether the numbers are plausible',
+		steps: [ 'Pick a heavy look (Cinematic or Painterly) and press "Open the audit" below (or ⚡ Audit, or P).', 'Run it at Desktop 1080p. It takes about a minute: the view pauses while it measures.', 'Read the chart, the verdict and the recommendations.' ],
+		expected: 'The expensive effects (depth of field, painterly, AO, bloom) come out on top; cheap ones (vignette, grain, LUT) near zero. The timer line says whether it used GPU timestamps. Afterwards the view is exactly as before. Paste the report (Copy report) into your notes.',
+		learn: 'Where frame time goes: why leave-one-out measurement is needed when effects fuse into one shader, and why fewer passes beat cheaper math.',
+		setup: { scene: 'plaza', look: 'cinematic', tier: 2 },
+		actions: [ 'openAudit' ],
+	},
+	{
+		id: 'M7-02', milestone: 'M7',
+		title: 'Run the audit on your phone via the QR code and paste the report',
+		steps: [ 'In the audit, press 📱 Open on phone and scan the QR code. The phone has to reach this page: host the file (GitHub Pages, once you enable it) or open it on your local network.', 'The phone opens the same look and runs the audit for a phone screen. Press Copy report there and paste it into your notes here.', 'Tell me the phone model.' ],
+		expected: 'The phone finishes the audit and its numbers rank the effects in a similar order to the desktop. These reports replace the estimated phone budgets.',
+		learn: 'Why phones are different: tile-based GPUs pay for every fullscreen pass and buffer in memory bandwidth.',
+		setup: { scene: 'harbor', look: 'sea-breeze', tier: 1 },
+		actions: [ 'openAudit' ],
+	},
+	{
+		id: 'M7-03', milestone: 'M7',
+		title: 'The mobile variants still look like their parents',
+		steps: [ 'With this setup (Painterly), open the audit and press 📱 Make phone-friendly variant.', 'Switch between Painterly and "Painterly · Mobile" (My looks) with Q / E and hold Space between them.', 'Try the same with Cinematic and Comic Ink.' ],
+		expected: 'The variant keeps the look\'s identity (palette, shading, ink) while dropping or simplifying the expensive effects. The audit verdict improves to ⚠️ or ✅.',
+		learn: 'Scaling a style down: which effects carry a look and which are polish.',
+		setup: { scene: 'lookdev', look: 'painterly', tier: 1 },
+		actions: [ 'openAudit' ],
+	},
 	{
 		id: 'M6-01', milestone: 'M6',
 		title: 'Paste the brief into one of your agents and ask for a small scene',

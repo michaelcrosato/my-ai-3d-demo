@@ -14,6 +14,8 @@ import { createGallery } from './ui/gallery.js';
 import { createBriefModal } from './ui/brief.js';
 import { exportFiles, briefText, looksJson } from './export/exports.js';
 import { bakeGradeLut } from './export/grade.js';
+import { createAuditModal } from './ui/audit.js';
+import { runAudit, AUDIT_TARGETS } from './perf/audit.js';
 import { createInspector } from './ui/inspector.js';
 import { createCompareUI } from './ui/compare.js';
 import { $, h, toast } from './ui/dom.js';
@@ -203,12 +205,50 @@ async function boot() {
 	const briefModal = createBriefModal( briefRoot, app, { share: shareURL, toast } );
 	$( 'brief-btn' ).addEventListener( 'click', () => briefModal.open( 'brief' ) );
 
+	// Performance audit (§6.11): the loop pauses, the renderer takes the target size, the
+	// state is restored exactly afterwards.
+	const auditRoot = h( 'div.modal', { id: 'audit-modal', hidden: true } );
+	document.body.append( auditRoot );
+	let pausedWhileRef = null;
+	const runAuditNow = ( { target = 'desktop', onProgress, rounds = 3, frames = 60, warmup = 20 } = {} ) => pausedWhileRef( async () => {
+
+		const t = AUDIT_TARGETS[ target ] || AUDIT_TARGETS.desktop;
+		const cam = app.camera, aspect = cam.aspect, frozen0 = app.frozenTime;
+		const [ w, hgt ] = t.width ? [ t.width, t.height ] : [ renderer.domElement.width, renderer.domElement.height ];
+		app.actions.freeze( frozen0 ?? 1 );
+		try {
+
+			return await withRendererSize( renderer, w, hgt, async () => {
+
+				cam.aspect = w / hgt;
+				cam.updateProjectionMatrix();
+				app.tick( 0 );
+				return runAudit( { app, renderer, target, onProgress, rounds, frames, warmup } );
+
+			} );
+
+		} finally {
+
+			app.runtime.apply( app.resolved );
+			cam.aspect = aspect;
+			cam.updateProjectionMatrix();
+			app.actions.freeze( frozen0 );
+			app.emit( 'audited' );
+
+		}
+
+	} );
+	const phoneUrl = async ( target ) => `${location.origin}${location.pathname}?audit=${target}${await app.actions.shareHash()}`;
+	const auditModal = createAuditModal( auditRoot, app, { run: runAuditNow, phoneUrl, env: () => ( { adapter: api.caps?.adapter ? `${api.caps.adapter.vendor || ''} ${api.caps.adapter.architecture || ''}`.trim() : '', backend: api.backend, userAgent: navigator.userAgent } ), toast } );
+	$( 'audit-btn' ).addEventListener( 'click', () => auditModal.open() );
+
 	const ui = {
 		openBrief: () => briefModal.open( 'brief' ),
+		openAudit: () => auditModal.open(),
 		inspector,
 		toggleHidden: () => appRoot.classList.toggle( 'ui-hidden' ),
 		showKeys: () => toast( KEYS.map( ( [ k, v ] ) => `${k}: ${v}` ).join( ' · ' ), 9000 ),
-		closePanels: () => { $( 'verify' ).hidden = true; briefModal.close(); appRoot.classList.remove( 'inspector-open', 'ui-hidden' ); },
+		closePanels: () => { $( 'verify' ).hidden = true; briefModal.close(); auditModal.close(); appRoot.classList.remove( 'inspector-open', 'ui-hidden' ); },
 		toast,
 	};
 
@@ -310,7 +350,7 @@ async function boot() {
 
 	} );
 
-	const pausedWhile = async ( fn ) => {
+	const pausedWhile = pausedWhileRef = async ( fn ) => {
 
 		paused = true;
 		try {
@@ -404,6 +444,7 @@ async function boot() {
 			openBrief: async () => { $( 'verify' ).hidden = true; briefModal.open( 'brief' ); },
 			openFiles: async () => { $( 'verify' ).hidden = true; briefModal.open( 'files' ); },
 			openShare: async () => { $( 'verify' ).hidden = true; briefModal.open( 'share' ); },
+			openAudit: async () => { $( 'verify' ).hidden = true; auditModal.open(); },
 			effectSheet: async () => {
 
 				toast( `Rendering ${EFFECT_DEMOS.length} effect cells…`, 60000 );
@@ -459,6 +500,10 @@ async function boot() {
 		/** The baked grade LUT (33³ RGBA floats, .cube order) for the current look. */
 		bakeGrade: async () => Array.from( await bakeGradeLut( renderer, app.target.global ) ),
 		openBrief: async ( tab ) => { briefModal.open( tab ); await nextFrames( 4 ); return document.querySelector( '#brief-modal .brief-body' )?.innerText || ''; },
+		// M7: performance audit
+		/** Runs the audit: { target: 'small' | 'desktop' | …, rounds, frames, warmup } → the report. */
+		audit: ( opts ) => runAuditNow( opts ),
+		phoneUrl: ( target ) => phoneUrl( target ),
 		// M5: walk mode, physics, zones, plans, modes
 		setWalk: async ( on ) => { const r = await app.actions.setWalk( on ); await nextFrames(); return r; },
 		/** Moves the walking player's feet to [x, y, z]. */
@@ -752,6 +797,10 @@ async function boot() {
 		history.replaceState( null, '', location.pathname + location.search );
 
 	}
+
+	// ?audit=<target>: opened from the "Open on phone" QR code: run the audit here.
+	const auditTarget = new URLSearchParams( location.search ).get( 'audit' );
+	if ( auditTarget && AUDIT_TARGETS[ auditTarget ] ) setTimeout( () => auditModal.open( { target: auditTarget, run: true } ), 1500 );
 
 	// First presented frame, then ready.
 	await nextFrames();

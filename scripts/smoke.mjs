@@ -2,7 +2,7 @@
 // checks for errors and a non-blank frame, and runs the spikes. CDN requests are
 // served from node_modules (same pinned versions), so it runs offline.
 //
-//   node scripts/smoke.mjs [--only <text>] [--checks m1,m3,m4,m5,m6] [--no-spikes] [--rebuild-iterations N]
+//   node scripts/smoke.mjs [--only <text>] [--checks m1,m3,m4,m5,m6,m7] [--no-spikes] [--rebuild-iterations N]
 //
 // Needs Playwright with Chromium: `npm i -D playwright && npx playwright install chromium`
 // (already present in the cloud container). Headless WebGPU uses SwiftShader.
@@ -26,14 +26,14 @@ const distFile = pathToFileURL( path.join( ROOT, 'dist/style-lab.html' ) ).href;
 
 const RUNS = [
 	{ name: 'dev  · http · WebGL2', url: ( base ) => `${base}/index.html?backend=webgl`, backend: 'WebGL2' },
-	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2', m1: true, m3: true, m4: true, m5: true, m6: true, sweep: true, gallery: 'm4-gallery.png' },
-	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm6-webgpu.png', panel: true, m1: true, m3: true, m4: true, m5: true, m6: true, sweep: [ 'lookdev', 'harbor' ], sheet: 'm6-contact.png', effects: 'm3-effects.png' },
+	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2', m1: true, m3: true, m4: true, m5: true, m6: true, m7: true, sweep: true, gallery: 'm4-gallery.png' },
+	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm7-webgpu.png', panel: true, m1: true, m3: true, m4: true, m5: true, m6: true, m7: true, sweep: [ 'lookdev', 'harbor' ], sheet: 'm7-contact.png', effects: 'm3-effects.png' },
 	{ name: 'dist · file · WebGL2', url: () => `${distFile}?backend=webgl`, backend: 'WebGL2' },
 	{ name: 'dist · file · auto  ', url: () => distFile, backend: null },
 ].filter( ( r ) => ! value( '--only' ) || r.name.includes( value( '--only' ) ) );
 
 // --checks m4,m5 runs exactly those milestone checks on the selected runs (handy with --only dev).
-if ( value( '--checks' ) ) for ( const r of RUNS ) for ( const m of [ 'm1', 'm3', 'm4', 'm5', 'm6' ] ) r[ m ] = value( '--checks' ).split( ',' ).includes( m );
+if ( value( '--checks' ) ) for ( const r of RUNS ) for ( const m of [ 'm1', 'm3', 'm4', 'm5', 'm6', 'm7' ] ) r[ m ] = value( '--checks' ).split( ',' ).includes( m );
 
 const MIME = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json' };
 
@@ -757,6 +757,59 @@ async function m6Checks( page, fail, run, base ) {
 
 }
 
+/**
+ * M7 acceptance checks (design §9 M7): two consecutive audits give the same ranking (pairs
+ * closer than the run-to-run noise may swap) with totals within ±10%; the audit restores
+ * the app state exactly; the phone-friendly variant of a 🔴 look comes out ⚠️ or better.
+ */
+async function m7Checks( page, fail ) {
+
+	const out = await page.evaluate( async () => {
+
+		const s = window.__stylelab, app = s.app;
+		const res = { checks: [] };
+		const check = ( name, pass, value ) => res.checks.push( { name, pass, value } );
+		s.freeze( 1 );
+		await s.setScene( 'lookdev', { tier: 1 } );
+		await s.applyLook( 'cinematic' );
+		const before = await s.capture( { width: 320, height: 180 } );
+		const state0 = JSON.stringify( { ...app.store.get(), tips: null } );
+		const opts = { target: 'small', rounds: 3, frames: 10, warmup: 4 };
+		const a = await s.audit( opts );
+		const b = await s.audit( opts );
+		const after = await s.capture( { width: 320, height: 180 } );
+		check( 'the audit restores the app state exactly', JSON.stringify( { ...app.store.get(), tips: null } ) === state0 && after.hash === before.hash, [ before.hash, after.hash ] );
+		const rank = ( r ) => r.effects.map( ( e ) => e.id );
+		const cost = ( r, id ) => r.effects.find( ( e ) => e.id === id ).marginal;
+		const noise = Math.max( 0.1 * a.totals.full, 0.05 );
+		const swaps = [];
+		for ( const x of rank( a ) ) for ( const y of rank( a ) ) {
+
+			if ( x >= y ) continue;
+			const da = cost( a, x ) - cost( a, y ), db = cost( b, x ) - cost( b, y );
+			if ( Math.sign( da ) !== Math.sign( db ) && Math.max( Math.abs( da ), Math.abs( db ) ) > noise ) swaps.push( [ x, y, da, db ] );
+
+		}
+
+		check( 'two audits rank the effects the same way', swaps.length === 0 && a.effects.length >= 4, { a: rank( a ), b: rank( b ), swaps } );
+		const ratio = b.totals.full / a.totals.full;
+		check( 'two audits agree on the total within ±10%', ratio > 0.9 && ratio < 1.1, [ a.totals.full, b.totals.full ] );
+		check( 'the report has costs, a verdict and recommendations', a.effects.every( ( e ) => e.marginal >= 0 ) && a.rubric.label && a.recommendations.length && a.calibration.msPerFpe > 0, { verdict: a.rubric.label, msPerFpe: a.calibration.msPerFpe } );
+		const v = app.actions.makeMobileVariant();
+		check( 'the phone-friendly variant of a 🔴 look comes out ⚠️ or better', /✅|⚠️/.test( v.verdict ) && app.hasLook( v.look.id ), { verdict: v.verdict, changes: v.changes } );
+		const url = await s.phoneUrl( 'phone-portrait' );
+		check( 'open-on-phone link runs the audit on the phone', url.includes( 'audit=phone-portrait' ) && url.includes( '#state=' ), url.slice( 0, 120 ) );
+		res.audit = { full: a.totals.full, effects: a.effects.map( ( e ) => [ e.id, e.marginal, e.fpeRubric ] ), timer: a.timer };
+		s.freeze( null );
+		return res;
+
+	} );
+
+	for ( const c of out.checks ) if ( ! c.pass ) fail( `M7: ${c.name} (${JSON.stringify( c.value )})` );
+	return out;
+
+}
+
 async function smoke( browser, run, base ) {
 
 	const context = await browser.newContext( { viewport: { width: 1280, height: 720 } } );
@@ -796,6 +849,7 @@ async function smoke( browser, run, base ) {
 		if ( run.m4 && ! flag( '--no-m4' ) ) result.m4 = await m4Checks( page, fail, run );
 		if ( run.m5 && ! flag( '--no-m5' ) ) result.m5 = await m5Checks( page, fail, run );
 		if ( run.m6 && ! flag( '--no-m6' ) ) result.m6 = await m6Checks( page, fail, run, base );
+		if ( run.m7 && ! flag( '--no-m7' ) ) result.m7 = await m7Checks( page, fail, run );
 
 		if ( ! flag( '--no-spikes' ) ) {
 
@@ -809,7 +863,7 @@ async function smoke( browser, run, base ) {
 		if ( run.panel ) {
 
 			await page.click( '#verify-btn' );
-			await page.click( '.check[data-id="M6-01"] [data-status="pass"]' );
+			await page.click( '.check[data-id="M7-01"] [data-status="pass"]' );
 			await page.click( '[data-tab="report"]' );
 			result.report = await page.inputValue( 'textarea.report' );
 			if ( ! result.report.includes( 'Checks: 1 pass' ) ) fail( 'Verify report does not record the clicked check' );

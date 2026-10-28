@@ -18,8 +18,9 @@ export { computeOutlineNormals, createHullMaterial } from './materials/outline.j
 export { timestampsSupported, gpuIdle, measureFrames } from './perf/timer.js';
 export { guessParts, PART_KEYWORDS } from './parts/guess.js';
 export { EFFECTS, activeEffects, passRequirements, withPartMasks, MASKED } from './post/graph.js';
+export { rubric, mobileSubstitutions, RUBRIC, BUDGETS, VERDICTS } from './perf/cost-model.js';
 export { timeOfDay } from './look/timeofday.js';
 export { bakeLut, LUT_PRESETS, PALETTES, bayerMatrix } from './color/lut.js';
 export { pixelGrid } from './render/passes.js';
 
-export const RUNTIME_VERSION = '0.8.0';
+export const RUNTIME_VERSION = '0.9.0';

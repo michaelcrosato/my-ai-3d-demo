@@ -15,6 +15,7 @@ export const KEYS = [
 	[ 'T', 'Turntable' ],
 	[ 'H', 'Hide UI' ],
 	[ 'B', 'Brief and export' ],
+	[ 'P', 'Performance audit' ],
 	[ 'L', 'Learn tab' ],
 	[ 'Esc', 'Close panels' ],
 	[ '?', 'Show these keys' ],
@@ -71,6 +72,7 @@ export function bindKeyboard( app, ui ) {
 			h: () => ui.toggleHidden(),
 			l: () => ui.inspector.setTab( 'learn' ),
 			b: () => ui.openBrief?.(),
+			p: () => ui.openAudit?.(),
 			'?': () => ui.showKeys(),
 			Escape: () => ui.closePanels(),
 		};
