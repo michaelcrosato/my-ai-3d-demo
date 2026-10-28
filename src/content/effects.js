@@ -67,7 +67,8 @@ export const EFFECT_DEMOS = [
 	demo( 'dither-shading', 'Dithered 1-bit shading', { milestone: 'M3b', effect: 'surface.dither', params: { 'surface.bands': 2, 'surface.dither.enabled': true, 'surface.softness': 0.5 }, minDiff: 0.006 } ),
 	demo( 'variation', 'Color variation', { milestone: 'M3b', effect: 'surface.variation', scene: 'meadow', params: { 'surface.variation.enabled': true, 'surface.variation.amount': 0.3, 'surface.variation.scale': 0.4 }, minDiff: 0.004 } ),
 	demo( 'gradient', 'Vertical gradient', { milestone: 'M3b', effect: 'surface.gradient', params: { 'surface.gradient.enabled': true, 'surface.gradient.amount': 0.6, 'surface.gradient.height': 2 } } ),
-	demo( 'toon-water', 'Toon water', { milestone: 'M3b', effect: 'surface.toonWater', scene: 'harbor', look: 'sea-breeze', parts: { water: { 'surface.model': 'toonWater', 'palette.tintAmount': 0 } } } ),
+	// Not on Sea Breeze: its water part is already toon water (M4).
+	demo( 'toon-water', 'Toon water', { milestone: 'M3b', effect: 'surface.toonWater', scene: 'harbor', parts: { water: { 'surface.model': 'toonWater', 'palette.tintAmount': 0 } } } ),
 	demo( 'wind', 'Wind ×3', { milestone: 'M3b', effect: 'surface.wind', scene: 'meadow', params: { 'surface.wind.strength': 3, 'surface.wind.speed': 1.5 }, minDiff: 0.003 } ),
 	demo( 'wind-trees', 'Wind sway on all foliage', { milestone: 'M3b', effect: 'surface.wind', scene: 'meadow', parts: { foliage: { 'surface.wind.enabled': true, 'surface.wind.strength': 3 } }, minDiff: 0.002 } ),
 	// C. Lines (M3b)

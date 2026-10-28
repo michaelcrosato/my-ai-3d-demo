@@ -107,6 +107,9 @@ export class StyleRuntime {
 		this.rigs.setFrame( { center: def.shadow.center, radius: def.shadow.radius, heroPos: hero.pos, heroTarget: hero.target } );
 		this.camera.far = def.far;
 		this.camera.updateProjectionMatrix();
+		// Far isometric and top-down cameras: fog counts from part of the way to the focus,
+		// so fog tuned for eye-level shots doesn't bury the whole view.
+		this.fogFocus = def.fogFocus || 0;
 		this.apply( this.resolved );
 		this.markCompile( 'scene' );
 
@@ -371,6 +374,7 @@ export class StyleRuntime {
 
 		// Depth of field focuses on the point the camera looks at, along the view axis.
 		U.focusDistance.value = Math.max( 0.1, _v.copy( this.focus ).sub( cam.position ).dot( _fwd ) + v[ 'lens.dof.offset' ] );
+		this.atmos.fogOffset.value = ( this.fogFocus || 0 ) * this.focus.distanceTo( cam.position );
 
 		for ( const { light, base } of this.practicals ) {
 

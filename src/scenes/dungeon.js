@@ -20,9 +20,10 @@ export default {
 	focus: [ - 1.5, 1.2, 2.5 ],
 	shadow: { center: [ 0, 0, 0 ], radius: 15 },
 	far: 300,
+	fogFocus: 0.6, // the camera is far away: fog starts 60% of the way to the focus
 	params: {
-		'lighting.key.elevation': 62, 'lighting.key.azimuth': 20, 'lighting.key.color': '#a3b3ff', 'lighting.key.intensity': 1.6,
-		'lighting.ambient.sky': '#4a5277', 'lighting.ambient.ground': '#2a2226', 'lighting.ambient.intensity': 0.9,
+		'lighting.key.elevation': 62, 'lighting.key.azimuth': 20, 'lighting.key.color': '#b4c0ff', 'lighting.key.intensity': 2.3,
+		'lighting.ambient.sky': '#6b7499', 'lighting.ambient.ground': '#3a3036', 'lighting.ambient.intensity': 1.1,
 		'atmosphere.sky.zenith': '#07080f', 'atmosphere.sky.horizon': '#151826', 'atmosphere.sky.ground': '#151826',
 		'atmosphere.fog.color': '#151826',
 	},

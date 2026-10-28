@@ -110,7 +110,7 @@ export const retroPs1 = look( {
 		'retro.vertexSnap.enabled': true, 'retro.vertexSnap.grid': 120,
 		'retro.quantize.mode': 'posterize', 'retro.quantize.levels': 32, 'retro.dither.amount': 0.7, 'retro.dither.pattern': 'bayer4',
 		'surface.model': 'toon', 'surface.bands': 1,
-		'atmosphere.fog.type': 'linear', 'atmosphere.fog.start': 8, 'atmosphere.fog.end': 45, 'atmosphere.fog.color': '#262636', 'atmosphere.fog.skyTint': 0,
+		'atmosphere.fog.type': 'linear', 'atmosphere.fog.start': 14, 'atmosphere.fog.end': 60, 'atmosphere.fog.color': '#262636', 'atmosphere.fog.skyTint': 0,
 		'atmosphere.sky.zenith': '#3a3a5c', 'atmosphere.sky.horizon': '#262636', 'atmosphere.sky.ground': '#262636',
 		'quality.aa': 'none',
 		'grade.toneMapping': 'neutral',
@@ -153,6 +153,9 @@ export const retroGameBoy = look( {
 		'retro.pixel.enabled': true, 'retro.pixel.height': 144, 'retro.pixel.edges': 0.3,
 		'retro.quantize.mode': 'palette', 'retro.quantize.palette': 'gameboy', 'retro.dither.amount': 0.6, 'retro.dither.pattern': 'bayer4',
 		'surface.model': 'toon', 'surface.bands': 3,
+		// The four greens come from brightness alone: neutral light keeps a tinted scene mood
+		// from squeezing every pixel into one shade.
+		'lighting.key.color': '#ffffff', 'lighting.ambient.sky': '#a3a3a3', 'lighting.ambient.ground': '#4d4d4d',
 		'atmosphere.fog.type': 'off',
 		'quality.aa': 'none',
 		'grade.toneMapping': 'neutral', 'grade.contrast': 1.1,
@@ -267,6 +270,7 @@ export const oneBit = look( {
 		'retro.pixel.enabled': true, 'retro.pixel.height': 360, 'retro.pixel.edges': 0.3,
 		'retro.quantize.mode': 'palette', 'retro.quantize.palette': 'onebit', 'retro.dither.amount': 1, 'retro.dither.pattern': 'bayer8',
 		'surface.model': 'halfLambert', 'surface.bands': 1,
+		'lighting.key.color': '#ffffff', 'lighting.ambient.sky': '#a3a3a3', 'lighting.ambient.ground': '#4d4d4d', // tone from brightness alone
 		'lines.screen.enabled': true, 'lines.screen.thickness': 1, 'lines.screen.crease': 0.3, 'lines.screen.color': '#16131f',
 		'atmosphere.fog.type': 'off',
 		'grade.toneMapping': 'neutral', 'grade.contrast': 1.2,
@@ -313,7 +317,7 @@ export const noir = look( {
 	mistakes: [ 'Gray, low-contrast images.', 'More than one spot color.', 'Soft, frontal light.' ],
 	bestScenes: [ 'plaza', 'dungeon', 'hangar' ],
 	params: {
-		'lighting.key.elevation': 25, 'lighting.key.intensity': 3.5, 'lighting.ambient.intensity': 0.15, 'lighting.shadows.softness': 0,
+		'lighting.key.elevation': 32, 'lighting.key.color': '#f2f4ff', 'lighting.key.intensity': 3.5, 'lighting.ambient.intensity': 0.15, 'lighting.shadows.softness': 0,
 		'surface.model': 'pbr', 'surface.rim.intensity': 1, 'surface.rim.width': 0.25,
 		'atmosphere.fog.type': 'exp', 'atmosphere.fog.density': 0.02, 'atmosphere.fog.color': '#2a2a2a', 'atmosphere.fog.skyTint': 0,
 		'atmosphere.sky.zenith': '#0e0e10', 'atmosphere.sky.horizon': '#3a3a3a', 'atmosphere.sky.ground': '#1a1a1a',

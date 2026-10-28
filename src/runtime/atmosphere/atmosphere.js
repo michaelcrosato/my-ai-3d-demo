@@ -21,6 +21,7 @@ export function createAtmosphereUniforms() {
 		fogDensity: uniform( 0.008 ),
 		fogStart: uniform( 10 ),
 		fogEnd: uniform( 200 ),
+		fogOffset: uniform( 0 ), // fog-free distance in front of the camera (far isometric shots)
 		fogColor: uniform( new THREE.Color( '#c8dcf0' ) ),
 		fogSkyTint: uniform( 1 ),
 		fogBands: uniform( 0 ),
@@ -88,8 +89,9 @@ export function skyColor( u, dir ) {
  * world position, height fog is added: exponential density falling off above a base
  * height, integrated along the view ray from the camera.
  */
-export function fogFactor( u, dist, world = null ) {
+export function fogFactor( u, distance, world = null ) {
 
+	const dist = max( distance.sub( u.fogOffset ), 0 );
 	const linear = smoothstep( u.fogStart, u.fogEnd, dist );
 	const e = exp( u.fogDensity.mul( dist ).negate() ).oneMinus();
 	const e2 = exp( u.fogDensity.mul( dist ).pow( 2 ).negate() ).oneMinus();
