@@ -1,4 +1,4 @@
-import { param } from './define.js';
+import { param, MEDIUM } from './define.js';
 
 const p = ( e ) => param( 'atmosphere', e );
 
@@ -132,5 +132,33 @@ export default [
 		learn: { what: 'Brightness of the sun disc, as a multiple of the key light color.', why: 'Values above 1 are HDR, so bloom picks the sun up.' },
 		brief: 'Sun disc brightness {value}× the key color.',
 		tags: [ 'sky', 'sun', 'bloom' ],
+	} ),
+	p( {
+		id: 'atmosphere.godRays.enabled', label: 'God rays', type: 'bool', default: false, structural: true, requires: [ 'depth' ], cost: MEDIUM,
+		learn: {
+			what: 'Shafts of light streaming from the sun past the objects in front of it (a radial blur of the sky toward the sun).',
+			why: 'Visible light shafts make air feel thick and light feel physical: dust, haze, a sacred or dramatic moment.',
+			avoid: 'Shots without the sun near the frame: the rays come from the sun\'s screen position.',
+		},
+		brief: 'God rays from the sun.',
+		tags: [ 'atmosphere', 'god rays', 'light' ],
+	} ),
+	p( {
+		id: 'atmosphere.godRays.intensity', label: 'Ray strength', type: 'float', min: 0, max: 2, step: 0.01, default: 0.6, neutral: 0, enabledBy: 'atmosphere.godRays.enabled',
+		learn: { what: 'How bright the shafts are.', why: 'Subtle rays add atmosphere; strong rays are a dramatic statement.' },
+		brief: 'God ray strength {value}.',
+		tags: [ 'god rays' ],
+	} ),
+	p( {
+		id: 'atmosphere.godRays.length', label: 'Ray length', type: 'float', min: 0.1, max: 1, step: 0.01, default: 0.6, enabledBy: 'atmosphere.godRays.enabled',
+		learn: { what: 'How far the shafts reach from the sun, as a fraction of the way across the screen.', why: 'Long rays fill the frame with light; short ones stay a halo around the sun.' },
+		brief: 'God rays reach {value} of the way from the sun.',
+		tags: [ 'god rays' ],
+	} ),
+	p( {
+		id: 'atmosphere.godRays.decay', label: 'Ray falloff', type: 'float', min: 0.8, max: 1, step: 0.001, default: 0.96, enabledBy: 'atmosphere.godRays.enabled',
+		learn: { what: 'How quickly rays fade along their length.', why: 'Lower values keep the rays near the sun.' },
+		brief: 'God ray decay {value}.',
+		tags: [ 'god rays' ],
 	} ),
 ];

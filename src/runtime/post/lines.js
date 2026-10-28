@@ -5,7 +5,7 @@
 // Depth and id edges are drawn only on the nearer side of a boundary, so ink
 // belongs to the object in front, as an illustrator would draw it.
 
-import { Fn, vec2, vec3, float, screenUV, screenSize, max, mix, smoothstep, step, abs, colorToDirection, perspectiveDepthToViewZ } from 'three/tsl';
+import { Fn, vec2, vec3, float, max, mix, smoothstep, step, abs, colorToDirection, perspectiveDepthToViewZ } from 'three/tsl';
 import { fogFactor } from '../atmosphere/atmosphere.js';
 
 // Opposite pairs: the Laplacian of inverse depth is zero on any plane, so grazing
@@ -17,14 +17,14 @@ const PAIRS = [ [ 1, 0 ], [ 0, 1 ], [ 0.7071, 0.7071 ], [ 0.7071, - 0.7071 ] ];
  * @param {object} b - { depth, normal, ids } texture nodes from the scene pass
  * @param {object} u - line uniforms: thickness, color, silhouette, crease, creaseThreshold, depthThreshold, idWeight, followFog, near, far
  * @param {object} atmos - atmosphere uniforms (fog)
+ * @param {object} grid - { uv, texel: size of one sample step in uv, scale: sample steps per px at 1080p }
  */
-export function screenLines( color, b, u, atmos ) {
+export function screenLines( color, b, u, atmos, { uv, texel, scale } ) {
 
 	return Fn( () => {
 
-		const uv = screenUV;
-		const px = vec2( 1 ).div( screenSize );
-		const radius = max( u.thickness.mul( screenSize.y.div( 1080 ) ), 0.0 );
+		const px = texel;
+		const radius = max( u.thickness.mul( scale ), 0.0 );
 
 		const dist = ( d ) => perspectiveDepthToViewZ( d, u.near, u.far ).negate();
 		const d0 = dist( b.depth.sample( uv ).r ).toVar();

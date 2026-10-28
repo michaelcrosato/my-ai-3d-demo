@@ -2,32 +2,44 @@
 //
 // apply(resolved) is the only entry for look changes. Value changes become uniform
 // writes; structural changes rebuild only what they affect: a part's materials, the
-// styled scene pass (when MRT needs change), or the post graph. Counters in
-// `info` let tests assert that sliders never rebuild anything.
+// styled scene pass (when the buffers it must write change), or the post graph.
+// Counters in `info` let tests assert that sliders never rebuild anything.
 
 import * as THREE from 'three/webgpu';
-import { pass, mrt, output, normalView, directionToColor, vec4 } from 'three/tsl';
+import { mrt, output, normalView, directionToColor, vec4, velocity, emissive } from 'three/tsl';
 import { StyleMaterials, LAYER_STYLED, LAYER_PLAIN, idsNode } from './materials/factory.js';
 import { createAtmosphereUniforms, createFogNode, createSkyDomes, FOG_TYPES } from './atmosphere/atmosphere.js';
-import { createPostUniforms, applyPostValues, buildGraph, disposeOwned, graphKey, needsMRT } from './post/graph.js';
+import { createPostUniforms, createPostLists, applyPostValues, buildGraph, disposeOwned, graphKey, passRequirements, activeEffects } from './post/graph.js';
+import { ParamUniforms } from './post/params.js';
+import { StylePassNode, pixelGrid } from './render/passes.js';
 import { Rigs } from './render/rigs.js';
 import { resolveLook } from './look/resolve.js';
 
 const layers = ( n ) => { const l = new THREE.Layers(); l.set( n ); return l; };
+const _size = new THREE.Vector2();
+const _v = new THREE.Vector3();
+const _fwd = new THREE.Vector3();
 
 export class StyleRuntime {
 
 	/**
 	 * @param {object} o
 	 * @param {THREE.WebGPURenderer} o.renderer
-	 * @param {THREE.PerspectiveCamera} o.camera
+	 * @param {THREE.PerspectiveCamera} o.camera - the viewer's camera (the plain set renders with it)
 	 */
 	constructor( { renderer, camera } ) {
 
 		this.renderer = renderer;
 		this.camera = camera;
+		// The styled set renders with its own copy, so pixel looks can widen its frustum
+		// to whole texels without touching the baseline.
+		this.styledCamera = camera.clone();
+		this.styledCamera.name = 'styled camera';
 		this.scene = new THREE.Scene();
 		this.U = createPostUniforms();
+		this.P = new ParamUniforms();
+		this.U.lines.color = this.P.get( 'lines.screen.color' );
+		this.lists = createPostLists();
 		this.atmos = createAtmosphereUniforms();
 		this.scene.fogNode = createFogNode( this.atmos );
 		this.materials = new StyleMaterials( { time: this.U.time, keyDirection: this.atmos.sunDirection } );
@@ -38,13 +50,16 @@ export class StyleRuntime {
 
 		this.post = new THREE.PostProcessing( renderer );
 		this.post.outputColorTransform = false;
-		this.plainPass = pass( this.scene, camera, { samples: 4 } ).setLayers( layers( LAYER_PLAIN ) );
+		this.plainPass = new StylePassNode( this.scene, camera, { samples: 4 } ).setLayers( layers( LAYER_PLAIN ) );
 		this.styledPass = null;
 		this.passKey = null;
 		this.graph = null;
 		this.graphKey = null;
+		this.grid = null; // pixel grid { p, width, height } in pixel looks
 
 		this.root = null;
+		this.practicals = [];
+		this.focus = new THREE.Vector3();
 		this.values = null;
 		this.info = { materialBuilds: 0, graphBuilds: 0, passBuilds: 0, lastRebuild: null, lastCompileMs: null };
 		this.pendingCompile = null;
@@ -70,16 +85,25 @@ export class StyleRuntime {
 		this.root = root;
 		this.scene.add( root );
 		this.materials.register( root );
+		this.materials.blobs.setScene( root );
 
-		// Practical lights (torches, lamps, campfires) light both render sets; no shadows (cost).
-		root.traverse( ( o ) => {
+		// Practical lights (torches, lamps, campfires): the styled set's lights follow the
+		// look's practical controls; a twin on the plain layer keeps the scene's own values.
+		this.practicals = [];
+		const lights = [];
+		root.traverse( ( o ) => { if ( o.isLight ) lights.push( o ); } );
+		for ( const light of lights ) {
 
-			if ( ! o.isLight ) return;
-			o.layers.set( LAYER_STYLED );
-			o.layers.enable( LAYER_PLAIN );
-			o.castShadow = false;
+			light.castShadow = false;
+			light.layers.set( LAYER_STYLED );
+			const twin = light.clone();
+			twin.layers.set( LAYER_PLAIN );
+			twin.name = 'plain twin';
+			light.parent.add( twin );
+			const base = { intensity: light.intensity, flicker: light.userData.practical?.flicker ?? 0, seed: light.userData.practical?.seed ?? 0 };
+			this.practicals.push( { light, twin, base } );
 
-		} );
+		}
 
 		const hero = def.shots[ def.defaultShot ];
 		this.rigs.setFrame( { center: def.shadow.center, radius: def.shadow.radius, heroPos: hero.pos, heroTarget: hero.target } );
@@ -87,6 +111,16 @@ export class StyleRuntime {
 		this.camera.updateProjectionMatrix();
 		this.apply( this.resolved );
 		this.markCompile( 'scene' );
+
+	}
+
+	/** Buffers the styled pass writes for the current values, and whether it can use MSAA. */
+	passConfig( v ) {
+
+		const buffers = passRequirements( v );
+		const pixel = v[ 'retro.pixel.enabled' ] === true;
+		const samples = buffers.size || pixel ? 0 : 4;
+		return { buffers, samples, pixel, key: `${samples}|${[ ...buffers ].sort().join( ',' )}` };
 
 	}
 
@@ -100,7 +134,7 @@ export class StyleRuntime {
 		const v = this.values = resolved.global;
 		const before = this.materials.built;
 
-		const parts = this.materials.apply( resolved.parts );
+		const parts = this.materials.apply( resolved.parts, v );
 
 		const dir = this.rigs.apply( v );
 		const a = this.atmos;
@@ -121,32 +155,43 @@ export class StyleRuntime {
 		a.fogSkyTint.value = v[ 'atmosphere.fog.skyTint' ];
 		a.fogBands.value = v[ 'atmosphere.fog.bands' ];
 
-		applyPostValues( this.U, v );
+		applyPostValues( this.U, this.P, this.lists, v );
 
-		// Styled scene pass: MSAA unless ids are needed (MSAA would blend them, M0 spike 2).
-		const passKey = needsMRT( v ) ? 'mrt' : 'msaa';
-		const passRebuilt = passKey !== this.passKey;
+		// Styled scene pass: MSAA unless it writes extra buffers (MSAA would blend ids, M0 spike 2).
+		const cfg = this.passConfig( v );
+		const passRebuilt = cfg.key !== this.passKey;
 
 		if ( passRebuilt ) {
 
 			this.styledPass?.dispose();
-			const p = pass( this.scene, this.camera, { samples: passKey === 'mrt' ? 0 : 4 } ).setLayers( layers( LAYER_STYLED ) );
-			if ( passKey === 'mrt' ) p.setMRT( mrt( { output, normal: directionToColor( normalView ), ids: vec4( 0 ) } ) );
+			const p = new StylePassNode( this.scene, this.styledCamera, { samples: cfg.samples } ).setLayers( layers( LAYER_STYLED ) );
+			if ( cfg.buffers.size ) {
+
+				const outputs = { output };
+				if ( cfg.buffers.has( 'normal' ) ) outputs.normal = directionToColor( normalView );
+				if ( cfg.buffers.has( 'ids' ) ) outputs.ids = vec4( 0 );
+				if ( cfg.buffers.has( 'velocity' ) ) outputs.velocity = velocity;
+				if ( cfg.buffers.has( 'emissive' ) ) outputs.emissive = emissive;
+				p.setMRT( mrt( outputs ) );
+
+			}
+
 			this.styledPass = p;
-			this.passKey = passKey;
+			this.passKey = cfg.key;
 			this.info.passBuilds ++;
 
 		}
 
-		this.styledPass.setResolutionScale( v[ 'quality.resolution' ] );
+		this.styledPass.pixelRows = cfg.pixel ? v[ 'retro.pixel.height' ] : null;
+		this.styledPass.setResolutionScale( cfg.pixel ? 1 : v[ 'quality.resolution' ] );
 
-		const key = `${graphKey( v )}|${passKey}`;
+		const key = graphKey( v, cfg.key );
 		const graphRebuilt = key !== this.graphKey;
 
 		if ( graphRebuilt ) {
 
 			const previous = this.graph;
-			this.graph = buildGraph( { styledPass: this.styledPass, plainPass: this.plainPass, values: v, U: this.U, atmos: this.atmos } );
+			this.graph = buildGraph( { styledPass: this.styledPass, plainPass: this.plainPass, values: v, P: this.P, U: this.U, lists: this.lists, atmos: this.atmos, camera: this.styledCamera, light: this.rigs.styled.sun, samples: cfg.samples } );
 			this.post.outputNode = this.graph.node;
 			this.post.needsUpdate = true;
 			if ( previous ) disposeOwned( previous.owned );
@@ -155,19 +200,17 @@ export class StyleRuntime {
 
 		}
 
-		const b = this.graph.bloomNode;
-		if ( b ) {
-
-			b.strength.value = v[ 'lens.bloom.strength' ];
-			b.radius.value = v[ 'lens.bloom.radius' ];
-			b.threshold.value = v[ 'lens.bloom.threshold' ];
-
-		}
-
 		this.info.materialBuilds += this.materials.built - before;
 		const rebuilt = { parts, pass: passRebuilt, graph: graphRebuilt };
 		if ( parts.length || passRebuilt || graphRebuilt ) { this.info.lastRebuild = rebuilt; this.markCompile( 'rebuild' ); }
 		return rebuilt;
+
+	}
+
+	/** The enabled post and pass effects of the current look, in pipeline order. */
+	activeEffects() {
+
+		return activeEffects( this.values );
 
 	}
 
@@ -196,14 +239,90 @@ export class StyleRuntime {
 
 	}
 
-	/** Per-frame state: time (freezable by the host), dome placement, depth range for lines. */
-	update( t ) {
+	/**
+	 * Per-frame state: time (freezable and steppable by the host), the styled camera
+	 * and pixel grid, dome placement, depth range, the sun's screen position, the
+	 * focus distance for depth of field, practical lights and blob shadows.
+	 * @param {number} t - animation time in seconds
+	 * @param {object} [o] - { focus: Vector3 } the point the camera looks at
+	 */
+	update( t, { focus } = {} ) {
 
-		this.U.time.value = t;
+		const v = this.values;
+		const U = this.U;
+		U.time.value = t;
+		if ( focus ) this.focus.copy( focus );
+
+		this.syncStyledCamera( v );
+
 		const r = this.camera.far * 0.9;
 		for ( const d of [ this.domes.styled, this.domes.plain ] ) { d.position.copy( this.camera.position ); d.scale.setScalar( r ); }
-		this.U.lines.near.value = this.camera.near;
-		this.U.lines.far.value = this.camera.far;
+		U.lines.near.value = this.camera.near;
+		U.lines.far.value = this.camera.far;
+
+		// Sun on screen (god rays): fades out as the sun leaves the frame or goes behind the camera.
+		const cam = this.styledCamera;
+		_v.copy( this.atmos.sunDirection.value ).multiplyScalar( cam.far * 0.5 ).add( cam.position ).project( cam );
+		U.sunScreen.value.set( _v.x * 0.5 + 0.5, 0.5 - _v.y * 0.5 );
+		cam.getWorldDirection( _fwd );
+		const facing = _fwd.dot( this.atmos.sunDirection.value );
+		const off = Math.max( Math.abs( _v.x ), Math.abs( _v.y ) );
+		U.sunVisible.value = Math.max( 0, Math.min( 1, facing * 4 ) ) * Math.max( 0, Math.min( 1, ( 2.2 - off ) / 1.2 ) );
+
+		// Screen-space shadows trace toward the sun in the styled camera's view space.
+		U.proj.value.copy( cam.projectionMatrix );
+		U.projInv.value.copy( cam.projectionMatrixInverse );
+		U.lightView.value.copy( this.atmos.sunDirection.value ).transformDirection( cam.matrixWorldInverse );
+
+		// Depth of field focuses on the point the camera looks at, along the view axis.
+		U.focusDistance.value = Math.max( 0.1, _v.copy( this.focus ).sub( cam.position ).dot( _fwd ) + v[ 'lens.dof.offset' ] );
+
+		for ( const { light, base } of this.practicals ) {
+
+			const n = Math.sin( t * 11.3 + base.seed ) * 0.5 + Math.sin( t * 23.7 + base.seed * 2.1 ) * 0.3 + Math.sin( t * 5.1 + base.seed * 0.7 ) * 0.2;
+			light.intensity = base.intensity * v[ 'lighting.practicals.intensity' ] * ( 1 + n * base.flicker * v[ 'lighting.practicals.flicker' ] * 0.35 );
+
+		}
+
+		this.root?.updateMatrixWorld();
+		this.materials.blobs.update();
+
+	}
+
+	/** Copies the viewer's camera; in pixel looks widens it to whole low-res texels. */
+	syncStyledCamera( v ) {
+
+		const src = this.camera, cam = this.styledCamera;
+		cam.position.copy( src.position );
+		cam.quaternion.copy( src.quaternion );
+		cam.fov = src.fov;
+		cam.aspect = src.aspect;
+		cam.near = src.near;
+		cam.far = src.far;
+		cam.zoom = src.zoom;
+
+		this.renderer.getDrawingBufferSize( _size );
+		const W = Math.floor( _size.x ), H = Math.floor( _size.y );
+		const view = src.view && src.view.enabled ? src.view : null;
+
+		if ( v[ 'retro.pixel.enabled' ] ) {
+
+			const g = this.grid = pixelGrid( W, H, v[ 'retro.pixel.height' ] );
+			// A host view offset (a pan test, a tiled render) is kept, in screen pixels.
+			cam.setViewOffset( W, H, view ? view.offsetX * W / view.fullWidth : 0, view ? view.offsetY * H / view.fullHeight : 0, g.width * g.p, g.height * g.p );
+			this.U.pixelSize.value = g.p;
+			this.U.lowRes.value.set( g.width, g.height );
+
+		} else {
+
+			this.grid = null;
+			if ( view ) cam.setViewOffset( view.fullWidth, view.fullHeight, view.offsetX, view.offsetY, view.width, view.height );
+			else cam.clearViewOffset();
+
+		}
+
+		cam.updateProjectionMatrix();
+		cam.updateMatrixWorld();
 
 	}
 

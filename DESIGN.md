@@ -1260,7 +1260,7 @@ The strategy is **cheap automated checks for correctness, and human eyes for aes
 |---|---|---|---|---|
 | **Unit** | `node:test` (no browser) | Registry completeness; look validation and migrations; resolve, mix, strength and neutral math; color round-trips; share-link round-trip; brief generator (palette hexes present, enabled effects listed in order); coherence rules; mobile substitutions; cost model | Every change | Seconds |
 | **Smoke** | `scripts/smoke.mjs` (Playwright, Chromium, WebGL2 path; WebGPU attempted best-effort with `--enable-unsafe-webgpu`) | Boot with no errors; each scene × look renders 3 frames with no console or GPU errors; numeric image checks (below); runtime parity (`starter.html` vs. the tool, mean pixel difference within tolerance) | End of each milestone, and after render-pipeline changes | 1–3 minutes |
-| **Visual spot check** | The agent views **one** contact-sheet PNG | Gross failures (black cells, missing lines, wrong colors) | Once per milestone | One image |
+| **Visual spot check** | The agent views contact sheets and screenshots | Gross failures (black cells, missing lines, wrong colors) and tuning | As needed | A few images |
 | **Human** | Verify panel | WebGPU on real GPUs, gamepads, feel, look authenticity, phones | Each milestone build | User's time; structured report |
 
 **Numeric image checks** (no vision needed; computed in the page by `capture()`):
@@ -1273,7 +1273,7 @@ The strategy is **cheap automated checks for correctness, and human eyes for aes
 
 **Budget rules for the implementing agent**
 - No subagent reviews, adversarial reviews or LLM-judge loops.
-- No screenshot-per-look loops: at most one contact sheet viewed per milestone.
+- Since M3 (the user's call, 2026-10-28): view contact sheets and screenshots as often as they help, and tune visuals from them. Until then the rule was at most one contact sheet per milestone.
 - Fix and re-test only what unit tests, smoke tests or the user's Verify report flag.
 - Every milestone ends by adding its checks to the Verify panel and noting "what to test" in `CHANGELOG.md`.
 
@@ -1353,6 +1353,16 @@ Each milestone ends with: `npm test` and `npm run smoke` green, a rebuilt `dist/
 - **Verify checks:** each scene loads and evokes its inspiration (rate) · animations play · import one of your own `.glb` files and report the part guesses.
 
 ### M3 — Full filter library
+- **Status:** split into M3a and M3b. **M3a done (v0.4.0):** light and shadow (AO, contact shadows, blob shadows, time of day, practicals, shadow resolution), lens (DOF, tilt-shift, god rays, motion blur, CA, distortion, letterbox, selective bloom), grade (lift/gamma/gain, vibrance, hue, selective color, LUT presets, gradient map), retro (grid-locked pixelation, pixel edges, posterize, palette quantization, dithering, vertex snap, CRT) and stepped animation. All 34 effect demos render without errors and change the image on WebGPU and WebGL2; the pixel grid passes the exact-pan test. **M3b next:** media, lines, toon water, wind, color variation, gradients, height fog, clouds, AA modes. Decisions made while building M3a:
+  - **Effects are modules** (`post/stage-*.js`) with `enabled`, `requires`, an optional structural `key` and `build`. The builder walks them in pipeline order, derives the pass's MRT attachments from `requires`, and adds a texture boundary only for neighborhood effects. `activeEffects(values)` lists the enabled ones for briefs and the audit.
+  - **Every registry parameter a shader reads is one uniform** (`ParamUniforms`, created on first use, colors as raw sRGB). Uniforms survive graph rebuilds, so values never jump.
+  - **Every new effect has its own switch** (structural) plus continuous amounts (uniforms), so sliders never rebuild and morphs can fade amounts from `neutral`. The cheap basic grade controls (lift/gamma/gain, contrast, saturation, vibrance, hue, split tone), vignette, grain and letterbox are always compiled.
+  - **The styled set has its own camera,** a per-frame copy of the viewer's. Pixel looks widen its frustum by the pixels that don't divide evenly and render at exactly ⌈W/p⌉ × ⌈H/p⌉ (`StylePassNode`), and every post effect samples low-res texel centers. Each p × p block is one color and a pan by whole texels shifts the image exactly (smoke test).
+  - **Contact shadows are an inline ray march,** not r182's `sss()`: its fixed self-intersection test speckled flat ground. Ours biases by distance and skips surfaces facing away from the sun (form shadow is already dark).
+  - **Blob shadows darken the receiving materials** (a uniform array of up to 48 owners) instead of drawing transparent decals, which would blend into the ids and normal buffers and z-fight on uneven ground.
+  - **Practical lights get a plain twin,** so the look's practical controls change the styled set only and the baseline stays the agent default. The runtime animates flicker for both.
+  - **Time of day is resolved, not rendered:** with it on, resolution derives the sun, sky, ambient and fog values from the hour; explicit overrides still win.
+  - **LUT presets are generated in code** (`color/lut.js`), the same tables the `.cube` export will bake.
 - **Scope:** every P0 and P1 effect in §6.4 that M1 didn't cover:
   - AO, contact shadows, blob shadows
   - DOF, tilt-shift, god rays, chromatic aberration, lens distortion, letterbox

@@ -3,12 +3,14 @@
 //
 // Order, last wins:
 //   registry defaults → scene (art-directed light rig and sky; skipped by baseline looks)
-//   → look → overrides (Tune panel) → part overrides → strength.
+//   → look → overrides (Tune panel) → time of day (if on; explicit overrides still win)
+//   → part overrides → strength.
 // Per part: the global result, then the look's part params (hero inherits characters),
 // then overrides again, so a Tune slider always affects what you see.
 
 import { REGISTRY, byId, PARTS, PART_PARAMS, defaults, clone } from '../registry/index.js';
 import { mixHex } from '../color/color.js';
+import { timeOfDay } from './timeofday.js';
 
 export const LAYERS = [ 'registry', 'scene', 'look', 'override' ];
 
@@ -92,6 +94,18 @@ export function resolveLook( { look, sceneParams = {}, overrides = {}, partOverr
 	if ( ! look.baseline ) layer( sceneParams, 'scene' );
 	layer( look.params, 'look' );
 	layer( overrides, 'override' );
+
+	if ( values[ 'lighting.tod.enabled' ] ) {
+
+		for ( const [ id, v ] of Object.entries( timeOfDay( values[ 'lighting.tod.hour' ], values[ 'lighting.key.azimuth' ] ) ) ) {
+
+			if ( id in overrides ) continue;
+			values[ id ] = v;
+			sources[ id ] = 'time of day';
+
+		}
+
+	}
 
 	const parts = {};
 

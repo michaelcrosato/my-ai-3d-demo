@@ -1,11 +1,84 @@
 // Human checks for each milestone (design §6.14). The panel shows the current
 // milestone first; earlier milestones stay available under a fold.
 // `actions` name panel handlers; each button is labeled with what it does (panel.js ACTION_LABELS).
-// `setup` is what "Set it up for me" loads: scene, look, tier, shot.
+// `setup` is what "Set it up for me" loads: scene, look, tier, shot, and Tune `params`.
+// `learn` is what the check teaches; `signoff: false` marks optional tour steps.
 
-export const CURRENT_MILESTONE = 'M2';
+export const CURRENT_MILESTONE = 'M3';
 
 export const CHECKS = [
+	{
+		id: 'M3-01', milestone: 'M3',
+		title: 'Effects contact sheet: report bad cells',
+		steps: [ 'Press "Render the effects sheet" below. It renders every new effect on a scene where it shows (a few seconds on a desktop GPU).', 'Look at each cell and its label. Note any cell that is black, blank, garbled, or doesn\'t look like its label.' ],
+		expected: 'Every cell shows its effect clearly. Report problems by cell id, for example "E14 looks wrong".',
+		learn: 'What each new effect does at a glance, and the names (bloom, LUT, dither, CRT…) the Tune panel uses.',
+		actions: [ 'effectSheet' ],
+	},
+	{
+		id: 'M3-02', milestone: 'M3',
+		title: 'The retro pixel grid stays stable while moving',
+		steps: [ 'Orbit slowly and zoom (drag, scroll, or the right stick).', 'In Tune → Retro, try Pixel rows 120 and 240, and turn Pixel edge highlights up and down.' ],
+		expected: 'Pixels stay square and locked to one grid. Edges step from pixel to pixel instead of shimmering or swimming, and the pixels never blur.',
+		learn: 'Why pixel looks render the scene at a low resolution and lock it to a grid, instead of blurring a sharp image.',
+		setup: { scene: 'lookdev', look: 'phone-safe-toon', tier: 1, params: { 'retro.pixel.enabled': true, 'retro.pixel.height': 180, 'retro.quantize.mode': 'palette', 'retro.quantize.palette': 'pico8', 'retro.dither.amount': 0.5, 'lens.vignette.amount': 0 } },
+	},
+	{
+		id: 'M3-03', milestone: 'M3',
+		title: 'No dither crawl on slow orbits',
+		steps: [ 'Turn on Turntable (top bar) and watch flat areas and gradients for 10 seconds.', 'Stop it and hold still: the pattern should be perfectly still too.' ],
+		expected: 'Ordered dither is a fixed screen pattern, so it may slide over moving surfaces (that is how the classic look works), but it never flickers or boils from frame to frame.',
+		learn: 'Ordered dithering: how a fixed pattern fakes in-between colors, and why it slides over moving objects.',
+		setup: { scene: 'lookdev', look: 'golden-hour', tier: 1, params: { 'retro.quantize.mode': 'posterize', 'retro.quantize.levels': 5, 'retro.dither.amount': 1, 'retro.dither.pattern': 'bayer4' } },
+	},
+	{
+		id: 'M3-04', milestone: 'M3', signoff: false,
+		title: 'Lenses direct attention: depth of field and tilt-shift',
+		steps: [ 'Tune → Lens: change Focus offset and Focus range, and switch shots (N): focus follows what the camera looks at.', 'Load the Garden, turn on Tilt-shift and pick the top-down shot.' ],
+		expected: 'The subject stays sharp while the background blurs; the garden looks like a miniature model. No flicker or dark edges.',
+		learn: 'How shallow focus tells the eye where to look, and why tilt-shift makes big scenes look small.',
+		setup: { scene: 'lookdev', look: 'golden-hour', tier: 1, params: { 'lens.dof.enabled': true, 'lens.dof.range': 3, 'lens.dof.blur': 2 } },
+	},
+	{
+		id: 'M3-05', milestone: 'M3', signoff: false,
+		title: 'Time of day changes everything together',
+		steps: [ 'Tune → Lighting: drag Hour slowly from 5 to 22.' ],
+		expected: 'Dawn → noon → golden hour → blue hour → night. Sun, sky, fog and ambient light change together, shadows lengthen at dawn and dusk, with no sudden jumps.',
+		learn: 'Why one clock beats five hand-set colors: every light color stays consistent with every other.',
+		setup: { scene: 'harbor', look: 'sea-breeze', tier: 1, params: { 'lighting.tod.enabled': true, 'lighting.tod.hour': 6 } },
+	},
+	{
+		id: 'M3-06', milestone: 'M3', signoff: false,
+		title: 'Grounding: blob shadows, contact shadows and AO',
+		steps: [ 'Watch the robot hover: its blob shadow shrinks and fades as it rises.', 'Tune → Lighting: turn Ambient occlusion and Contact shadows on and off.' ],
+		expected: 'Objects look planted on the ground. AO darkens creases and bases without dirty halos; contact shadows fill gaps under objects.',
+		learn: 'Contact cues: why objects without them look like they float, and the cheap phone-friendly alternative.',
+		setup: { scene: 'platforms', look: 'phone-safe-toon', tier: 1, params: { 'lighting.blob.enabled': true, 'lighting.blob.opacity': 0.7 } },
+	},
+	{
+		id: 'M3-07', milestone: 'M3', signoff: false,
+		title: 'Color grading: LUTs, gradient maps, selective color',
+		steps: [ 'Tune → Grade: cycle the LUT presets and drag LUT amount.', 'Try Gradient map, then Selective color on Graffiti Plaza (kept hue 0° keeps the reds).' ],
+		expected: 'Each preset is a distinct, recognizable grade; amounts fade smoothly with no hitch.',
+		learn: 'Grading happens after tone mapping, in display space, exactly like a game\'s LUT.',
+		setup: { scene: 'lookdev', look: 'golden-hour', tier: 1, params: { 'grade.lut.enabled': true } },
+	},
+	{
+		id: 'M3-08', milestone: 'M3', signoff: false,
+		title: 'Motion: motion blur and animating on twos',
+		steps: [ 'Watch the karts: blur streaks follow their motion.', 'Tune → Motion: set Animate on… to 12, then 8, and orbit the camera at the same time.' ],
+		expected: 'Only moving things blur. Stepped animation looks hand-drawn while the camera stays smooth.',
+		learn: 'Animating on twos: why stylized films update characters 12 times a second.',
+		setup: { scene: 'kart', look: 'sea-breeze', tier: 1, shot: 'gameplay', params: { 'lens.motionBlur.enabled': true } },
+	},
+	{
+		id: 'M3-09', milestone: 'M3', signoff: false,
+		title: 'Retro display: palettes and CRT',
+		steps: [ 'Tune → Retro: switch Palette between Game Boy, PICO-8, CGA and 1-bit.', 'Turn on CRT and look closely at the scanlines.' ],
+		expected: 'Each palette is recognizable. Scanlines follow the pixel rows; no moiré stripes at your screen size.',
+		learn: 'Commit to one era: resolution, palette and display belong together.',
+		setup: { scene: 'platforms', look: 'sea-breeze', tier: 1, params: { 'retro.pixel.enabled': true, 'retro.pixel.height': 144, 'retro.quantize.mode': 'palette', 'retro.quantize.palette': 'gameboy', 'retro.dither.amount': 0.6, 'retro.crt.enabled': true } },
+	},
 	{
 		id: 'M2-01', milestone: 'M2',
 		title: 'Each scene loads and evokes its inspiration',

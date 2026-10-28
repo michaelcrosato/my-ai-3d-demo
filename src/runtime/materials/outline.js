@@ -83,10 +83,11 @@ export function computeOutlineNormals( geometry, { name = 'outlineNormal', preci
 
 /**
  * Builds a hull material: back faces pushed out in clip space by a constant
- * number of pixels, specified at a 1080p reference height.
+ * number of pixels, specified at a 1080p reference height. With `snapRows` the
+ * extruded vertices snap to the same coarse grid as vertex-snapped meshes (PS1 looks).
  * TSL and the node material are passed in so this module stays loadable in Node.
  */
-export function createHullMaterial( { THREE, TSL, color, thickness, normalName = 'outlineNormal' } ) {
+export function createHullMaterial( { THREE, TSL, color, thickness, normalName = 'outlineNormal', snapRows = null } ) {
 
 	const { Fn, vec4, attribute, positionLocal, modelViewMatrix, cameraProjectionMatrix, screenSize } = TSL;
 
@@ -100,11 +101,21 @@ export function createHullMaterial( { THREE, TSL, color, thickness, normalName =
 		const nClip = cameraProjectionMatrix.mul( vec4( nView, 0 ) ).xy;
 		const pixels = thickness.mul( screenSize.y.div( 1080 ) );
 		const offset = nClip.normalize().mul( pixels ).mul( 2 ).div( screenSize ).mul( clip.w );
-
-		return vec4( clip.xy.add( offset ), clip.zw );
+		const out = vec4( clip.xy.add( offset ), clip.zw );
+		return snapRows ? snapClip( TSL, out, snapRows ) : out;
 
 	} )();
 
 	return material;
+
+}
+
+/** Rounds a clip-space position to a grid of `rows` rows (and as many square columns). */
+export function snapClip( TSL, clip, rows ) {
+
+	const { vec2, vec4, floor, screenSize } = TSL;
+	const grid = vec2( rows.mul( screenSize.x.div( screenSize.y ) ), rows ).mul( 0.5 );
+	const ndc = clip.xy.div( clip.w );
+	return vec4( floor( ndc.mul( grid ).add( 0.5 ) ).div( grid ).mul( clip.w ), clip.zw );
 
 }

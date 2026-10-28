@@ -151,24 +151,14 @@ export function mesh( geometry, { part, color = '#cccccc', roughness = 0.8, meta
 
 /**
  * A practical light (torch, campfire, lamp). The runtime puts it in both render
- * sets; `flicker` (0–1) animates its intensity with noise.
+ * sets and animates `flicker` (0–1) as noise on its intensity, scaled by the look's
+ * practical-light controls in the styled set.
  */
 export function practical( { color = '#ffb35c', intensity = 12, distance = 10, flicker = 0, seed = 0 } = {} ) {
 
 	const light = new THREE.PointLight( color, intensity, distance, 2 );
 	light.name = 'practical light';
-	light.userData.practical = { flicker };
-	if ( flicker > 0 ) {
-
-		light.userData.animate = ( t ) => {
-
-			const n = Math.sin( t * 11.3 + seed ) * 0.5 + Math.sin( t * 23.7 + seed * 2.1 ) * 0.3 + Math.sin( t * 5.1 + seed * 0.7 ) * 0.2;
-			light.intensity = intensity * ( 1 + n * flicker * 0.35 );
-
-		};
-
-	}
-
+	light.userData.practical = { flicker, seed };
 	return light;
 
 }

@@ -9,6 +9,8 @@ import atmosphere from './atmosphere.js';
 import lens from './lens.js';
 import grade from './grade.js';
 import media from './media.js';
+import retro from './retro.js';
+import motion from './motion.js';
 import quality from './quality.js';
 
 export const MODULES = [
@@ -19,7 +21,9 @@ export const MODULES = [
 	{ id: 'atmosphere', label: 'Atmosphere', stage: 'WORLD', perPart: 'no' },
 	{ id: 'lens', label: 'Lens', stage: 'CAMERA + DISPLAY', perPart: 'no' },
 	{ id: 'grade', label: 'Grade', stage: 'CAMERA + GRADE', perPart: 'no' },
-	{ id: 'media', label: 'Media', stage: 'DISPLAY', perPart: 'no' },
+	{ id: 'media', label: 'Media', stage: 'MEDIUM + DISPLAY', perPart: 'no' },
+	{ id: 'retro', label: 'Retro', stage: 'pass + DISPLAY', perPart: 'vertex snap' },
+	{ id: 'motion', label: 'Motion', stage: 'clock', perPart: 'no' },
 	{ id: 'quality', label: 'Quality', stage: 'pass', perPart: 'no' },
 ];
 
@@ -30,7 +34,7 @@ export const PART_INDEX = Object.fromEntries( PARTS.map( ( p, i ) => [ p, i ] ) 
 /** Buffers an effect can require from the scene pass (§7.7). */
 export const BUFFERS = [ 'depth', 'normal', 'ids', 'emissive', 'velocity' ];
 
-export const REGISTRY = [ ...lighting, ...surface, ...lines, ...palette, ...atmosphere, ...lens, ...grade, ...media, ...quality ];
+export const REGISTRY = [ ...lighting, ...surface, ...lines, ...palette, ...atmosphere, ...lens, ...grade, ...media, ...retro, ...motion, ...quality ];
 
 export const byId = new Map( REGISTRY.map( ( e ) => [ e.id, e ] ) );
 
@@ -51,7 +55,7 @@ export function valueLabel( entry, value ) {
 /** Fills an entry's brief template. */
 export function formatBrief( entry, value ) {
 
-	return entry.brief.replace( '{value}', valueLabel( entry, value ) ).replace( '{label}', valueLabel( entry, value ) );
+	return entry.brief.replaceAll( '{value}', valueLabel( entry, value ) ).replaceAll( '{label}', valueLabel( entry, value ) );
 
 }
 

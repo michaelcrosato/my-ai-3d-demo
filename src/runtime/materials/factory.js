@@ -10,9 +10,10 @@
 
 import * as THREE from 'three/webgpu';
 import * as TSL from 'three/tsl';
-import { uniform, vec3, vec4, mrt, output, fract, sin, cos, dot, floor, smoothstep, modelWorldMatrix, positionLocal, Fn } from 'three/tsl';
+import { uniform, vec3, vec4, mrt, output, fract, sin, cos, dot, floor, float, smoothstep, modelWorldMatrix, modelViewProjection, positionLocal, materialColor, Fn } from 'three/tsl';
 import { StyleSurfaceMaterial, StyleStandardMaterial, createSurfaceUniforms } from './StyleLightingModel.js';
-import { createHullMaterial, computeOutlineNormals } from './outline.js';
+import { createHullMaterial, computeOutlineNormals, snapClip } from './outline.js';
+import { BlobShadows } from '../render/blobs.js';
 import { PARTS, PART_INDEX } from '../registry/index.js';
 import { adjustHex, remapToPalette, mixHex } from '../color/color.js';
 
@@ -46,7 +47,8 @@ export function paletteColor( hex, v ) {
 
 }
 
-const structKey = ( v ) => `${v[ 'surface.model' ]}|${v[ 'surface.model' ] === 'pbr' ? 0 : v[ 'surface.bands' ]}|${v[ 'surface.flatNormals' ] ? 1 : 0}`;
+/** A part's structural key: everything that changes its shaders. `blobs` = materials receive blob shadows. */
+const structKey = ( v, blobs ) => [ v[ 'surface.model' ], v[ 'surface.model' ] === 'pbr' ? 0 : v[ 'surface.bands' ], v[ 'surface.flatNormals' ] ? 'flat' : '', v[ 'retro.vertexSnap.enabled' ] ? 'snap' : '', blobs ? 'blob' : '' ].join( '|' );
 
 export class StyleMaterials {
 
@@ -64,6 +66,7 @@ export class StyleMaterials {
 			hullColor: uniform( new THREE.Color( '#1b1d2a' ) ),
 			hullThickness: uniform( 1.5 ),
 			hullEnabled: false,
+			snapRows: uniform( 120 ),
 			struct: null,
 			values: null,
 		} ] ) );
@@ -71,6 +74,7 @@ export class StyleMaterials {
 		this.plain = new Map();
 		this.hulls = new Map();
 		this.entries = [];
+		this.blobs = new BlobShadows();
 		this.built = 0; // materials created (a structural change shows up here)
 
 	}
@@ -134,6 +138,9 @@ export class StyleMaterials {
 		material.name = `style:${part}:${surface.model}`;
 		material.flatShading = v[ 'surface.flatNormals' ];
 		this.common( material, style );
+		// PS1 jitter: the final clip position (after skinning and wind) snaps to a coarse grid.
+		if ( v[ 'retro.vertexSnap.enabled' ] ) material.vertexNode = snapClip( TSL, modelViewProjection, pv.snapRows );
+		if ( pv.struct.endsWith( 'blob' ) ) material.colorNode = materialColor.mul( float( 1 ).sub( this.blobs.shade() ) );
 		// `output` keeps the color attachment when the pass has no MRT (MRTNode skips unknown names).
 		material.mrtNode = mrt( { output, ids: idsNode( part ) } );
 		material.userData = { sourceColor: style.color, part, key };
@@ -163,13 +170,15 @@ export class StyleMaterials {
 
 	hullMaterial( part ) {
 
-		let material = this.hulls.get( part );
-		if ( material ) return material;
 		const pv = this.parts[ part ];
-		material = createHullMaterial( { THREE, TSL, color: pv.hullColor, thickness: pv.hullThickness } );
+		const snap = pv.values[ 'retro.vertexSnap.enabled' ];
+		const key = `${part}|${snap ? 'snap' : ''}`;
+		let material = this.hulls.get( key );
+		if ( material ) return material;
+		material = createHullMaterial( { THREE, TSL, color: pv.hullColor, thickness: pv.hullThickness, snapRows: snap ? pv.snapRows : null } );
 		material.name = `hull:${part}`;
 		material.mrtNode = mrt( { output, ids: idsNode( part ) } );
-		this.hulls.set( part, material );
+		this.hulls.set( key, material );
 		this.built ++;
 		return material;
 
@@ -224,7 +233,12 @@ export class StyleMaterials {
 
 		}
 
-		if ( entry.hull ) entry.hull.visible = want;
+		if ( entry.hull ) {
+
+			entry.hull.visible = want;
+			if ( want ) entry.hull.material = this.hullMaterial( entry.part );
+
+		}
 
 	}
 
@@ -232,9 +246,19 @@ export class StyleMaterials {
 	 * Applies resolved per-part values. Returns the parts whose materials were rebuilt.
 	 * @param {object} parts - resolveLook().parts
 	 */
-	apply( parts ) {
+	apply( parts, globalValues ) {
 
 		const rebuilt = [];
+		const blobParts = PARTS.filter( ( p ) => parts[ p ][ 'lighting.blob.enabled' ] );
+		this.blobs.setParts( blobParts );
+		const blobs = blobParts.length > 0;
+		if ( globalValues ) {
+
+			this.blobs.size = globalValues[ 'lighting.blob.size' ];
+			this.blobs.softness.value = globalValues[ 'lighting.blob.softness' ];
+			this.blobs.opacity.value = globalValues[ 'lighting.blob.opacity' ];
+
+		}
 
 		for ( const part of PARTS ) {
 
@@ -258,8 +282,9 @@ export class StyleMaterials {
 			pv.hullColor.value.set( v[ 'lines.hull.color' ] );
 			pv.hullThickness.value = v[ 'lines.hull.thickness' ];
 			pv.hullEnabled = v[ 'lines.hull.enabled' ];
+			pv.snapRows.value = v[ 'retro.vertexSnap.grid' ];
 
-			const key = structKey( v );
+			const key = structKey( v, blobs );
 			if ( pv.struct !== key ) {
 
 				if ( pv.struct !== null ) rebuilt.push( part );

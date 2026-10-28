@@ -26,8 +26,8 @@ const distFile = pathToFileURL( path.join( ROOT, 'dist/style-lab.html' ) ).href;
 
 const RUNS = [
 	{ name: 'dev  · http · WebGL2', url: ( base ) => `${base}/index.html?backend=webgl`, backend: 'WebGL2' },
-	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2', m1: true },
-	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm2-webgpu.png', panel: true, m1: true, sheet: 'm2-contact.png' },
+	{ name: 'dist · http · WebGL2', url: ( base ) => `${base}/dist/style-lab.html?backend=webgl`, backend: 'WebGL2', m1: true, m3: true },
+	{ name: 'dist · http · WebGPU', url: ( base ) => `${base}/dist/style-lab.html`, backend: 'WebGPU', screenshot: 'm3-webgpu.png', panel: true, m1: true, m3: true, sheet: 'm3-contact.png', effects: 'm3-effects.png' },
 	{ name: 'dist · file · WebGL2', url: () => `${distFile}?backend=webgl`, backend: 'WebGL2' },
 	{ name: 'dist · file · auto  ', url: () => distFile, backend: null },
 ].filter( ( r ) => ! value( '--only' ) || r.name.includes( value( '--only' ) ) );
@@ -202,6 +202,71 @@ async function m1Checks( page, fail, run ) {
 
 }
 
+/**
+ * M3 acceptance checks (design §9 M3): every effect demo renders without errors and
+ * changes the image; pixel looks stay grid-locked (blocky, and a pan by whole pixels
+ * shifts the image exactly); the new sliders never rebuild.
+ */
+async function m3Checks( page, fail, run ) {
+
+	const out = await page.evaluate( async ( keepSheet ) => {
+
+		const s = window.__stylelab;
+		const res = { checks: [] };
+		const check = ( name, pass, value ) => res.checks.push( { name, pass, value } );
+
+		const sheet = await s.effectSheet( { cell: [ 320, 180 ] } );
+		for ( const c of sheet.cells ) check( `${c.cell} ${c.id}: renders without errors and changes the image`, c.ok, { diff: +c.diff.toFixed( 4 ), min: c.minDiff, errors: c.errors } );
+		res.cells = sheet.cells.map( ( c ) => ( { cell: c.cell, id: c.id, diff: +c.diff.toFixed( 4 ) } ) );
+		if ( keepSheet ) res.sheet = sheet.url;
+
+		// Pixel grid: 640 × 361 at 120 rows → 3 px pixels, the grid doesn't divide the height.
+		s.freeze( 1 );
+		await s.setScene( 'lookdev', { tier: 1 } );
+		await s.applyLook( 'phone-safe-toon' );
+		const grid = { 'retro.pixel.enabled': true, 'retro.pixel.height': 120, 'retro.pixel.edges': 0.5, 'lens.vignette.amount': 0, 'retro.quantize.mode': 'palette', 'retro.quantize.palette': 'pico8', 'retro.dither.amount': 0 };
+		for ( const [ k, v ] of Object.entries( grid ) ) s.setParam( k, v );
+		const W = 640, H = 361, p = 3;
+		const a = await s.capture( { width: W, height: H } );
+		const b = await s.capture( { width: W, height: H, viewOffset: [ 4 * p, 0 ] } );
+		const c = await s.capture( { width: W, height: H, viewOffset: [ 0, 2 * p ] } );
+		const blocky = s.blockError( a.id, p );
+		check( 'pixel look: every 3 × 3 block is one color', blocky < 0.002, blocky );
+		const panX = s.diff( a.id, b.id, { shift: [ 4 * p, 0 ] } ).mae, panY = s.diff( a.id, c.id, { shift: [ 0, 2 * p ] } ).mae;
+		check( 'pixel look: a pan by whole pixels shifts the image exactly', panX < 0.001 && panY < 0.001, [ panX, panY ] );
+		const offGrid = await s.capture( { width: W, height: H, viewOffset: [ 4 * p + 1, 0 ] } );
+		check( 'pixel look: a sub-pixel pan snaps to the grid (still blocky)', s.blockError( offGrid.id, p ) < 0.002, s.blockError( offGrid.id, p ) );
+		s.app.actions.resetParams();
+
+		// New M3 sliders are uniforms.
+		await s.applyLook( 'golden-hour' );
+		for ( const [ k, v ] of Object.entries( { 'lens.dof.enabled': true, 'grade.lut.enabled': true, 'retro.crt.enabled': true, 'lighting.ao.enabled': true } ) ) s.setParam( k, v );
+		const i0 = s.info();
+		for ( const [ k, v ] of Object.entries( { 'lens.dof.range': 4, 'lens.dof.blur': 2, 'grade.lut.amount': 0.5, 'grade.lut.preset': 'bleach', 'retro.crt.scanlines': 0.8, 'lighting.ao.radius': 1.5, 'grade.lift': 0.05, 'grade.hue': 30, 'lighting.tod.hour': 18, 'lens.letterbox.amount': 0.5, 'retro.dither.amount': 0.3 } ) ) s.setParam( k, v );
+		const i1 = s.info();
+		check( 'M3 sliders never rebuild', i1.materialBuilds === i0.materialBuilds && i1.graphBuilds === i0.graphBuilds && i1.passBuilds === i0.passBuilds, [ i0, i1 ].map( ( i ) => [ i.materialBuilds, i.graphBuilds, i.passBuilds ] ) );
+		const snap = s.setParam( 'retro.vertexSnap.enabled', true );
+		check( 'vertex snap rebuilds only materials', snap.parts.length > 0 && ! snap.graph && ! snap.pass, snap );
+		s.app.actions.resetParams();
+		s.freeze( null );
+		return res;
+
+	}, !! run.effects );
+
+	for ( const c of out.checks ) if ( ! c.pass ) fail( `M3: ${c.name} (${JSON.stringify( c.value )})` );
+
+	if ( run.effects && out.sheet ) {
+
+		await mkdir( ARTIFACTS, { recursive: true } );
+		await writeFile( path.join( ARTIFACTS, run.effects ), Buffer.from( out.sheet.split( ',' )[ 1 ], 'base64' ) );
+		delete out.sheet;
+
+	}
+
+	return out;
+
+}
+
 async function smoke( browser, run, base ) {
 
 	const context = await browser.newContext( { viewport: { width: 1280, height: 720 } } );
@@ -236,6 +301,7 @@ async function smoke( browser, run, base ) {
 		}
 
 		if ( run.m1 && ! flag( '--no-m1' ) ) result.m1 = await m1Checks( page, fail, run );
+		if ( run.m3 && ! flag( '--no-m3' ) ) result.m3 = await m3Checks( page, fail, run );
 
 		if ( ! flag( '--no-spikes' ) ) {
 
@@ -249,7 +315,7 @@ async function smoke( browser, run, base ) {
 		if ( run.panel ) {
 
 			await page.click( '#verify-btn' );
-			await page.click( '.check[data-id="M2-02"] [data-status="pass"]' );
+			await page.click( '.check[data-id="M3-02"] [data-status="pass"]' );
 			await page.click( '[data-tab="report"]' );
 			result.report = await page.inputValue( 'textarea.report' );
 			if ( ! result.report.includes( 'Checks: 1 pass' ) ) fail( 'Verify report does not record the clicked check' );

@@ -4,7 +4,7 @@ import { CHECKS, CURRENT_MILESTONE } from './checks.js';
 import { formatReport } from './report.js';
 
 const STORE_KEY = 'stylelab.verify.v1';
-const ACTION_LABELS = { runSpikes: '▶ Run all spikes', reloadWebGL: '↻ Reload with WebGL2' };
+const ACTION_LABELS = { runSpikes: '▶ Run all spikes', reloadWebGL: '↻ Reload with WebGL2', effectSheet: '▦ Render the effects sheet' };
 
 function load() {
 
@@ -30,8 +30,9 @@ const esc = ( s ) => String( s ).replace( /[&<>"]/g, ( c ) => ( { '&': '&amp;', 
  * @param {(onResult: Function) => Promise<object[]>} o.runSpikes
  * @param {(setup: object) => void} [o.setup] - loads a check's scene, look, tier and shot
  * @param {object} [o.names] - { id: name } for looks and scenes in ratings forms
+ * @param {object} [o.extraActions] - { name: async () => {} } more check buttons (labels in ACTION_LABELS)
  */
-export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpikes, setup = () => {}, names = {} } ) {
+export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpikes, setup = () => {}, names = {}, extraActions = {} } ) {
 
 	const store = load();
 	const key = `${build.version}+${build.commit}`;
@@ -58,9 +59,10 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 
 	const checkView = ( c ) => `
 				<section class="check" data-id="${c.id}">
-					<h4><span class="cid">${c.id}</span> ${esc( c.title )}</h4>
+					<h4><span class="cid">${c.id}</span> ${esc( c.title )}${c.signoff === false ? ' <span class="tag">optional tour</span>' : ''}</h4>
 					<ol>${c.steps.map( ( s ) => `<li>${esc( s )}</li>` ).join( '' )}</ol>
 					<p class="expected"><b>Expected:</b> ${esc( c.expected )}</p>
+					${c.learn ? `<p class="learn"><b>What you'll learn:</b> ${esc( c.learn )}</p>` : ''}
 					${c.ratingsList ? `<table class="ratings"><tr><th></th><th>Evokes it</th><th>I like it</th><th>Note</th></tr>${c.ratingsList.map( ( r ) => `<tr><td>${esc( r.name )}</td><td>${RATING( c, r, 'evoke' )}</td><td>${RATING( c, r, 'like' )}</td><td><input data-rate="${r.id}" data-field="note" value="${esc( r.note || '' )}" placeholder="optional"></td></tr>` ).join( '' )}</table>` : ''}
 					<div class="row">
 						${[ 'pass', 'fail', 'unsure' ].map( ( s ) => `<button class="status ${c.status === s ? 'on ' + s : ''}" data-status="${s}">${{ pass: '✅ Pass', fail: '❌ Fail', unsure: '⚠️ Unsure' }[ s ]}</button>` ).join( '' )}
@@ -73,6 +75,7 @@ export function createVerifyPanel( { root, build, getEnv, log, getPerf, runSpike
 	const actions = {
 		runSpikes: () => { tab = 'spikes'; render(); startSpikes(); },
 		reloadWebGL: () => { const u = new URL( location.href ); u.searchParams.set( 'backend', 'webgl' ); location.href = u.href; },
+		...extraActions,
 	};
 
 	async function startSpikes() {

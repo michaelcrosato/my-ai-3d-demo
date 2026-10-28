@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.4.0 — M3a: camera, grade and retro filters (2026-10-28)
+
+**What's new** (all in the Tune tab; every new effect has its own switch, and its sliders never recompile)
+- **Light and shadow:** ambient occlusion (with a tint and an "ink" mode that fills deep creases with flat color), contact shadows, blob shadows (they follow moving characters and fade as they jump), **time of day** (one Hour slider drives sun, sky, ambient light and fog together), practical-light brightness and flicker, and shadow-map resolution.
+- **Lens:** depth of field (focus follows what the camera looks at), tilt-shift, god rays from the sun, motion blur, chromatic aberration, barrel or pincushion distortion, letterbox bars, and selective (emissive-only) bloom.
+- **Grade:** lift / gamma / gain, vibrance, hue shift, selective color, six generated LUT presets (teal and orange, warm film, bleach bypass, cross-processed, faded print, cool night) and a gradient map (duotone).
+- **Retro:** pixelation locked to an exact grid (every pixel is a whole number of screen pixels and a camera pan moves it by whole pixels), pixel-art edge highlights, posterize and palette quantization (PICO-8, Game Boy, CGA, NES-like, 1-bit or the look's palette, matched in OKLab), Bayer 2–16 and noise dithering, PS1 vertex snapping (hull outlines snap too), and a CRT (scanlines, shadow mask, curvature, glow, flicker).
+- **Motion:** "animate on…" steps characters, water, wind and flicker at 8 or 12 fps while the camera stays smooth.
+- **Effects contact sheet.** 🧪 Verify → M3-01 renders all 34 effect demos as labeled cells (E01–E34), so you can report bad cells by id.
+- Verify checks now say what each one teaches, and optional tour checks are marked.
+
+**What to test** (open `dist/style-lab.html`, then 🧪 Verify → Checklist; about 15 minutes):
+1. **M3-01** Render the effects sheet and report any bad cells by id.
+2. **M3-02** The retro pixel grid stays stable while you orbit; pixels never blur or shimmer.
+3. **M3-03** Dither doesn't flicker or boil on slow orbits (sliding over moving surfaces is expected).
+4. Optional tour: **M3-04** depth of field and tilt-shift, **M3-05** time of day, **M3-06** grounding (blob, contact, AO), **M3-07** grading, **M3-08** motion blur and stepped animation, **M3-09** palettes and CRT.
+
+Then Report → **Copy report** and paste it back.
+
+**Known**
+- AO is screen-space GTAO at half resolution with a light 4-tap smoothing; expect a little noise at 1080p and up.
+- God rays come from the sun's screen position, so they fade out when the sun is far outside the frame.
+- Media effects (painterly, watercolor, halftone, hatching, paper), line styling, toon water, wind and AA modes arrive in M3b.
+
 ## v0.3.0 — M2: scene library, asset kit, .glb import (2026-10-27)
 
 **What's new**

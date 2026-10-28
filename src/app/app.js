@@ -181,6 +181,14 @@ export function createApp( { renderer, canvas, persist = true } ) {
 
 		},
 
+		/** Replaces a look's Tune overrides wholesale (restoring state after demos and lessons). */
+		setOverrides( lookId, map ) {
+
+			store.set( { overrides: { [ lookId ]: { ...map } } } );
+			if ( lookId === state().lookId ) resolve();
+
+		},
+
 		resetParams( ids = null ) {
 
 			const next = ids ? Object.fromEntries( Object.entries( overrides() ).filter( ( [ k ] ) => ! ids.includes( k ) ) ) : {};
@@ -256,6 +264,8 @@ export function createApp( { renderer, canvas, persist = true } ) {
 		get built() { return built; },
 		scene, look, overrides, shotId,
 		lookValue: ( id ) => lookValue( look(), scene().params, id ),
+		/** The frozen animation time, or null while the clock runs. */
+		get frozenTime() { return frozen; },
 		isModified: ( id ) => id in overrides(),
 		on( fn ) { listeners.add( fn ); return () => listeners.delete( fn ); },
 
@@ -276,8 +286,11 @@ export function createApp( { renderer, canvas, persist = true } ) {
 			const t = frozen ?? clock;
 			if ( state().compare.mode === 'flicker' ) runtime.setCompare( { flicker: Math.floor( clock / 0.5 ) % 2 === 1 } );
 			controls.update( dt );
-			built?.animate( t );
-			runtime.update( t );
+			// Stepped animation ("on twos"): the clock is quantized, the camera stays smooth.
+			const fps = resolved?.global[ 'motion.stepped.fps' ] || 0;
+			const ta = fps > 0 ? Math.floor( t * fps + 1e-6 ) / fps : t;
+			built?.animate( ta );
+			runtime.update( ta, { focus: controls.target } );
 
 		},
 

@@ -17,6 +17,7 @@ import { $, h, toast } from './ui/dom.js';
 import { bindKeyboard, KEYS } from './input/keyboard.js';
 import { createGamepad } from './input/gamepad.js';
 import { LOOKS } from '../content/looks/index.js';
+import { EFFECT_DEMOS, cellId } from '../content/effects.js';
 import { SCENES, TIERS } from '../scenes/index.js';
 import { timestampsSupported } from '../runtime/index.js';
 
@@ -282,6 +283,7 @@ async function boot() {
 		if ( s.scene ) app.actions.setScene( s.scene, { tier: s.tier, shot: s.shot } );
 		else if ( s.tier !== undefined ) app.actions.setTier( s.tier );
 		if ( s.look ) app.actions.setLook( s.look );
+		if ( s.params ) for ( const [ id, value ] of Object.entries( s.params ) ) app.actions.setParam( id, value );
 		toast( 'Set up. Close this panel (✕ or Esc) to try it.' );
 
 	};
@@ -295,6 +297,17 @@ async function boot() {
 		runSpikes: ( onResult ) => runSpikes( null, onResult ),
 		setup,
 		names: Object.fromEntries( [ ...LOOKS, ...SCENES ].map( ( x ) => [ x.id, x.name ] ) ),
+		extraActions: {
+			effectSheet: async () => {
+
+				toast( `Rendering ${EFFECT_DEMOS.length} effect cells…`, 60000 );
+				let n = 0;
+				const r = await api.effectSheet( { onCell: () => toast( `Rendering effect cells… ${++ n} / ${EFFECT_DEMOS.length}`, 60000 ) } );
+				toast( 'Effects sheet ready.' );
+				showImage( r.url, 'Effects contact sheet (report bad cells by id)' );
+
+			},
+		},
 	} );
 
 	const verifyButton = $( 'verify-btn' );
@@ -333,12 +346,18 @@ async function boot() {
 
 		},
 		freeze: ( t ) => app.actions.freeze( t ),
-		/** Renders the current view offscreen; returns { id, stats }. */
-		capture: ( { width = 512, height = 288 } = {} ) => pausedWhile( async () => {
+		/**
+		 * Renders the current view offscreen; returns { id, stats, hash }. `advance` moves the
+		 * (frozen) clock between the warm-up and the captured frame, for effects that need
+		 * motion; `viewOffset` pans the image plane by whole screen pixels [x, y].
+		 */
+		capture: ( { width = 512, height = 288, advance = 0, viewOffset = null } = {} ) => pausedWhile( async () => {
 
 			const cam = app.camera, aspect = cam.aspect;
 			cam.aspect = width / height;
+			if ( viewOffset ) cam.setViewOffset( width, height, viewOffset[ 0 ], viewOffset[ 1 ], width, height );
 			cam.updateProjectionMatrix();
+			const t0 = app.frozenTime;
 
 			try {
 
@@ -346,6 +365,7 @@ async function boot() {
 
 					app.tick( 0 );
 					await renderToPixels( renderer, width, height, () => app.runtime.render() ); // warm-up: compiles after rebuilds
+					if ( advance && t0 !== null ) { app.actions.freeze( t0 + advance ); app.tick( 0 ); }
 					const pixels = await renderToPixels( renderer, width, height, () => app.runtime.render() );
 					// With trackTimestamp on, unresolved queries pile up while the loop is paused.
 					if ( stats.method === 'timestamp' ) await renderer.resolveTimestampsAsync( 'render' );
@@ -354,7 +374,7 @@ async function boot() {
 				} );
 				const id = ++ captureId;
 				captures.set( id, px );
-				if ( captures.size > 16 ) captures.delete( captures.keys().next().value );
+				if ( captures.size > 64 ) captures.delete( captures.keys().next().value );
 				// FNV-1a over the pixels: equal hashes mean identical frames (determinism checks).
 				let hash = 0x811c9dc5;
 				for ( let i = 0; i < px.data.length; i ++ ) hash = Math.imul( hash ^ px.data[ i ], 16777619 );
@@ -362,6 +382,8 @@ async function boot() {
 
 			} finally {
 
+				if ( advance && t0 !== null ) app.actions.freeze( t0 );
+				if ( viewOffset ) cam.clearViewOffset();
 				cam.aspect = aspect;
 				cam.updateProjectionMatrix();
 
@@ -433,16 +455,103 @@ async function boot() {
 			return sheet.toDataURL( 'image/png' );
 
 		},
+		/**
+		 * The effects contact sheet (§9 M3): one labeled cell per effect demo, each on its
+		 * scene and base look. Returns the PNG and, per cell, how much the effect changed
+		 * the image and whether it logged errors. Your state is restored afterwards.
+		 */
+		effectSheet: async ( { ids = null, cell = [ 320, 180 ], cols = 6, tier = 1, onCell = () => {} } = {} ) => {
+
+			const demos = EFFECT_DEMOS.filter( ( d ) => ! ids || ids.includes( d.id ) );
+			const [ w, hgt ] = cell, pad = 18;
+			const rows = Math.ceil( demos.length / cols );
+			const sheet = document.createElement( 'canvas' );
+			sheet.width = w * Math.min( cols, demos.length ); sheet.height = ( hgt + pad ) * rows;
+			const ctx = sheet.getContext( '2d' );
+			ctx.fillStyle = '#1b1b1c'; ctx.fillRect( 0, 0, sheet.width, sheet.height );
+			ctx.font = '12px system-ui, sans-serif';
+			const s0 = app.store.get();
+			const previous = { scene: s0.sceneId, look: s0.lookId, tier: s0.tier, shot: s0.shot, frozen: app.frozenTime };
+			const baseCache = new Map();
+			const cells = [];
+			app.actions.freeze( 1.115 ); // off the stepped-animation grid, so stepping shows
+
+			for ( const [ i, d ] of demos.entries() ) {
+
+				const errorsBefore = log.errors().length;
+				app.actions.setScene( d.scene, { tier, shot: d.shot ?? undefined } );
+				app.actions.setLook( d.look );
+				const saved = { ...app.overrides() };
+				const baseKey = `${d.scene}|${d.look}|${d.shot}|${d.advance || 0}`;
+				if ( ! baseCache.has( baseKey ) ) baseCache.set( baseKey, ( await api.capture( { width: w, height: hgt, advance: d.advance } ) ).id );
+				for ( const [ id, value ] of Object.entries( d.params ) ) app.actions.setParam( id, value );
+				const shot = await api.capture( { width: w, height: hgt, advance: d.advance } );
+				app.actions.setOverrides( d.look, saved );
+				const diff = api.diff( baseCache.get( baseKey ), shot.id ).mae;
+				const errors = log.errors().slice( errorsBefore ).map( ( e ) => e.message.split( '\n' )[ 0 ] );
+				const x = ( i % cols ) * w, y = Math.floor( i / cols ) * ( hgt + pad );
+				ctx.putImageData( new ImageData( new Uint8ClampedArray( captures.get( shot.id ).data ), w, hgt ), x, y + pad );
+				ctx.fillStyle = errors.length ? '#ff8a80' : '#e6e6e6';
+				ctx.fillText( `${cellId( i )} · ${d.label}`, x + 6, y + 13 );
+				const result = { cell: cellId( i ), id: d.id, label: d.label, effect: d.effect, diff, minDiff: d.minDiff, ok: diff >= d.minDiff && ! errors.length, errors, stats: shot.stats };
+				cells.push( result );
+				onCell( result );
+
+			}
+
+			app.actions.freeze( previous.frozen );
+			app.actions.setScene( previous.scene, { tier: previous.tier, shot: previous.shot ?? undefined } );
+			app.actions.setLook( previous.look );
+			return { url: sheet.toDataURL( 'image/png' ), cells };
+
+		},
 		/** Imports a .glb/.gltf from an ArrayBuffer; returns counts and part guesses. */
 		importModel: async ( buffer, name ) => { const r = await app.actions.importModel( buffer, name ); await nextFrames(); return { meshes: r.meshes, warnings: r.warnings, guesses: r.guesses }; },
-		/** Mean absolute difference (0–1) between two captures. */
-		diff: ( a, b ) => {
+		/** A capture as a PNG data URL (debugging, and images for reports). */
+		captureURL: ( id ) => {
+
+			const px = captures.get( id );
+			if ( ! px ) throw new Error( 'captureURL: unknown capture' );
+			const c = document.createElement( 'canvas' );
+			c.width = px.width; c.height = px.height;
+			c.getContext( '2d' ).putImageData( new ImageData( new Uint8ClampedArray( px.data ), px.width, px.height ), 0, 0 );
+			return c.toDataURL( 'image/png' );
+
+		},
+		/**
+		 * Mean absolute difference (0–1) between two captures. With `shift: [dx, dy]`, pixel
+		 * (x, y) of `b` is compared with (x + dx, y + dy) of `a` over the overlap: the
+		 * pixel-grid test pans the camera by whole pixels and expects an exact shift.
+		 */
+		diff: ( a, b, { shift = [ 0, 0 ] } = {} ) => {
 
 			const p = captures.get( a ), q = captures.get( b );
 			if ( ! p || ! q || p.data.length !== q.data.length ) throw new Error( 'diff: unknown or mismatched captures' );
+			const [ dx, dy ] = shift, W = p.width, H = p.height;
 			let sum = 0, n = 0;
-			for ( let i = 0; i < p.data.length; i += 4 ) { sum += Math.abs( p.data[ i ] - q.data[ i ] ) + Math.abs( p.data[ i + 1 ] - q.data[ i + 1 ] ) + Math.abs( p.data[ i + 2 ] - q.data[ i + 2 ] ); n += 3; }
+			for ( let y = Math.max( 0, - dy ); y < Math.min( H, H - dy ); y ++ ) for ( let x = Math.max( 0, - dx ); x < Math.min( W, W - dx ); x ++ ) {
+
+				const i = ( y * W + x ) * 4, j = ( ( y + dy ) * W + x + dx ) * 4;
+				sum += Math.abs( q.data[ i ] - p.data[ j ] ) + Math.abs( q.data[ i + 1 ] - p.data[ j + 1 ] ) + Math.abs( q.data[ i + 2 ] - p.data[ j + 2 ] ); n += 3;
+
+			}
+
 			return { mae: sum / n / 255 };
+
+		},
+		/** Fraction of pixels that differ from their p × p block's top-left pixel (0 = perfectly blocky). */
+		blockError: ( id, size ) => {
+
+			const px = captures.get( id );
+			let bad = 0;
+			for ( let y = 0; y < px.height; y ++ ) for ( let x = 0; x < px.width; x ++ ) {
+
+				const i = ( y * px.width + x ) * 4, j = ( ( y - y % size ) * px.width + ( x - x % size ) ) * 4;
+				if ( Math.abs( px.data[ i ] - px.data[ j ] ) + Math.abs( px.data[ i + 1 ] - px.data[ j + 1 ] ) + Math.abs( px.data[ i + 2 ] - px.data[ j + 2 ] ) > 6 ) bad ++;
+
+			}
+
+			return bad / ( px.width * px.height );
 
 		},
 		/** Runs spikes and returns their results; `ids` defaults to all. */

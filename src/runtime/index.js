@@ -10,5 +10,9 @@ export { StyleLightingModel, StyleSurfaceMaterial, createSurfaceUniforms } from 
 export { computeOutlineNormals, createHullMaterial } from './materials/outline.js';
 export { timestampsSupported, gpuIdle, measureFrames } from './perf/timer.js';
 export { guessParts, PART_KEYWORDS } from './parts/guess.js';
+export { EFFECTS, activeEffects, passRequirements } from './post/graph.js';
+export { timeOfDay } from './look/timeofday.js';
+export { bakeLut, LUT_PRESETS, PALETTES, bayerMatrix } from './color/lut.js';
+export { pixelGrid } from './render/passes.js';
 
-export const RUNTIME_VERSION = '0.3.0';
+export const RUNTIME_VERSION = '0.4.0';

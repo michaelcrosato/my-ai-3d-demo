@@ -1,0 +1,210 @@
+// CAMERA stage (design §7.7): effects on the linear HDR image, in pipeline order:
+// AO and contact shadows (×) → bloom (+) → god rays (+) → motion blur → DOF / tilt-shift
+// → exposure and white balance → tone mapping → output transform.
+//
+// Each effect is a module: `enabled(v)` decides whether it is in the graph (a rebuild),
+// `requires(v)` lists the scene-pass buffers it reads, and `build(c, ctx)` returns the
+// new color node. Continuous values come from ctx.P (registry uniforms), so sliders
+// never rebuild.
+
+import * as THREE from 'three/webgpu';
+import { Fn, vec2, vec3, vec4, float, int, mix, smoothstep, pow, abs, step, Loop, If, Break, luminance, sample, colorToDirection, sRGBTransferEOTF, renderOutput, interleavedGradientNoise, screenCoordinate, getViewPosition, getScreenPosition } from 'three/tsl';
+import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { ao } from 'three/addons/tsl/display/GTAONode.js';
+import { dof } from 'three/addons/tsl/display/DepthOfFieldNode.js';
+import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
+import { motionBlur } from 'three/addons/tsl/display/MotionBlur.js';
+
+export const TONE_MAPPING = {
+	none: THREE.NoToneMapping,
+	linear: THREE.LinearToneMapping,
+	reinhard: THREE.ReinhardToneMapping,
+	cineon: THREE.CineonToneMapping,
+	aces: THREE.ACESFilmicToneMapping,
+	agx: THREE.AgXToneMapping,
+	neutral: THREE.NeutralToneMapping,
+};
+
+const linear = ( u ) => sRGBTransferEOTF( u );
+
+export const CAMERA = [
+	{
+		id: 'lighting.ao', label: 'Ambient occlusion', stage: 'camera',
+		enabled: ( v ) => v[ 'lighting.ao.enabled' ],
+		requires: () => [ 'depth', 'normal' ],
+		build( c, ctx ) {
+
+			const P = ctx.P;
+			const normals = ctx.tex( 'normal' );
+			const node = ctx.own( ao( ctx.tex( 'depth' ), sample( ( uv ) => colorToDirection( normals.sample( uv ).rgb ) ), ctx.camera ) );
+			node.resolutionScale = 0.5;
+			node.radius = P.get( 'lighting.ao.radius' );
+			node.thickness = P.get( 'lighting.ao.radius' );
+			node.distanceFallOff.value = 0.5;
+			// GTAO's raw output is noisy (4×4 rotation pattern) and soft. Four bilinear taps
+			// average a 4×4 block of the half-resolution buffer; a remap gives it contrast.
+			const aoTex = node.getTextureNode();
+			const t = vec2( 0.75 ).div( node.resolution );
+			const raw = aoTex.sample( ctx.uv.add( t ) ).r.add( aoTex.sample( ctx.uv.sub( t ) ).r ).add( aoTex.sample( ctx.uv.add( vec2( t.x, t.y.negate() ) ) ).r ).add( aoTex.sample( ctx.uv.sub( vec2( t.x, t.y.negate() ) ) ).r ).mul( 0.25 );
+			const a = raw.sub( 0.35 ).div( 0.6 ).clamp( 0, 1 );
+			const occlusion = pow( a, P.get( 'lighting.ao.intensity' ) );
+			const tint = linear( P.get( 'lighting.ao.tint' ) );
+			const shaded = c.mul( mix( tint, vec3( 1 ), occlusion ) );
+			// "Ink" mode: the deepest occlusion becomes a flat, hard-edged fill.
+			return mix( shaded, tint.mul( 0.15 ), smoothstep( 0.55, 0.7, a ).oneMinus().mul( P.get( 'lighting.ao.ink' ) ) );
+
+		},
+	},
+	{
+		id: 'lighting.contact', label: 'Contact shadows', stage: 'camera',
+		enabled: ( v ) => v[ 'lighting.contact.enabled' ],
+		requires: () => [ 'depth', 'normal' ],
+		build( c, ctx ) {
+
+			// A short ray march toward the sun in view space, inline (no extra pass). The bias
+			// grows with distance, so flat ground doesn't shadow itself through depth precision.
+			const P = ctx.P, U = ctx.U;
+			const depth = ctx.tex( 'depth' );
+			const N = 16;
+
+			const occlusion = Fn( () => {
+
+				const d0 = depth.sample( ctx.uv ).r;
+				const p0 = getViewPosition( ctx.uv, d0, U.projInv ).toVar();
+				const len = P.get( 'lighting.contact.length' );
+				const thickness = P.get( 'lighting.contact.thickness' );
+				const bias = p0.z.negate().mul( 0.003 ).add( 0.015 );
+				const jitter = interleavedGradientNoise( screenCoordinate );
+				const hit = float( 0 ).toVar();
+
+				Loop( { start: int( 0 ), end: int( N ), type: 'int', condition: '<' }, ( { i } ) => {
+
+					const t = float( i ).add( jitter ).add( 0.5 ).div( N );
+					const p = p0.add( U.lightView.mul( len.mul( t ) ) );
+					const uv = getScreenPosition( p, U.proj );
+					const scene = getViewPosition( uv, depth.sample( uv ).r, U.projInv ).z;
+					const delta = scene.sub( p.z );
+					If( delta.greaterThan( bias ).and( delta.lessThan( thickness.add( bias ) ) ), () => {
+
+						// Fade hits near the end of the ray, so the shadow tapers instead of stopping.
+						hit.assign( t.oneMinus().mul( 1.5 ).clamp( 0, 1 ) );
+						Break();
+
+					} );
+
+				} );
+
+				// Only surfaces that face the sun: shadow sides are already dark (form shadow).
+				const n = colorToDirection( ctx.tex( 'normal' ).sample( ctx.uv ).rgb );
+				const facing = smoothstep( 0.05, 0.3, n.dot( U.lightView ) );
+				return hit.mul( facing ).mul( step( d0, 0.99999 ) );
+
+			} )();
+
+			return c.mul( occlusion.mul( P.get( 'lighting.contact.intensity' ) ).oneMinus() );
+
+		},
+	},
+	{
+		id: 'lens.bloom', label: 'Bloom', stage: 'camera',
+		enabled: ( v ) => v[ 'lens.bloom.enabled' ],
+		requires: ( v ) => ( v[ 'lens.bloom.source' ] === 'emissive' ? [ 'emissive' ] : [] ),
+		key: ( v ) => v[ 'lens.bloom.source' ],
+		build( c, ctx ) {
+
+			const source = ctx.v[ 'lens.bloom.source' ] === 'emissive' ? ctx.tex( 'emissive' ) : ctx.tex( 'output' );
+			const node = ctx.own( bloom( source ) );
+			node.strength = ctx.P.get( 'lens.bloom.strength' );
+			node.radius = ctx.P.get( 'lens.bloom.radius' );
+			node.threshold = ctx.P.get( 'lens.bloom.threshold' );
+			return c.add( node.getTextureNode().sample( ctx.uv ).rgb );
+
+		},
+	},
+	{
+		id: 'atmosphere.godRays', label: 'God rays', stage: 'camera',
+		enabled: ( v ) => v[ 'atmosphere.godRays.enabled' ],
+		requires: () => [ 'depth' ],
+		build( c, ctx ) {
+
+			// March from each pixel toward the sun's screen position, collecting bright sky
+			// (depth at the far plane) with a decaying weight: occluders cut the shafts.
+			const P = ctx.P, U = ctx.U;
+			const depth = ctx.tex( 'depth' ), hdr = ctx.tex( 'output' );
+			const N = 32;
+
+			const rays = Fn( () => {
+
+				const uv = vec2( ctx.uv ).toVar();
+				const delta = U.sunScreen.sub( uv ).mul( P.get( 'atmosphere.godRays.length' ) ).div( N ).toVar();
+				uv.addAssign( delta.mul( interleavedGradientNoise( screenCoordinate ) ) );
+				const sum = float( 0 ).toVar();
+				const w = float( 1 ).toVar();
+
+				Loop( { start: int( 0 ), end: int( N ), type: 'int', condition: '<' }, () => {
+
+					uv.addAssign( delta );
+					const inside = step( 0, uv.x ).mul( step( uv.x, 1 ) ).mul( step( 0, uv.y ) ).mul( step( uv.y, 1 ) );
+					const sky = step( 0.99999, depth.sample( uv ).r ).mul( inside );
+					sum.addAssign( luminance( hdr.sample( uv ).rgb ).min( 6 ).mul( sky ).mul( w ) );
+					w.mulAssign( P.get( 'atmosphere.godRays.decay' ) );
+
+				} );
+
+				return sum.div( N );
+
+			} )();
+
+			const tint = linear( P.get( 'lighting.key.color' ) );
+			return c.add( tint.mul( rays ).mul( P.get( 'atmosphere.godRays.intensity' ) ).mul( U.sunVisible ) );
+
+		},
+	},
+	{
+		id: 'lens.motionBlur', label: 'Motion blur', stage: 'camera', neighborhood: true,
+		enabled: ( v ) => v[ 'lens.motionBlur.enabled' ],
+		requires: () => [ 'velocity' ],
+		build( c, ctx ) {
+
+			const velocity = ctx.tex( 'velocity' ).sample( ctx.uv ).xy.mul( ctx.P.get( 'lens.motionBlur.shutter' ).div( 360 ) );
+			return vec3( motionBlur( ctx.texture( c ), velocity, int( 16 ) ).rgb );
+
+		},
+	},
+	{
+		id: 'lens.dof', label: 'Depth of field', stage: 'camera', neighborhood: true,
+		enabled: ( v ) => v[ 'lens.dof.enabled' ],
+		requires: () => [ 'depth' ],
+		build( c, ctx ) {
+
+			const node = ctx.own( dof( vec4( c, 1 ), ctx.pass.getViewZNode(), ctx.U.focusDistance, ctx.P.get( 'lens.dof.range' ), ctx.P.get( 'lens.dof.blur' ) ) );
+			return vec3( node.rgb );
+
+		},
+	},
+	{
+		id: 'lens.tiltShift', label: 'Tilt-shift', stage: 'camera', neighborhood: true,
+		enabled: ( v ) => v[ 'lens.tiltShift.enabled' ],
+		requires: () => [],
+		build( c, ctx ) {
+
+			const P = ctx.P;
+			const blurred = ctx.own( gaussianBlur( vec4( c, 1 ), vec2( P.get( 'lens.tiltShift.blur' ) ), 6 ) );
+			const half = P.get( 'lens.tiltShift.width' ).mul( 0.5 );
+			const d = abs( ctx.uv.y.oneMinus().sub( P.get( 'lens.tiltShift.center' ) ) );
+			return mix( c, vec3( blurred.rgb ), smoothstep( half, half.add( 0.22 ), d ) );
+
+		},
+	},
+	{
+		id: 'grade.toneMapping', label: 'Exposure and tone mapping', stage: 'camera', always: true,
+		enabled: () => true,
+		requires: () => [],
+		key: ( v ) => v[ 'grade.toneMapping' ],
+		build( c, ctx ) {
+
+			return renderOutput( vec4( c.mul( ctx.U.exposure ), 1 ), TONE_MAPPING[ ctx.v[ 'grade.toneMapping' ] ], THREE.SRGBColorSpace ).rgb;
+
+		},
+	},
+];

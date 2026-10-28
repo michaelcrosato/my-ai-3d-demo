@@ -32,7 +32,7 @@ test( 'build produces one self-contained HTML file plus the runtime module', () 
 
 		// Dependencies stay external (loaded via the import map), not bundled.
 		assert.match( html, /from "three\/webgpu"/ );
-		assert.ok( html.length < 400 * 1024, 'three.js is not bundled in' );
+		assert.ok( ! /const REVISION = ['"]\d+/.test( html ) && html.length < 1500 * 1024, 'three.js is not bundled in' );
 		assert.match( runtime, /export \{/ );
 		assert.ok( ! /document\.|window\./.test( runtime ), 'runtime has no DOM access' );
 

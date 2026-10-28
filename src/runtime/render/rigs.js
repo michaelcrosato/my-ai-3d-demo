@@ -90,6 +90,14 @@ export class Rigs {
 		s.intensity = v[ 'lighting.key.intensity' ];
 		s.castShadow = v[ 'lighting.shadows.enabled' ];
 		s.shadow.radius = v[ 'lighting.shadows.softness' ];
+		const size = v[ 'lighting.shadows.mapSize' ];
+		if ( s.shadow.mapSize.x !== size ) {
+
+			s.shadow.mapSize.set( size, size );
+			s.shadow.map?.dispose();
+			s.shadow.map = null;
+
+		}
 		hemi.color.set( v[ 'lighting.ambient.sky' ] );
 		hemi.groundColor.set( v[ 'lighting.ambient.ground' ] );
 		hemi.intensity = v[ 'lighting.ambient.intensity' ];
