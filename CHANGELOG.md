@@ -3,7 +3,7 @@
 ## v1.0.0 — M9: the guided tour, onboarding and release (2026-10-28)
 
 **What's new**
-- **The Verify panel is a guided tour.** Every check, in learning order, in eleven sections: Welcome; Does it run on your machine?; Looks and the plain baseline; Shapes, lines and light; Scenes, shots and your own models; Effects; Make it yours; Play it; Train your eye; Budgets; Hand it to an agent; On other screens. Every check has **Set it up for me** and a **What you'll learn** line. **Sign-off** checks (the reports I need) are marked apart from **optional** steps, and *sign-off checks only* hides the rest. Each section links the lesson that goes deeper, and a progress bar counts what you've done. No check was removed.
+- **The Verify panel is a guided tour.** Every check, in learning order, in twelve sections: Welcome; Does it run on your machine?; Looks and the plain baseline; Shapes, lines and light; Scenes, shots and your own models; Effects; Make it yours; Play it; Train your eye; Budgets; Hand it to an agent; On other screens. Every check has **Set it up for me** and a **What you'll learn** line. **Sign-off** checks (the reports I need) are marked apart from **optional** steps, and *sign-off checks only* hides the rest. Each section links the lesson that goes deeper, and a progress bar counts what you've done. No check was removed.
 - **The report lists what's still owed:** every sign-off check from M3 on that you haven't marked.
 - **Welcome:** a first visit offers the tour, Lesson 1, or just exploring. It doesn't show when a share link or the phone audit opens the page.
 - **Keyboard and gamepad map:** press **?** (or the ? button) for every key and button; Esc closes it.
