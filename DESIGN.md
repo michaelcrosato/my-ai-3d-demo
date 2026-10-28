@@ -865,7 +865,8 @@ my-ai-3d-demo/
 ├─ index.html                  # dev entry: import map → CDN, loads src/app/main.js (no build needed)
 ├─ package.json                # devDependencies: esbuild · scripts: dev, build, test, smoke
 ├─ scripts/
-│  ├─ build.mjs                # bundle app + runtime, inline both → dist/style-lab.html (+ dist/stylelab-runtime.js)
+│  ├─ build.mjs                # bundle app + runtime, inline both → dist/style-lab.html (+ dist/stylelab-runtime.js); --offline inlines the dependencies too
+│  ├─ fixtures.mjs             # test assets built in code (a .glb with a KTX2 texture and a morph target)
 │  └─ smoke.mjs                # Playwright: scenes × looks, errors, numeric checks, contact sheet
 ├─ src/
 │  ├─ runtime/                 # ← exported as stylelab-runtime.js; never imports app/ or the DOM
@@ -1247,6 +1248,11 @@ window.__stylelab = {
   capture({ width, height }),              // → { dataURL, stats: { meanLuma, lumaStd, meanSat, clipped } }
   diff(a, b),                              // → { mae } between two captures
   audit(opts), contactSheet({ looks, scenes, cell }),
+  // v1.1 (M10)
+  whatChanged(),                           // → { summary, changes } plain vs. the look on this frame
+  exportZip(),                             // → { names, size, head } every export file as one zip
+  padInfo(), activePanel(),                // gamepad layer (rumbles played) and the panel the D-pad drives
+  touchVisible(), forceTouch(on),          // the walk-mode touch controls
 };
 ```
 
@@ -1813,6 +1819,11 @@ style.setQuality('mobile');
 // Frame
 renderer.setAnimationLoop(() => { update(); style.render(); });
 
+// Imported grades (v1.1): a look with grade.lut.preset 'custom' carries its LUT (`lut`);
+// a .cube can also be loaded directly.
+import { parseCube, setCustomLut } from './stylelab-runtime.js';
+setCustomLut(parseCube(await (await fetch('grade.cube')).text()));
+
 // Teardown
 style.dispose();
 ```
@@ -1842,9 +1853,10 @@ The runtime has no DOM dependencies. It expects the host page to provide the sam
 | Screenshot | `Shift+S` | — |
 | Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` | — |
 | Close panel / back | `Esc` | `B` / `○` |
+| Move inside an open panel (v1.1) | `Tab` | D-pad (↑/↓ focus, ←/→ change a slider or list), `A` presses |
 | Shortcut overlay | `?` | — |
 
-In walk mode, `Space` jumps. Hold compare moves to `X` / `□` on the gamepad, or to the on-screen button.
+In walk mode, `Space` jumps. Hold compare moves to `X` / `□` on the gamepad, or to the on-screen button. On touch screens (v1.1), walk mode shows a stick bottom-left (push to the rim to run) and a Jump button; dragging elsewhere looks around. A look change rumbles pads that support it.
 
 ---
 

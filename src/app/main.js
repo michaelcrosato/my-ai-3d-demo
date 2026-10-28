@@ -288,26 +288,11 @@ async function boot() {
 		if ( app.store.get().view ) return { tips: [], stats: null, pixels: new Uint8Array( 160 * 90 * 4 ), viewActive: true };
 		const c = await api.capture( { width: 160, height: 90 } );
 		const px = captures.get( c.id );
-		// The subject: the walking hero, else the scene's focus point, projected into the frame.
-		const at = app.walking ? app.walk.position().map( ( v, i ) => ( i === 1 ? v + 0.9 : v ) ) : app.scene().focus;
-		let focus = null;
-		if ( at ) {
-
-			const cam = app.camera.clone();
-			cam.aspect = 160 / 90;
-			cam.updateProjectionMatrix();
-			cam.updateMatrixWorld();
-			const p = new THREE.Vector3( ...at ).project( cam );
-			if ( Math.abs( p.x ) <= 1 && Math.abs( p.y ) <= 1 && p.z < 1 ) focus = [ ( p.x + 1 ) / 2 * 160, ( 1 - p.y ) / 2 * 90 ];
-
-		}
-
-		return { ...critique( px.data, app.target.global, { tier: app.store.get().tier, focus, lookId: app.store.get().recipe.base } ), pixels: px.data };
+		return { ...critique( px.data, app.target.global, { tier: app.store.get().tier, focus: subjectAt( 160, 90 ), lookId: app.store.get().recipe.base } ), pixels: px.data };
 
 	};
 
-	// What changed (§6.13, P2): after you let go of hold-to-compare, the plain and the styled
-	// frame are read back small and compared; the summary is a toast and lands in Analyze.
+	/** The subject's pixel position in a w × h frame: the walking hero, else the scene's focus point. */
 	const subjectAt = ( w, hgt ) => {
 
 		const at = app.walking ? app.walk.position().map( ( v, i ) => ( i === 1 ? v + 0.9 : v ) ) : app.scene().focus;
@@ -320,6 +305,8 @@ async function boot() {
 		return Math.abs( p.x ) <= 1 && Math.abs( p.y ) <= 1 && p.z < 1 ? [ ( p.x + 1 ) / 2 * w, ( 1 - p.y ) / 2 * hgt ] : null;
 
 	};
+	// What changed (§6.13, P2): after you let go of hold-to-compare, the plain and the styled
+	// frame are read back small and compared; the summary is a toast and lands in Analyze.
 	const measureChanges = ( { notify = true } = {} ) => pausedWhileRef( async () => {
 
 		const [ w, hgt ] = [ 160, 90 ];
