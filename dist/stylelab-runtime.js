@@ -1,4 +1,4 @@
-/* Style Lab runtime v0.5.0 (33f33a8) */
+/* Style Lab runtime v0.10.0 (2f4cb39) */
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -7,7 +7,7 @@ var __export = (target, all) => {
 
 // src/runtime/style.js
 import * as THREE10 from "three/webgpu";
-import { mrt as mrt3, output as output3, normalView as normalView2, directionToColor, vec4 as vec45, velocity, emissive } from "three/tsl";
+import { mrt as mrt3, output as output3, normalView as normalView2, directionToColor, vec4 as vec45, velocity, emissive, texture as texture2 } from "three/tsl";
 
 // src/runtime/materials/factory.js
 import * as THREE3 from "three/webgpu";
@@ -667,26 +667,26 @@ function computeOutlineNormals(geometry, { name = "outlineNormal", precision = 1
   geometry.setAttribute(name, new BufferAttribute(out, 3));
   return geometry;
 }
-function createHullMaterial({ THREE: THREE11, TSL: TSL2, color, thickness, normalName = "outlineNormal", snapRows = null }) {
-  const { Fn: Fn10, vec4: vec46, attribute, positionLocal: positionLocal2, modelViewMatrix, cameraProjectionMatrix, screenSize: screenSize4 } = TSL2;
-  const material = new THREE11.MeshBasicNodeMaterial({ side: BackSide });
+function createHullMaterial({ THREE: THREE13, TSL: TSL2, color, thickness, normalName = "outlineNormal", snapRows = null }) {
+  const { Fn: Fn10, vec4: vec46, attribute, positionLocal: positionLocal2, modelViewMatrix, cameraProjectionMatrix, screenSize: screenSize5 } = TSL2;
+  const material = new THREE13.MeshBasicNodeMaterial({ side: BackSide });
   material.colorNode = color;
   material.vertexNode = Fn10(() => {
     const clip = cameraProjectionMatrix.mul(modelViewMatrix).mul(vec46(positionLocal2, 1));
     const nView = modelViewMatrix.mul(vec46(attribute(normalName, "vec3"), 0)).xyz;
     const nClip = cameraProjectionMatrix.mul(vec46(nView, 0)).xy;
-    const pixels = thickness.mul(screenSize4.y.div(1080));
-    const offset = nClip.normalize().mul(pixels).mul(2).div(screenSize4).mul(clip.w);
+    const pixels = thickness.mul(screenSize5.y.div(1080));
+    const offset = nClip.normalize().mul(pixels).mul(2).div(screenSize5).mul(clip.w);
     const out = vec46(clip.xy.add(offset), clip.zw);
     return snapRows ? snapClip(TSL2, out, snapRows) : out;
   })();
   return material;
 }
 function snapClip(TSL2, clip, rows) {
-  const { vec2: vec28, vec4: vec46, floor: floor9, screenSize: screenSize4 } = TSL2;
-  const grid = vec28(rows.mul(screenSize4.x.div(screenSize4.y)), rows).mul(0.5);
+  const { vec2: vec29, vec4: vec46, floor: floor10, screenSize: screenSize5 } = TSL2;
+  const grid = vec29(rows.mul(screenSize5.x.div(screenSize5.y)), rows).mul(0.5);
   const ndc = clip.xy.div(clip.w);
-  return vec46(floor9(ndc.mul(grid).add(0.5)).div(grid).mul(clip.w), clip.zw);
+  return vec46(floor10(ndc.mul(grid).add(0.5)).div(grid).mul(clip.w), clip.zw);
 }
 
 // src/runtime/render/blobs.js
@@ -780,7 +780,7 @@ var BlobShadows = class {
 var CHEAP = { class: "cheap", fpe: 0.1 };
 var MEDIUM = { class: "medium", fpe: 1 };
 var HEAVY = { class: "heavy", fpe: 3 };
-var MIX_BY_TYPE = { float: "lerp", int: "lerp", angle: "angle", color: "oklab", bool: "step", enum: "step", palette: "step" };
+var MIX_BY_TYPE = { float: "lerp", int: "lerp", angle: "angle", color: "oklab", bool: "step", enum: "step", palette: "palette" };
 function param(module, e) {
   return {
     module,
@@ -1074,6 +1074,7 @@ var lighting_default = [
   }),
   p({
     id: "lighting.ao.enabled",
+    scope: "mask",
     label: "Ambient occlusion",
     type: "bool",
     default: false,
@@ -1141,6 +1142,7 @@ var lighting_default = [
   }),
   p({
     id: "lighting.contact.enabled",
+    scope: "mask",
     label: "Contact shadows",
     type: "bool",
     default: false,
@@ -1945,6 +1947,7 @@ var lines_default = [
   }),
   p3({
     id: "lines.screen.enabled",
+    scope: "mask",
     label: "Screen-space ink",
     type: "bool",
     default: false,
@@ -1961,6 +1964,7 @@ var lines_default = [
   }),
   p3({
     id: "lines.screen.thickness",
+    scope: "mask",
     label: "Ink thickness",
     type: "float",
     min: 0,
@@ -1980,6 +1984,7 @@ var lines_default = [
   }),
   p3({
     id: "lines.screen.color",
+    scope: "mask",
     label: "Ink color",
     type: "color",
     default: "#0e0e12",
@@ -3569,6 +3574,7 @@ var media_default = [
   }),
   p8({
     id: "media.kuwahara.enabled",
+    scope: "mask",
     label: "Painterly (Kuwahara)",
     type: "bool",
     default: false,
@@ -3611,6 +3617,7 @@ var media_default = [
   }),
   p8({
     id: "media.watercolor.enabled",
+    scope: "mask",
     label: "Watercolor",
     type: "bool",
     default: false,
@@ -3683,6 +3690,7 @@ var media_default = [
   }),
   p8({
     id: "media.halftone.enabled",
+    scope: "mask",
     label: "Halftone (print)",
     type: "bool",
     default: false,
@@ -3775,6 +3783,7 @@ var media_default = [
   }),
   p8({
     id: "media.hatching.enabled",
+    scope: "mask",
     label: "Hatching (post)",
     type: "bool",
     default: false,
@@ -3911,6 +3920,7 @@ var media_default = [
   }),
   p8({
     id: "media.paper.enabled",
+    scope: "mask",
     label: "Paper",
     type: "bool",
     default: false,
@@ -4572,8 +4582,9 @@ var StyleMaterials = class {
   /** Makes `root`'s kit meshes into twins. Call after apply() has run once. */
   register(root) {
     const meshes = [];
+    const known = new Set(this.entries.map((e) => e.mesh));
     root.traverse((o) => {
-      if (o.isMesh && o.userData.style) meshes.push(o);
+      if (o.isMesh && o.userData.style && !known.has(o)) meshes.push(o);
     });
     for (const mesh of meshes) {
       const style = mesh.userData.style;
@@ -4587,6 +4598,7 @@ var StyleMaterials = class {
       }
       plain.frustumCulled = mesh.frustumCulled;
       plain.name = "plain twin";
+      plain.userData.stylelabTwin = true;
       plain.layers.set(LAYER_PLAIN);
       plain.castShadow = mesh.castShadow;
       plain.receiveShadow = mesh.receiveShadow;
@@ -4605,6 +4617,7 @@ var StyleMaterials = class {
       if (!g.getAttribute("outlineNormal")) computeOutlineNormals(g);
       const hull = new THREE3.Mesh(g, this.hullMaterial(entry.part));
       hull.name = "hull";
+      hull.userData.stylelabTwin = true;
       hull.layers.set(LAYER_STYLED);
       hull.castShadow = hull.receiveShadow = false;
       entry.mesh.add(hull);
@@ -4713,6 +4726,8 @@ function createAtmosphereUniforms() {
     fogDensity: uniform5(8e-3),
     fogStart: uniform5(10),
     fogEnd: uniform5(200),
+    fogOffset: uniform5(0),
+    // fog-free distance in front of the camera (far isometric shots)
     fogColor: uniform5(new THREE4.Color("#c8dcf0")),
     fogSkyTint: uniform5(1),
     fogBands: uniform5(0),
@@ -4759,17 +4774,18 @@ function skyColor(u, dir) {
   const halo = exp(angle.div(r.mul(3)).negate()).mul(0.15).mul(step6(1e-4, u.sunRadius));
   return cloudLayer(u, dir, skyGradient(u, dir).add(u.sunColor.mul(disc.add(halo))));
 }
-function fogFactor(u, dist, world = null) {
-  const linear2 = smoothstep6(u.fogStart, u.fogEnd, dist);
-  const e = exp(u.fogDensity.mul(dist).negate()).oneMinus();
-  const e2 = exp(u.fogDensity.mul(dist).pow(2).negate()).oneMinus();
+function fogFactor(u, distance, world = null) {
+  const dist2 = max5(distance.sub(u.fogOffset), 0);
+  const linear2 = smoothstep6(u.fogStart, u.fogEnd, dist2);
+  const e = exp(u.fogDensity.mul(dist2).negate()).oneMinus();
+  const e2 = exp(u.fogDensity.mul(dist2).pow(2).negate()).oneMinus();
   let f = select4(u.fogType.equal(1), linear2, select4(u.fogType.equal(2), e, select4(u.fogType.equal(3), e2, float5(0))));
   if (world) {
     const b = u.heightFalloff;
     const dy = world.y.sub(cameraPosition.y);
     const k = b.mul(dy);
     const shape = select4(abs2(k).lessThan(1e-3), float5(1), exp(k.negate()).oneMinus().div(k));
-    const optical = u.heightDensity.mul(dist).mul(exp(b.mul(cameraPosition.y.sub(u.heightBase)).negate().min(30))).mul(shape);
+    const optical = u.heightDensity.mul(dist2).mul(exp(b.mul(cameraPosition.y.sub(u.heightBase)).negate().min(30))).mul(shape);
     const h = exp(optical.max(0).negate()).oneMinus();
     f = f.oneMinus().mul(h.oneMinus()).oneMinus();
   }
@@ -4803,7 +4819,7 @@ function createSkyDomes(u, { layerStyled, layerPlain, idsNode: idsNode2 }) {
 
 // src/runtime/post/graph.js
 import * as THREE8 from "three/webgpu";
-import { uniform as uniform8, vec2 as vec27, vec3 as vec310, vec4 as vec44, mix as mix11, max as max8, smoothstep as smoothstep11, step as step10, abs as abs6, floor as floor8, renderOutput as renderOutput2, screenUV as screenUV2, screenSize as screenSize3, screenCoordinate as screenCoordinate6, convertToTexture } from "three/tsl";
+import { uniform as uniform8, uniformArray as uniformArray4, texture, vec2 as vec28, vec3 as vec311, vec4 as vec44, float as float11, int as int7, mix as mix12, max as max9, smoothstep as smoothstep12, step as step11, abs as abs7, floor as floor9, round as round3, select as select7, luminance as luminance8, renderOutput as renderOutput2, screenUV as screenUV3, screenSize as screenSize4, screenCoordinate as screenCoordinate6, convertToTexture, mx_noise_float as mx_noise_float4 } from "three/tsl";
 
 // src/runtime/post/stage-camera.js
 import * as THREE5 from "three/webgpu";
@@ -4975,6 +4991,10 @@ var CAMERA = [
     stage: "camera",
     neighborhood: true,
     // Temporal AA: the styled camera is jittered every frame and the history is blended.
+    // It resolves the finished image (`final`): nested inside a later effect's texture
+    // boundary, three's TRAA node renders black. Screen-fixed patterns (paper, halftone)
+    // stay sharp; animated grain is softened by the history blend.
+    final: true,
     enabled: (v) => !v["retro.pixel.enabled"] && v["quality.aa"] === "traa",
     requires: () => ["depth", "velocity"],
     build(c, ctx) {
@@ -5100,12 +5120,12 @@ var GRADE = [
 ];
 
 // src/runtime/post/stage-medium.js
-import { Fn as Fn9, vec2 as vec26, vec3 as vec39, vec4 as vec43, float as float9, int as int5, max as max7, min as min3, mix as mix10, step as step9, smoothstep as smoothstep10, floor as floor7, fract as fract6, sin as sin4, cos as cos4, dot as dot4, pow as pow2, length as length3, select as select6, luminance as luminance6, Loop as Loop4, colorToDirection as colorToDirection3, perspectiveDepthToViewZ as perspectiveDepthToViewZ3, screenCoordinate as screenCoordinate5, mx_noise_float as mx_noise_float3, mx_worley_noise_float as mx_worley_noise_float2 } from "three/tsl";
+import { Fn as Fn9, vec2 as vec26, vec3 as vec39, vec4 as vec43, float as float9, int as int6, max as max7, min as min3, mix as mix10, step as step9, smoothstep as smoothstep10, floor as floor7, fract as fract6, sin as sin4, cos as cos4, dot as dot4, pow as pow2, length as length3, select as select6, luminance as luminance6, Loop as Loop4, colorToDirection as colorToDirection3, perspectiveDepthToViewZ as perspectiveDepthToViewZ3, screenCoordinate as screenCoordinate5, mx_noise_float as mx_noise_float3, mx_worley_noise_float as mx_worley_noise_float2 } from "three/tsl";
 import { fxaa } from "three/addons/tsl/display/FXAANode.js";
 import { smaa } from "three/addons/tsl/display/SMAANode.js";
 
 // src/runtime/post/lines.js
-import { Fn as Fn8, vec2 as vec25, vec3 as vec38, float as float8, max as max6, mix as mix9, smoothstep as smoothstep9, step as step8, abs as abs5, floor as floor6, select as select5, luminance as luminance5, saturation as saturation2, colorToDirection as colorToDirection2, perspectiveDepthToViewZ as perspectiveDepthToViewZ2, mx_noise_float as mx_noise_float2 } from "three/tsl";
+import { Fn as Fn8, vec2 as vec25, vec3 as vec38, float as float8, int as int5, round, max as max6, mix as mix9, smoothstep as smoothstep9, step as step8, abs as abs5, floor as floor6, select as select5, luminance as luminance5, saturation as saturation2, colorToDirection as colorToDirection2, perspectiveDepthToViewZ as perspectiveDepthToViewZ2, mx_noise_float as mx_noise_float2 } from "three/tsl";
 var PAIRS = [[1, 0], [0, 1], [0.7071, 0.7071], [0.7071, -0.7071]];
 function screenLines(color, b, u, atmos, { uv, texel, scale, coord }, P, time) {
   return Fn8(() => {
@@ -5116,12 +5136,13 @@ function screenLines(color, b, u, atmos, { uv, texel, scale, coord }, P, time) {
     const wobble = vec25(mx_noise_float2(vec38(coord.mul(f), seed)), mx_noise_float2(vec38(coord.mul(f), seed.add(11.3)))).mul(P.get("lines.screen.wobble")).mul(px).mul(scale);
     const at = uv.add(wobble);
     const dark = luminance5(color.rgb).oneMinus().clamp(0, 1);
-    const texture = P.get("lines.screen.texture"), texAmount = P.get("lines.screen.textureAmount");
+    const texture3 = P.get("lines.screen.texture"), texAmount = P.get("lines.screen.textureAmount");
     const swell = mx_noise_float2(vec38(coord.mul(0.012), 4.1)).mul(0.5).add(0.5);
-    const brush = mix9(float8(1), swell.mul(swell).mul(2.2).add(0.15), texAmount.mul(step8(1.5, texture).mul(step8(texture, 2.5))));
-    const radius = max6(u.thickness.mul(scale).mul(dark.mul(P.get("lines.screen.lightWeight")).add(1)).mul(brush), 0);
-    const dist = (d) => perspectiveDepthToViewZ2(d, u.near, u.far).negate();
-    const d0 = dist(b.depth.sample(at).r).toVar();
+    const brush = mix9(float8(1), swell.mul(swell).mul(2.2).add(0.15), texAmount.mul(step8(1.5, texture3).mul(step8(texture3, 2.5))));
+    const part = int5(round(b.ids.sample(uv).r.mul(255)));
+    const radius = max6(u.partThickness.element(part).mul(scale).mul(dark.mul(P.get("lines.screen.lightWeight")).add(1)).mul(brush), 0);
+    const dist2 = (d) => perspectiveDepthToViewZ2(d, u.near, u.far).negate();
+    const d0 = dist2(b.depth.sample(at).r).toVar();
     const n0 = colorToDirection2(b.normal.sample(at).rgb).toVar();
     const id0 = b.ids.sample(at).rg.toVar();
     const depthEdge = float8(0).toVar();
@@ -5131,7 +5152,7 @@ function screenLines(color, b, u, atmos, { uv, texel, scale, coord }, P, time) {
     for (const [x, y] of PAIRS) {
       const o = vec25(x, y).mul(px).mul(radius);
       const samples = [at.add(o), at.sub(o)];
-      const da = dist(b.depth.sample(samples[0]).r), db = dist(b.depth.sample(samples[1]).r);
+      const da = dist2(b.depth.sample(samples[0]).r), db = dist2(b.depth.sample(samples[1]).r);
       const lap = da.reciprocal().add(db.reciprocal()).sub(w0.mul(2)).div(w0);
       depthEdge.assign(max6(depthEdge, lap.negate()));
       for (const [k, s] of samples.entries()) {
@@ -5149,14 +5170,14 @@ function screenLines(color, b, u, atmos, { uv, texel, scale, coord }, P, time) {
     let edge = max6(silhouette, max6(crease, idEdge.mul(u.idWeight))).mul(step8(0.01, radius)).clamp();
     const grain = mx_noise_float2(vec38(coord.mul(0.9), 2.3)).mul(0.5).add(0.5);
     const blots = mx_noise_float2(vec38(coord.mul(0.05), 6.7)).mul(0.5).add(0.5);
-    const isPencil = step8(0.5, texture).mul(step8(texture, 1.5)), isInk = step8(2.5, texture);
+    const isPencil = step8(0.5, texture3).mul(step8(texture3, 1.5)), isInk = step8(2.5, texture3);
     edge = edge.mul(mix9(float8(1), grain.mul(0.8).add(0.2), texAmount.mul(isPencil)));
     edge = edge.mul(mix9(float8(1), blots.mul(0.5).add(0.75), texAmount.mul(isInk))).clamp();
     const fog2 = fogFactor(atmos, d0).mul(u.followFog).oneMinus();
     const fade = smoothstep9(P.get("lines.screen.fadeStart"), P.get("lines.screen.fadeEnd"), d0).mul(P.get("lines.screen.fade")).oneMinus();
     const alpha = edge.mul(fog2).mul(fade).mul(P.get("lines.screen.opacity"));
     const local = saturation2(color.rgb.mul(P.get("lines.screen.darken")), float8(1.3));
-    const ink = mix9(u.color, local, P.get("lines.screen.colorFromSurface"));
+    const ink = mix9(u.partColor.element(part), local, P.get("lines.screen.colorFromSurface"));
     return vec38(mix9(color.rgb, ink, alpha));
   })();
 }
@@ -5179,7 +5200,7 @@ var MEDIUM2 = [
       const dirs = Array.from({ length: 8 }, (_, k) => vec26(Math.cos(k * Math.PI / 4), Math.sin(k * Math.PI / 4)));
       return Fn9(() => {
         const rf = P.get("media.kuwahara.radius");
-        const r = int5(rf);
+        const r = int6(rf);
         const m = dirs.map(() => vec39(0).toVar()), sq = dirs.map(() => vec39(0).toVar()), n = dirs.map(() => float9(0).toVar());
         Loop4({ start: r.negate(), end: r, type: "int", condition: "<=", name: "kx" }, ({ kx }) => {
           Loop4({ start: r.negate(), end: r, type: "int", condition: "<=", name: "ky" }, ({ ky }) => {
@@ -5311,13 +5332,13 @@ var MEDIUM2 = [
       const depth = ctx.tex("depth"), normal = ctx.tex("normal");
       const strength = ctx.P.get("retro.pixel.edges");
       return Fn9(() => {
-        const dist = (uv) => perspectiveDepthToViewZ3(depth.sample(uv).r, U.lines.near, U.lines.far).negate();
-        const d0 = dist(ctx.uv).toVar();
+        const dist2 = (uv) => perspectiveDepthToViewZ3(depth.sample(uv).r, U.lines.near, U.lines.far).negate();
+        const d0 = dist2(ctx.uv).toVar();
         const n0 = colorToDirection3(normal.sample(ctx.uv).rgb).toVar();
         const depthEdge = float9(0).toVar(), normalEdge = float9(0).toVar();
         for (const [x, y] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const uv = ctx.uv.add(vec26(x, y).mul(ctx.texel));
-          const d = dist(uv);
+          const d = dist2(uv);
           const n = colorToDirection3(normal.sample(uv).rgb);
           depthEdge.assign(max7(depthEdge, d.sub(d0).div(d0).clamp(0, 1)));
           const facing = smoothstep10(-0.01, 0.01, n0.sub(n).dot(vec39(-1, 1, 1).normalize()));
@@ -5387,6 +5408,105 @@ var MEDIUM2 = [
   }
 ];
 
+// src/runtime/post/views.js
+import { vec2 as vec27, vec3 as vec310, float as float10, mix as mix11, max as max8, min as min4, abs as abs6, step as step10, smoothstep as smoothstep11, floor as floor8, round as round2, length as length4, luminance as luminance7, screenUV as screenUV2, screenSize as screenSize3, sRGBTransferEOTF as sRGBTransferEOTF3, sRGBTransferOETF, perspectiveDepthToViewZ as perspectiveDepthToViewZ4, colorToDirection as colorToDirection4 } from "three/tsl";
+var VIEWS = [
+  { id: "value", label: "Value (grayscale)", learn: "If it reads in grayscale, it reads: the light and dark structure." },
+  { id: "squint", label: "Squint (blur)", learn: "Detail disappears; only the big masses and the focal point remain." },
+  { id: "silhouette", label: "Silhouette", learn: "Shapes as flat black: can you still tell what everything is?", requires: ["ids"] },
+  { id: "thumbnail", label: "Thumbnail (128 px)", learn: "Does it read at thumbnail size, as in a store listing?" },
+  { id: "saturation", label: "Saturation heatmap", learn: "Where color is strongest. The focus should be the most saturated thing." },
+  { id: "busyness", label: "Busyness (edge density)", learn: "Where detail competes for attention. Calm areas let the eye rest." },
+  { id: "protan", label: "Color-blind: protan", learn: "Red-weak vision (about 1% of men)." },
+  { id: "deutan", label: "Color-blind: deutan", learn: "Green-weak vision, the most common (about 5% of men)." },
+  { id: "tritan", label: "Color-blind: tritan", learn: "Blue-weak vision (rare)." },
+  { id: "thirds", label: "Rule of thirds", learn: "Strong compositions put the subject near a line or an intersection." },
+  { id: "golden", label: "Golden ratio", learn: "The same idea with 0.382 / 0.618 lines." },
+  { id: "center", label: "Center cross", learn: "Centered framing: symmetric, calm, confrontational." },
+  { id: "buffer-depth", label: "Buffer: depth", learn: "Linear depth, what fog, depth of field and line silhouettes read.", requires: ["depth"], buffer: true },
+  { id: "buffer-normal", label: "Buffer: normals", learn: "Surface directions, what crease lines and AO read.", requires: ["normal"], buffer: true },
+  { id: "buffer-ids", label: "Buffer: part ids", learn: "Which part each pixel belongs to: what per-part masks and id edges read.", requires: ["ids"], buffer: true }
+];
+var viewById = new Map(VIEWS.map((v) => [v.id, v]));
+var CVD = {
+  protan: [[0.152286, 1.052583, -0.204868], [0.114503, 0.786281, 0.099216], [-3882e-6, -0.048116, 1.051998]],
+  deutan: [[0.367322, 0.860646, -0.227968], [0.280085, 0.672501, 0.047413], [-0.01182, 0.04294, 0.968881]],
+  tritan: [[1.255528, -0.076749, -0.178779], [-0.078411, 0.930809, 0.147602], [4733e-6, 0.691367, 0.3039]]
+};
+var heat = (t) => {
+  const a = vec310(0.12, 0.16, 0.45), b = vec310(0.1, 0.65, 0.4), c = vec310(0.98, 0.85, 0.2), d = vec310(0.9, 0.2, 0.15);
+  return mix11(mix11(a, b, smoothstep11(0, 0.35, t)), mix11(c, d, smoothstep11(0.65, 1, t)), smoothstep11(0.3, 0.7, t));
+};
+function guides(c, xs, ys) {
+  const px = vec27(1).div(screenSize3);
+  let on = float10(0);
+  for (const x of xs) on = max8(on, step10(abs6(screenUV2.x.sub(x)), px.x.mul(1.2)));
+  for (const y of ys) on = max8(on, step10(abs6(screenUV2.y.sub(y)), px.y.mul(1.2)));
+  return mix11(c, vec310(1, 1, 1), on.mul(0.75));
+}
+function designerView(id, c, ctx) {
+  switch (id) {
+    case "value":
+      return vec310(luminance7(c));
+    case "squint": {
+      const t = ctx.texture(c);
+      let sum = vec310(0);
+      const r = vec27(0.018, 0.018 * 16 / 9);
+      const taps = [[0, 0], ...Array.from({ length: 12 }, (_, i) => [Math.cos(i / 12 * Math.PI * 2), Math.sin(i / 12 * Math.PI * 2)]), ...Array.from({ length: 6 }, (_, i) => [0.5 * Math.cos((i + 0.5) / 6 * Math.PI * 2), 0.5 * Math.sin((i + 0.5) / 6 * Math.PI * 2)])];
+      for (const [x, y] of taps) sum = sum.add(t.sample(screenUV2.add(vec27(x, y).mul(r))).rgb);
+      return sum.div(taps.length);
+    }
+    case "silhouette": {
+      const part = round2(ctx.tex("ids").sample(ctx.uv).r.mul(255));
+      return vec310(step10(part, 0.5));
+    }
+    case "thumbnail": {
+      const t = ctx.texture(c);
+      const grid = vec27(128, screenSize3.y.div(screenSize3.x).mul(128));
+      return t.sample(floor8(screenUV2.mul(grid)).add(0.5).div(grid)).rgb;
+    }
+    case "saturation": {
+      const lab = displayToOklab(c);
+      return mix11(vec310(luminance7(c).mul(0.35)), heat(length4(lab.yz).div(0.25).clamp(0, 1)), 0.85);
+    }
+    case "busyness": {
+      const t = ctx.texture(c);
+      const px = vec27(1.5).div(screenSize3);
+      const L = (dx, dy) => luminance7(t.sample(screenUV2.add(vec27(dx, dy).mul(px))).rgb);
+      const gx = L(1, -1).add(L(1, 0).mul(2)).add(L(1, 1)).sub(L(-1, -1)).sub(L(-1, 0).mul(2)).sub(L(-1, 1));
+      const gy = L(-1, 1).add(L(0, 1).mul(2)).add(L(1, 1)).sub(L(-1, -1)).sub(L(0, -1).mul(2)).sub(L(1, -1));
+      return heat(length4(vec27(gx, gy)).mul(2.5).clamp(0, 1));
+    }
+    case "protan":
+    case "deutan":
+    case "tritan": {
+      const lin = sRGBTransferEOTF3(c);
+      const [a, b, d] = CVD[id];
+      const out = vec310(lin.dot(vec310(...a)), lin.dot(vec310(...b)), lin.dot(vec310(...d))).max(0);
+      return sRGBTransferOETF(out).clamp(0, 1);
+    }
+    case "thirds":
+      return guides(c, [1 / 3, 2 / 3], [1 / 3, 2 / 3]);
+    case "golden":
+      return guides(c, [0.382, 0.618], [0.382, 0.618]);
+    case "center":
+      return guides(c, [0.5], [0.5]);
+    case "buffer-depth": {
+      const z = perspectiveDepthToViewZ4(ctx.tex("depth").sample(ctx.uv).r, ctx.U.lines.near, ctx.U.lines.far).negate();
+      return vec310(float10(1).sub(z.div(60).clamp(0, 1).pow(0.5)));
+    }
+    case "buffer-normal":
+      return colorToDirection4(ctx.tex("normal").sample(ctx.uv).rgb).mul(0.5).add(0.5);
+    case "buffer-ids": {
+      const p12 = ctx.tex("ids").sample(ctx.uv).r.mul(255);
+      const h = p12.mul(0.137).fract();
+      return vec310(h.mul(6.2831).sin(), h.add(0.333).mul(6.2831).sin(), h.add(0.666).mul(6.2831).sin()).mul(0.45).add(0.5).mul(min4(p12, 1));
+    }
+    default:
+      return c;
+  }
+}
+
 // src/runtime/post/params.js
 import * as THREE7 from "three/webgpu";
 import { uniform as uniform7 } from "three/tsl";
@@ -5435,6 +5555,23 @@ var ParamUniforms = class {
 
 // src/runtime/post/graph.js
 var EFFECTS = [...CAMERA, ...GRADE, ...MEDIUM2, ...DISPLAY];
+var MASKED = REGISTRY.filter((e) => e.scope === "mask" && e.type === "bool").map((e) => e.id);
+var ALL_PARTS = (1 << PARTS.length) - 1;
+var MASK_OF = { "lines.screen": "lines.screen.enabled", "lighting.ao": "lighting.ao.enabled", "lighting.contact": "lighting.contact.enabled", "media.kuwahara": "media.kuwahara.enabled", "media.watercolor": "media.watercolor.enabled", "media.halftone": "media.halftone.enabled", "media.hatching": "media.hatching.enabled", "media.paper": "media.paper.enabled" };
+for (const e of EFFECTS) if (MASK_OF[e.id]) e.mask = MASK_OF[e.id];
+function withPartMasks(global, parts) {
+  const out = { ...global };
+  for (const id of MASKED) {
+    let bits = 0;
+    PARTS.forEach((p12, i) => {
+      if (parts[p12][id]) bits |= 1 << i;
+    });
+    out[id] = bits !== 0;
+    out[`@mask:${id}`] = bits;
+    out[`@partial:${id}`] = bits !== 0 && bits !== ALL_PARTS;
+  }
+  return out;
+}
 function createPostUniforms() {
   return {
     exposure: uniform8(new THREE8.Vector3(1, 1, 1)),
@@ -5448,7 +5585,10 @@ function createPostUniforms() {
       idWeight: uniform8(1),
       followFog: uniform8(1),
       near: uniform8(0.1),
-      far: uniform8(1e3)
+      far: uniform8(1e3),
+      // Per part (index = part id): thickness in px at 1080p and color (raw sRGB).
+      partThickness: uniformArray4(new Array(16).fill(1.5), "float"),
+      partColor: uniformArray4(Array.from({ length: 16 }, () => new THREE8.Color()), "color")
     },
     // Per-frame camera-derived values (StyleRuntime.update).
     sunScreen: uniform8(new THREE8.Vector2(0.5, 0.2)),
@@ -5459,6 +5599,15 @@ function createPostUniforms() {
     lightView: uniform8(new THREE8.Vector3(0, 1, 0)),
     pixelSize: uniform8(1),
     lowRes: uniform8(new THREE8.Vector2(1, 1)),
+    // Per-part masks (bits per masked switch), per-part ink, isolate (part index or -1).
+    masks: Object.fromEntries(MASKED.map((id) => [id, uniform8(0, "int")])),
+    isolate: uniform8(-1, "int"),
+    // Transitions (§6.10): crossfade and wipe blend from a snapshot of the outgoing frame.
+    transitionMode: uniform8(0),
+    // 0 off · 1 crossfade · 2 wipe
+    transitionProgress: uniform8(1),
+    snapshot: null,
+    // texture node, set by the runtime
     // Compare composite (§6.9): hold, split wipe and flicker never rebuild.
     hold: uniform8(0),
     split: uniform8(0),
@@ -5470,7 +5619,7 @@ function createPostUniforms() {
 function createPostLists() {
   return { ...createGradeLists(), ...createDisplayLists() };
 }
-function applyPostValues(U, P, lists, v) {
+function applyPostValues(U, P, lists, v, parts = null) {
   P.apply(v);
   const ev = Math.pow(2, v["grade.exposure"]);
   const wb = whiteBalanceGains(v["grade.temperature"], v["grade.tint"]);
@@ -5483,12 +5632,25 @@ function applyPostValues(U, P, lists, v) {
   L.depthThreshold.value = v["lines.screen.depthThreshold"];
   L.idWeight.value = v["lines.screen.idWeight"];
   L.followFog.value = v["lines.screen.followFog"];
+  PARTS.forEach((p12, i) => {
+    const pv = parts?.[p12] || v;
+    L.partThickness.array[i] = pv["lines.screen.thickness"];
+    const [r, g, b] = hexToRgb(pv["lines.screen.color"]);
+    L.partColor.array[i].setRGB(r, g, b, THREE8.LinearSRGBColorSpace);
+  });
+  for (const id of MASKED) U.masks[id].value = v[`@mask:${id}`] ?? (v[id] ? ALL_PARTS : 0);
   applyGradeLists(lists, v);
   applyDisplayLists(lists, v);
 }
 function passRequirements(v) {
   const out = /* @__PURE__ */ new Set();
-  for (const e of EFFECTS) if (!e.always && e.enabled(v, { samples: 0 })) for (const b of e.requires(v)) out.add(b);
+  for (const e of EFFECTS) {
+    if (e.always || !e.enabled(v, { samples: 0 })) continue;
+    for (const b of e.requires(v)) out.add(b);
+    if (e.mask && v[`@partial:${e.mask}`]) out.add("ids");
+  }
+  if (v["@isolate"]) out.add("ids");
+  for (const b of viewById.get(v["@view"])?.requires || []) out.add(b);
   return out;
 }
 function activeEffects(v) {
@@ -5496,7 +5658,7 @@ function activeEffects(v) {
 }
 function graphKey(v, passKey) {
   const ctx = { samples: passKey.startsWith("0|") ? 0 : 4 };
-  return [passKey, ...EFFECTS.filter((e) => e.enabled(v, ctx)).map((e) => `${e.id}${e.key ? ":" + e.key(v) : ""}`)].join("|");
+  return [passKey, v["@isolate"] ? "isolate" : "", v["@view"] ? `view:${v["@view"]}` : "", ...EFFECTS.filter((e) => e.enabled(v, ctx)).map((e) => `${e.id}${e.key ? ":" + e.key(v) : ""}${e.mask && v[`@partial:${e.mask}`] ? "@mask" : ""}`)].join("|");
 }
 function buildGraph({ styledPass, plainPass, values, P, U, lists, atmos, camera, light, samples }) {
   const owned = [];
@@ -5522,28 +5684,60 @@ function buildGraph({ styledPass, plainPass, values, P, U, lists, atmos, camera,
       return node;
     },
     /** A texture boundary: renders `c` to a target so the next effect can sample neighbors. */
-    texture: (c2) => ctx.own(convertToTexture(vec44(c2, 1)))
+    texture: (c2) => ctx.own(convertToTexture(vec44(c2, 1))),
+    /** The part index (0–15) of the pixel, from the ids buffer. */
+    partIndex: () => int7(round3(ctx.tex("ids").sample(ctx.uv).r.mul(255))),
+    /** 1 where the pixel's part has masked switch `id` on. */
+    partMask: (id) => float11(U.masks[id].shiftRight(ctx.partIndex()).bitAnd(int7(1)))
   };
   if (pixel) {
-    ctx.coord = floor8(screenCoordinate6.xy.div(U.pixelSize));
+    ctx.coord = floor9(screenCoordinate6.xy.div(U.pixelSize));
     ctx.uv = ctx.coord.add(0.5).div(U.lowRes);
-    ctx.texel = vec27(1).div(U.lowRes);
+    ctx.texel = vec28(1).div(U.lowRes);
     ctx.gridSize = U.lowRes;
     ctx.lineScale = 2 / 3;
   } else {
-    ctx.coord = floor8(screenCoordinate6.xy);
-    ctx.uv = screenUV2;
-    ctx.texel = vec27(1).div(screenSize3);
-    ctx.gridSize = screenSize3;
-    ctx.lineScale = screenSize3.y.div(1080);
+    ctx.coord = floor9(screenCoordinate6.xy);
+    ctx.uv = screenUV3;
+    ctx.texel = vec28(1).div(screenSize4);
+    ctx.gridSize = screenSize4;
+    ctx.lineScale = screenSize4.y.div(1080);
   }
-  let c = vec310(ctx.tex("output").sample(ctx.uv).rgb);
-  for (const e of EFFECTS) if (e.enabled(values, ctx)) c = e.build(c, ctx);
+  let c = vec311(ctx.tex("output").sample(ctx.uv).rgb);
+  const finals = [];
+  for (const e of EFFECTS) {
+    if (!e.enabled(values, ctx)) continue;
+    if (e.final) {
+      finals.push(e);
+      continue;
+    }
+    const before = c;
+    c = e.build(c, ctx);
+    if (e.mask && values[`@partial:${e.mask}`]) c = mix12(before, c, ctx.partMask(e.mask));
+  }
+  for (const e of finals) c = e.build(c, ctx);
+  if (values["@view"] && viewById.has(values["@view"])) c = designerView(values["@view"], c, ctx);
+  if (values["@isolate"]) {
+    const ids = ctx.tex("ids");
+    const inside = (uv) => step11(abs7(float11(round3(ids.sample(uv).r.mul(255))).sub(float11(U.isolate))), 0.5);
+    const here = inside(ctx.uv);
+    const px = vec28(1.5).div(screenSize4);
+    const ring = max9(max9(inside(ctx.uv.add(vec28(px.x, 0))), inside(ctx.uv.sub(vec28(px.x, 0)))), max9(inside(ctx.uv.add(vec28(0, px.y))), inside(ctx.uv.sub(vec28(0, px.y))))).sub(here).max(0);
+    c = mix12(mix12(vec311(luminance8(c)), c, 0.25).mul(0.35), c, here);
+    c = mix12(c, vec311(0.54, 0.71, 0.97), ring);
+  }
+  if (U.snapshot) {
+    const p12 = U.transitionProgress;
+    const n = mx_noise_float4(vec311(screenUV3.mul(6), 0.5)).mul(0.12);
+    const wipe = smoothstep12(p12.mul(1.3).sub(0.15), p12.mul(1.3).sub(0.05), screenUV3.x.add(n)).oneMinus();
+    const k = select7(U.transitionMode.greaterThan(1.5), wipe, select7(U.transitionMode.greaterThan(0.5), p12, float11(1)));
+    c = mix12(U.snapshot.sample(screenUV3).rgb, c, k);
+  }
   const plain = renderOutput2(plainPass.getTextureNode("output"), THREE8.ACESFilmicToneMapping, THREE8.SRGBColorSpace).rgb;
-  const showPlain = max8(U.hold, max8(U.flicker, U.split.mul(step10(screenUV2.x, U.splitPos))));
-  let out = mix11(c, plain, showPlain);
-  const divider = smoothstep11(0.5, 1.5, abs6(screenUV2.x.sub(U.splitPos)).mul(screenSize3.x)).oneMinus();
-  out = mix11(out, vec310(1), divider.mul(U.split).mul(U.hold.oneMinus()));
+  const showPlain = max9(U.hold, max9(U.flicker, U.split.mul(step11(screenUV3.x, U.splitPos))));
+  let out = mix12(c, plain, showPlain);
+  const divider = smoothstep12(0.5, 1.5, abs7(screenUV3.x.sub(U.splitPos)).mul(screenSize4.x)).oneMinus();
+  out = mix12(out, vec311(1), divider.mul(U.split).mul(U.hold.oneMinus()));
   return { node: vec44(out, 1), owned };
 }
 function disposeOwned(owned) {
@@ -5694,7 +5888,19 @@ function timeOfDay(hour, azimuth = 45) {
 
 // src/runtime/look/resolve.js
 var PART_PARENT = { hero: "characters" };
+var PART_MODULES = ["lighting", "surface", "lines", "palette", "media", "retro"];
+function resamplePalette(colors, n) {
+  if (!colors.length) return Array(n).fill("#808080");
+  if (colors.length === n) return [...colors];
+  return Array.from({ length: n }, (_, i) => {
+    const x = n === 1 ? 0 : i / (n - 1) * (colors.length - 1);
+    const k = Math.min(colors.length - 2, Math.floor(x));
+    return colors.length === 1 ? colors[0] : mixHex(colors[k], colors[k + 1], x - k);
+  });
+}
 function mixValue(entry, a, b, t) {
+  if (t <= 0) return clone(a);
+  if (t >= 1) return clone(b);
   switch (entry.mix) {
     case "lerp": {
       const v = a + (b - a) * t;
@@ -5702,60 +5908,190 @@ function mixValue(entry, a, b, t) {
     }
     case "angle": {
       const d = ((b - a) % 360 + 540) % 360 - 180;
-      return a + d * t;
+      let v = (a + d * t + 540) % 360 - 180;
+      if (v <= -180) v += 360;
+      return Math.max(entry.min, Math.min(entry.max, v));
     }
     case "oklab":
-      return t <= 0 ? a : t >= 1 ? b : mixHex(a, b, t);
+      return mixHex(a, b, t);
+    case "palette": {
+      if (!a.length || !b.length) return clone(t < 0.5 ? a : b);
+      const n = Math.max(a.length, b.length);
+      const A = resamplePalette(a, n), B = resamplePalette(b, n);
+      return A.map((c, i) => mixHex(c, B[i], t));
+    }
     default:
-      return t < 0.5 ? a : b;
+      return clone(t < 0.5 ? a : b);
   }
+}
+var gateOf = (e) => e.enabledBy || (e.type === "bool" && e.structural ? e.id : null);
+function blendEntry(e, ma, mb, t) {
+  const a = ma[e.id], b = mb[e.id];
+  if (t <= 0) return clone(a);
+  if (t >= 1) return clone(b);
+  if (e.type === "bool" && e.structural) return a || b;
+  const gate = gateOf(e);
+  if (gate && gate !== e.id) return mixValue(e, ma[gate] ? a : e.neutral, mb[gate] ? b : e.neutral, t);
+  return mixValue(e, a, b, t);
 }
 function applyStrength(values, strength) {
   if (strength >= 1) return values;
   const out = { ...values };
   for (const id of Object.keys(out)) {
     const entry = byId.get(id);
-    if (entry.structural || entry.mix === "step") continue;
+    if (!entry || entry.structural || entry.mix === "step" || entry.mix === "palette") continue;
     out[id] = mixValue(entry, entry.neutral, out[id], Math.max(0, strength));
   }
   return out;
 }
-function resolveLook({ look, sceneParams = {}, overrides = {}, partOverrides = {}, strength = 1 }) {
-  const values = defaults();
+function fullValues(look, sceneParams) {
+  const global = defaults();
   const sources = Object.fromEntries(REGISTRY.map((e) => [e.id, "registry"]));
   const layer = (params, name) => {
     for (const [id, v] of Object.entries(params || {})) {
       if (!byId.has(id)) continue;
-      values[id] = clone(v);
+      global[id] = clone(v);
       sources[id] = name;
     }
   };
   if (!look.baseline) layer(sceneParams, "scene");
   layer(look.params, "look");
-  layer(overrides, "override");
-  if (values["lighting.tod.enabled"]) {
-    for (const [id, v] of Object.entries(timeOfDay(values["lighting.tod.hour"], values["lighting.key.azimuth"]))) {
-      if (id in overrides) continue;
-      values[id] = v;
-      sources[id] = "time of day";
-    }
-  }
   const parts = {};
   for (const part of PARTS) {
     const map = {};
-    for (const id of PART_PARAMS) map[id] = clone(values[id]);
+    for (const id of PART_PARAMS) map[id] = clone(global[id]);
     const chain = PART_PARENT[part] ? [PART_PARENT[part], part] : [part];
-    for (const p12 of chain) Object.assign(map, look.parts?.[p12]?.params);
-    for (const id of PART_PARAMS) if (id in overrides) map[id] = clone(overrides[id]);
-    for (const p12 of chain) Object.assign(map, partOverrides[p12]);
-    parts[part] = applyStrength(map, strength);
+    for (const p12 of chain) for (const [id, v] of Object.entries(look.parts?.[p12]?.params || {})) if (id in map) map[id] = clone(v);
+    parts[part] = map;
   }
-  return { global: applyStrength(values, strength), parts, sources };
+  return { global, parts, sources };
+}
+function partRecipe(parts, part) {
+  const own = parts?.[part] || {};
+  const parent = PART_PARENT[part] ? parts?.[PART_PARENT[part]] || {} : {};
+  const look = own.look ?? (own.inherit === false ? null : parent.look) ?? null;
+  const modules = own.look ? own.modules : parent.look && own.inherit !== false ? parent.modules : own.modules;
+  return {
+    look,
+    modules: look ? modules && modules.length ? modules : PART_MODULES : [],
+    overrides: { ...own.inherit === false ? {} : parent.overrides, ...own.overrides }
+  };
+}
+function resolveRecipe({ recipe, getLook, parts = {}, sceneParams = {}, overrides = {}, strength = 1 }) {
+  const cache = /* @__PURE__ */ new Map();
+  const full = (look) => {
+    if (!cache.has(look)) cache.set(look, fullValues(look, sceneParams));
+    return cache.get(look);
+  };
+  const modules = recipe.modules || {};
+  const anySolo = Object.values(modules).some((m) => m && m.solo);
+  const base = getLook(recipe.base);
+  const states = {};
+  const state = (module) => {
+    if (states[module]) return states[module];
+    const r = modules[module] || {};
+    const blendWith = r.blend?.with ?? recipe.morph?.with ?? null;
+    const t = r.blend?.with ? r.blend.t ?? 0.5 : recipe.morph?.t ?? 0;
+    return states[module] = {
+      muted: !!r.mute || anySolo && !r.solo,
+      src: full(r.from ? getLook(r.from) : base),
+      blend: blendWith && t > 0 ? { full: full(getLook(blendWith)), t } : null
+    };
+  };
+  const neutralMap = Object.fromEntries(REGISTRY.map((e) => [e.id, clone(e.neutral)]));
+  const global = {};
+  const sources = {};
+  for (const e of REGISTRY) {
+    const s = state(e.module);
+    if (s.muted) {
+      global[e.id] = clone(e.neutral);
+      sources[e.id] = "muted";
+      continue;
+    }
+    if (s.blend) {
+      global[e.id] = blendEntry(e, s.src.global, s.blend.full.global, s.blend.t);
+      sources[e.id] = "blend";
+      continue;
+    }
+    global[e.id] = clone(s.src.global[e.id]);
+    sources[e.id] = s.src.sources[e.id];
+  }
+  for (const [id, v] of Object.entries(overrides)) {
+    if (!byId.has(id)) continue;
+    global[id] = clone(v);
+    sources[id] = "override";
+  }
+  if (global["lighting.tod.enabled"]) {
+    for (const [id, v] of Object.entries(timeOfDay(global["lighting.tod.hour"], global["lighting.key.azimuth"]))) {
+      if (id in overrides) continue;
+      global[id] = v;
+      sources[id] = "time of day";
+    }
+  }
+  const partMaps = {};
+  for (const part of PARTS) {
+    const pr = partRecipe(parts, part);
+    const own = pr.look ? full(getLook(pr.look)) : null;
+    const map = {};
+    for (const id of PART_PARAMS) {
+      const e = byId.get(id);
+      if (own && pr.modules.includes(e.module)) {
+        map[id] = clone(own.parts[part][id]);
+        continue;
+      }
+      const s = state(e.module);
+      if (s.muted) map[id] = clone(neutralMap[id]);
+      else if (s.blend) map[id] = blendEntry(e, s.src.parts[part], s.blend.full.parts[part], s.blend.t);
+      else map[id] = clone(s.src.parts[part][id]);
+      if (id in overrides) map[id] = clone(overrides[id]);
+    }
+    for (const [id, v] of Object.entries(pr.overrides)) if (id in map) map[id] = clone(v);
+    partMaps[part] = applyStrength(map, strength);
+  }
+  return { global: applyStrength(global, strength), parts: partMaps, sources };
+}
+function resolveLook({ look, sceneParams = {}, overrides = {}, partOverrides = {}, strength = 1 }) {
+  const parts = Object.fromEntries(Object.entries(partOverrides).map(([p12, o]) => [p12, { overrides: o }]));
+  return resolveRecipe({ recipe: { base: look.id ?? "@look" }, getLook: () => look, parts, sceneParams, overrides, strength });
+}
+function blendResolved(from, to, t) {
+  if (t >= 1) return to;
+  const global = {};
+  for (const e of REGISTRY) global[e.id] = blendEntry(e, from.global, to.global, t);
+  const parts = {};
+  for (const part of PARTS) {
+    const map = {};
+    for (const id of PART_PARAMS) map[id] = blendEntry(byId.get(id), from.parts[part], to.parts[part], t);
+    parts[part] = map;
+  }
+  return { global, parts, sources: to.sources };
 }
 function lookValue(look, sceneParams, id) {
   if (look.params && id in look.params) return look.params[id];
   if (!look.baseline && id in sceneParams) return sceneParams[id];
   return byId.get(id).default;
+}
+function lookFromResolved(resolved, meta) {
+  const params = {};
+  for (const e of REGISTRY) {
+    const src = resolved.sources[e.id];
+    if (src === "registry" || src === "scene") continue;
+    if (JSON.stringify(resolved.global[e.id]) === JSON.stringify(e.default) && src !== "override") continue;
+    params[e.id] = clone(resolved.global[e.id]);
+  }
+  const parts = {};
+  for (const part of PARTS) {
+    const diff = {};
+    for (const id of PART_PARAMS) if (JSON.stringify(resolved.parts[part][id]) !== JSON.stringify(resolved.global[id])) diff[id] = clone(resolved.parts[part][id]);
+    if (Object.keys(diff).length) parts[part] = { params: diff };
+  }
+  return { schema: "stylelab.look@1", version: 1, tags: [], pillars: [], mistakes: [], inspiredBy: [], description: "", ...meta, params, parts };
+}
+function resolvedHash(resolved) {
+  const text = JSON.stringify([resolved.global, resolved.parts]);
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return (h >>> 0).toString(16);
 }
 
 // src/runtime/style.js
@@ -5776,6 +6112,9 @@ var StyleRuntime = class {
   constructor({ renderer, camera }) {
     this.renderer = renderer;
     this.camera = camera;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE10.PCFSoftShadowMap;
+    renderer.toneMapping = THREE10.ACESFilmicToneMapping;
     this.styledCamera = camera.clone();
     this.styledCamera.name = "styled camera";
     this.scene = new THREE10.Scene();
@@ -5804,6 +6143,11 @@ var StyleRuntime = class {
     this.values = null;
     this.info = { materialBuilds: 0, graphBuilds: 0, passBuilds: 0, lastRebuild: null, lastCompileMs: null };
     this.pendingCompile = null;
+    this.snapshots = [new THREE10.RenderTarget(1, 1), new THREE10.RenderTarget(1, 1)];
+    this.snapshotIndex = 0;
+    this.U.snapshot = texture2(this.snapshots[0].texture);
+    this.isolate = null;
+    this.view = null;
     this.apply(resolveLook({ look: { baseline: true, params: {} } }));
   }
   /**
@@ -5823,9 +6167,23 @@ var StyleRuntime = class {
     this.materials.register(root);
     this.materials.blobs.setScene(root);
     this.practicals = [];
+    this.adoptLights(root);
+    const hero = def.shots[def.defaultShot];
+    this.rigs.setFrame({ center: def.shadow.center, radius: def.shadow.radius, heroPos: hero.pos, heroTarget: hero.target });
+    this.camera.far = def.far;
+    this.camera.updateProjectionMatrix();
+    this.fogFocus = def.fogFocus || 0;
+    this.apply(this.resolved);
+    this.markCompile("scene");
+  }
+  /**
+   * Practical lights (torches, lamps, campfires): the styled set's lights follow the
+   * look's practical controls; a twin on the plain layer keeps the scene's own values.
+   */
+  adoptLights(root) {
     const lights = [];
     root.traverse((o) => {
-      if (o.isLight) lights.push(o);
+      if (o.isLight && !o.userData.stylelabTwin && !this.practicals.some((p12) => p12.light === o)) lights.push(o);
     });
     for (const light of lights) {
       light.castShadow = false;
@@ -5833,16 +6191,20 @@ var StyleRuntime = class {
       const twin = light.clone();
       twin.layers.set(LAYER_PLAIN);
       twin.name = "plain twin";
+      twin.userData.stylelabTwin = true;
       light.parent.add(twin);
       const base = { intensity: light.intensity, flicker: light.userData.practical?.flicker ?? 0, seed: light.userData.practical?.seed ?? 0 };
       this.practicals.push({ light, twin, base });
     }
-    const hero = def.shots[def.defaultShot];
-    this.rigs.setFrame({ center: def.shadow.center, radius: def.shadow.radius, heroPos: hero.pos, heroTarget: hero.target });
-    this.camera.far = def.far;
-    this.camera.updateProjectionMatrix();
+  }
+  /** Adds objects to the current scene after setScene (meshes need `userData.style`). */
+  add(object, parent = this.root) {
+    if (object.parent !== parent) parent.add(object);
+    this.materials.register(object);
+    this.adoptLights(object);
+    this.materials.blobs.setScene(this.root);
     this.apply(this.resolved);
-    this.markCompile("scene");
+    this.markCompile("add");
   }
   /**
    * Buffers the styled pass writes for the current values, and whether it can use MSAA:
@@ -5863,7 +6225,9 @@ var StyleRuntime = class {
    */
   apply(resolved) {
     this.resolved = resolved;
-    const v = this.values = resolved.global;
+    const v = this.values = withPartMasks(resolved.global, resolved.parts);
+    v["@isolate"] = this.isolate !== null;
+    v["@view"] = this.view;
     const before = this.materials.built;
     const parts = this.materials.apply(resolved.parts, v);
     const dir = this.rigs.apply(v);
@@ -5895,7 +6259,8 @@ var StyleRuntime = class {
     a.cloudSpeed.value = v["atmosphere.clouds.speed"];
     a.cloudColor.value.set(v["atmosphere.clouds.color"]);
     a.cloudShade.value.set(v["atmosphere.clouds.shade"]);
-    applyPostValues(this.U, this.P, this.lists, v);
+    applyPostValues(this.U, this.P, this.lists, v, resolved.parts);
+    this.U.isolate.value = this.isolate === null ? -1 : PART_INDEX[this.isolate];
     const cfg = this.passConfig(v, resolved.parts);
     const passRebuilt = cfg.key !== this.passKey;
     if (passRebuilt) {
@@ -5947,6 +6312,45 @@ var StyleRuntime = class {
   markCompile(reason) {
     this.pendingCompile = reason;
   }
+  /**
+   * Captures the current styled frame for a crossfade or wipe. Call before applying the
+   * incoming look; then drive setTransition() from 0 to 1.
+   */
+  snapshot() {
+    const r = this.renderer;
+    r.getDrawingBufferSize(_size2);
+    this.snapshotIndex = 1 - this.snapshotIndex;
+    const rt = this.snapshots[this.snapshotIndex];
+    rt.setSize(Math.max(1, _size2.x), Math.max(1, _size2.y));
+    const previous = r.getRenderTarget();
+    r.setRenderTarget(rt);
+    this.post.render();
+    r.setRenderTarget(previous);
+    this.U.snapshot.value = rt.texture;
+  }
+  /**
+   * Transition composite: mode null (off), 'crossfade' or 'wipe'; progress 0 shows the
+   * snapshot, 1 the live frame. Omitted fields keep their value. Uniforms only.
+   */
+  setTransition({ mode, progress } = {}) {
+    if (mode !== void 0) this.U.transitionMode.value = mode === "wipe" ? 2 : mode === "crossfade" ? 1 : 0;
+    if (mode === null) this.U.transitionProgress.value = 1;
+    if (progress !== void 0) this.U.transitionProgress.value = Math.min(1, Math.max(0, progress));
+  }
+  /** A designer view (value, squint, silhouette, … see post/views.js), or null for the look. */
+  setView(id) {
+    const next = id && viewById.has(id) ? id : null;
+    if (next === this.view) return;
+    this.view = next;
+    if (this.resolved) this.apply(this.resolved);
+  }
+  /** Isolates one part (dims and grays the rest, outlines it), or null. Needs the ids buffer. */
+  setIsolate(part) {
+    const next = part && PARTS.includes(part) ? part : null;
+    if (next === this.isolate) return;
+    this.isolate = next;
+    if (this.resolved) this.apply(this.resolved);
+  }
   /** Compare composite (§6.9): uniforms only, so it takes effect on the next frame. */
   setCompare({ hold, split, splitPos, flicker } = {}) {
     if (hold !== void 0) this.U.hold.value = hold ? 1 : 0;
@@ -5985,6 +6389,7 @@ var StyleRuntime = class {
     U.projInv.value.copy(cam.projectionMatrixInverse);
     U.lightView.value.copy(this.atmos.sunDirection.value).transformDirection(cam.matrixWorldInverse);
     U.focusDistance.value = Math.max(0.1, _v.copy(this.focus).sub(cam.position).dot(_fwd) + v["lens.dof.offset"]);
+    this.atmos.fogOffset.value = (this.fogFocus || 0) * this.focus.distanceTo(cam.position);
     for (const { light, base } of this.practicals) {
       const n = Math.sin(t * 11.3 + base.seed) * 0.5 + Math.sin(t * 23.7 + base.seed * 2.1) * 0.3 + Math.sin(t * 5.1 + base.seed * 0.7) * 0.2;
       light.intensity = base.intensity * v["lighting.practicals.intensity"] * (1 + n * base.flicker * v["lighting.practicals.flicker"] * 0.35);
@@ -6036,10 +6441,14 @@ var StyleRuntime = class {
     if (this.graph) disposeOwned(this.graph.owned);
     this.styledPass?.dispose();
     this.plainPass.dispose();
+    for (const rt of this.snapshots) rt.dispose();
     this.post.dispose();
     this.rigs.dispose();
   }
 };
+
+// src/runtime/create.js
+import * as THREE12 from "three/webgpu";
 
 // src/runtime/look/validate.js
 var LOOK_SCHEMA = "stylelab.look@1";
@@ -6096,40 +6505,15 @@ var MIGRATIONS = {};
 function migrateLook(look) {
   let current = look;
   while (current.schema !== LOOK_SCHEMA) {
-    const step11 = MIGRATIONS[current.schema];
-    if (!step11) throw new Error(`Can't read look schema ${current.schema}`);
-    current = step11(current);
+    const step12 = MIGRATIONS[current.schema];
+    if (!step12) throw new Error(`Can't read look schema ${current.schema}`);
+    current = step12(current);
   }
   return current;
 }
 
-// src/runtime/perf/timer.js
-function timestampsSupported(renderer) {
-  return renderer.backend.trackTimestamp === true && renderer.hasFeature("timestamp-query");
-}
-async function gpuIdle(renderer) {
-  const backend = renderer.backend;
-  if (backend.isWebGPUBackend) {
-    await backend.device.queue.onSubmittedWorkDone();
-  } else {
-    const gl = backend.gl;
-    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
-  }
-}
-async function measureFrames(renderer, renderFrame, { frames = 30, method = "auto" } = {}) {
-  const useTimestamps = method === "timestamp" || method === "auto" && timestampsSupported(renderer);
-  if (useTimestamps) {
-    await renderer.resolveTimestampsAsync("render");
-    for (let i = 0; i < frames; i++) renderFrame();
-    const total = await renderer.resolveTimestampsAsync("render");
-    return { method: "timestamp", msPerFrame: (total || 0) / frames };
-  }
-  await gpuIdle(renderer);
-  const t0 = performance.now();
-  for (let i = 0; i < frames; i++) renderFrame();
-  await gpuIdle(renderer);
-  return { method: "wallclock", msPerFrame: (performance.now() - t0) / frames };
-}
+// src/runtime/parts/convert.js
+import * as THREE11 from "three/webgpu";
 
 // src/runtime/parts/guess.js
 var PART_KEYWORDS = [
@@ -6196,45 +6580,812 @@ function guessParts(items) {
   return out.map((g) => g || { part: "props", reason: "default" });
 }
 
+// src/runtime/parts/convert.js
+var firstMaterial = (m) => (Array.isArray(m.material) ? m.material[0] : m.material) || {};
+var emissiveStrength = (mat) => mat.emissive ? Math.max(mat.emissive.r, mat.emissive.g, mat.emissive.b) * (mat.emissiveIntensity ?? 1) : 0;
+function describeMesh(m, stop = null) {
+  const mat = firstMaterial(m);
+  const box = new THREE11.Box3().setFromObject(m);
+  const ancestors = [];
+  for (let p12 = m.parent; p12 && p12 !== stop; p12 = p12.parent) if (p12.name) ancestors.push(p12.name);
+  return {
+    name: m.name,
+    materialName: mat.name,
+    ancestors,
+    userData: { ...mat.userData?.stylelab, ...m.userData },
+    emissive: emissiveStrength(mat),
+    color: mat.color ? [mat.color.r, mat.color.g, mat.color.b] : null,
+    box: { min: box.min.toArray(), max: box.max.toArray() }
+  };
+}
+function styleFromMaterial(m, part) {
+  const mat = firstMaterial(m);
+  const em = emissiveStrength(mat);
+  const tagged = mat.userData?.stylelab || {};
+  return {
+    part,
+    color: tagged.color || (mat.color ? `#${mat.color.getHexString()}` : "#cccccc"),
+    roughness: tagged.roughness ?? mat.roughness ?? 0.8,
+    metalness: tagged.metalness ?? mat.metalness ?? 0,
+    emissive: tagged.emissive ?? (em > 0.01 ? `#${mat.emissive.getHexString()}` : null),
+    emissiveIntensity: tagged.emissiveIntensity ?? mat.emissiveIntensity ?? 1,
+    opacity: mat.transparent ? mat.opacity ?? 1 : 1,
+    doubleSided: mat.side === THREE11.DoubleSide,
+    map: mat.map || null,
+    vertexColors: !!(mat.vertexColors && m.geometry.getAttribute("color")),
+    role: tagged.role
+  };
+}
+function tagMeshes(root, { guess = true, stop = root.parent } = {}) {
+  root.updateMatrixWorld(true);
+  const meshes = [];
+  root.traverse((o) => {
+    if (o.isMesh && !o.userData.style && !o.userData.stylelabTwin) meshes.push(o);
+  });
+  const guesses = guess ? guessParts(meshes.map((m) => describeMesh(m, stop))) : meshes.map((m) => ({ part: m.userData.part || firstMaterial(m).userData?.stylelab?.part || "props", reason: "tag or default" }));
+  meshes.forEach((m, i) => {
+    if (!m.geometry.getAttribute("normal")) m.geometry.computeVertexNormals();
+    m.userData.style = styleFromMaterial(m, guesses[i].part);
+    m.userData.guess = guesses[i];
+  });
+  return { meshes, guesses };
+}
+
+// src/runtime/create.js
+var PLAIN = { schema: "stylelab.look@1", id: "plain", name: "Plain", baseline: true, params: {} };
+var ease = (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+function frameOf(scene, camera) {
+  scene.updateMatrixWorld(true);
+  const box = new THREE12.Box3();
+  scene.traverse((o) => {
+    if (o.isMesh && !o.userData.stylelabTwin) box.expandByObject(o);
+  });
+  const sphere = box.isEmpty() ? new THREE12.Sphere(new THREE12.Vector3(), 10) : box.getBoundingSphere(new THREE12.Sphere());
+  const center = sphere.center.toArray();
+  return {
+    shadow: { center, radius: Math.max(2, Math.min(sphere.radius, 60)) },
+    shots: { main: { pos: camera.position.toArray(), target: center, fov: camera.fov } },
+    defaultShot: "main",
+    far: camera.far
+  };
+}
+var autoQuality = () => globalThis.navigator?.userAgentData?.mobile ?? /Mobi|Android|iPhone|iPad/.test(globalThis.navigator?.userAgent || "") ? "mobile" : "desktop";
+var Style = class {
+  constructor({ renderer, scene, camera, looks = [], quality = "auto", sceneParams = {}, frame = null, convert = true, lens = true }) {
+    this.renderer = renderer;
+    this.scene = scene;
+    this.camera = camera;
+    this.sceneParams = sceneParams;
+    this.looks = /* @__PURE__ */ new Map([["plain", PLAIN]]);
+    this.plan = null;
+    for (const l of looks) this.addLook(l);
+    this.current = looks.length ? looks[0].looks ? looks[0].looks[0].id : looks[0].id : "plain";
+    this.quality = quality === "auto" ? autoQuality() : quality;
+    this.overrides = {};
+    this.partOverrides = {};
+    this.zoneWeights = {};
+    this.transition = null;
+    this.time = 0;
+    this.focus = new THREE12.Vector3();
+    this.baseFov = camera.fov;
+    this.lens = lens;
+    scene.traverse((o) => {
+      if (o.isDirectionalLight || o.isHemisphereLight || o.isAmbientLight) {
+        o.visible = false;
+        o.userData.stylelabHidden = true;
+      }
+    });
+    if (convert) tagMeshes(scene);
+    this.runtime = new StyleRuntime({ renderer, camera });
+    const def = frame || frameOf(scene, camera);
+    this.focus.fromArray(def.shadow.center);
+    this.runtime.setScene(scene, def);
+    this.resolved = this.resolve();
+    this.runtime.apply(this.resolved);
+  }
+  /** Adds a look (JSON) or a looks.json plan ({ looks, plan, modes }). */
+  addLook(json) {
+    if (json.looks) {
+      this.plan = json;
+      for (const l of json.looks) this.addLook(l);
+      return;
+    }
+    const { ok, errors } = validateLook(json);
+    if (!ok) throw new Error(`createStyle: invalid look ${json.id}: ${errors.slice(0, 3).join("; ")}`);
+    this.looks.set(json.id, json);
+  }
+  /** Resolves the current look with tweaks, quality tier and zone weights. */
+  resolve(id = this.current) {
+    const getLook = (x) => this.looks.get(x) || PLAIN;
+    const look = getLook(id);
+    const tier = this.quality === "mobile" ? look.tiers?.mobile?.params || {} : {};
+    const parts = Object.fromEntries(Object.entries(this.partOverrides).map(([p12, o]) => [p12, { overrides: o }]));
+    let r = resolveRecipe({ recipe: { base: id }, getLook, parts, sceneParams: this.sceneParams, overrides: { ...tier, ...this.overrides } });
+    for (const [zid, w] of Object.entries(this.zoneWeights)) {
+      if (w > 0 && this.looks.has(zid) && zid !== id) r = blendResolved(r, resolveRecipe({ recipe: { base: zid }, getLook, sceneParams: this.sceneParams, overrides: tier }), Math.min(1, w));
+    }
+    return r;
+  }
+  /** A material for a new mesh: tagged with its part, colored by the look. */
+  material({ part = "props", color = "#cccccc", role, roughness = 0.8, metalness = 0, emissive: emissive2 = null, emissiveIntensity = 1 } = {}) {
+    if (!PARTS.includes(part)) throw new Error(`style.material: unknown part ${part} (use one of ${PARTS.join(", ")})`);
+    const m = new THREE12.MeshStandardMaterial({ color, roughness, metalness });
+    m.userData.stylelab = { part, color, role, roughness, metalness, emissive: emissive2, emissiveIntensity };
+    return m;
+  }
+  /** Tags a mesh (or every mesh under an object) with a part. */
+  tag(object, part) {
+    object.traverse((o) => {
+      if (o.isMesh && !o.userData.stylelabTwin) {
+        o.userData.part = part;
+        if (o.userData.style) o.userData.style.part = part;
+      }
+    });
+    return object;
+  }
+  /**
+   * Retrofit: styles every untagged mesh under `root` in one call, keeping its color and
+   * guessing its part from names and shape. Returns the guesses, with reasons.
+   */
+  convertScene(root = this.scene, { guessParts: guessParts2 = true } = {}) {
+    const { meshes, guesses } = tagMeshes(root, { guess: guessParts2 });
+    this.runtime.add(root, root.parent || this.scene);
+    return meshes.map((m, i) => ({ name: m.name, part: guesses[i].part, reason: guesses[i].reason }));
+  }
+  /** Adds a new object to the styled scene (tags untagged meshes first). */
+  add(object, parent = this.scene) {
+    tagMeshes(object, { guess: false });
+    this.runtime.add(object, parent);
+    return object;
+  }
+  /** Switches looks: { transition: 'morph' | 'crossfade' | 'wipe' | 'cut', duration }. */
+  setLook(id, { transition = "morph", duration = 0.8 } = {}) {
+    if (!this.looks.has(id)) throw new Error(`style.setLook: unknown look ${id}`);
+    const from = this.resolved;
+    this.current = id;
+    const to = this.resolve();
+    if (transition === "cut" || duration <= 0) {
+      this.transition = null;
+      this.runtime.setTransition({ mode: null });
+      return this.show(to);
+    }
+    if (transition !== "morph") this.runtime.snapshot();
+    this.transition = { type: transition, from, to, t: 0, duration };
+    if (transition !== "morph") {
+      this.runtime.setTransition({ mode: transition, progress: 0 });
+      this.show(to);
+    } else this.show(blendResolved(from, to, 0));
+  }
+  /** Zone weights by look id, e.g. from trigger volumes: { crypt: 0.7 }. */
+  setZoneWeights(weights) {
+    this.zoneWeights = { ...weights };
+    this.show(this.resolve());
+  }
+  /** A Tune value for the whole look, or for one part. */
+  setParam(id, value, { part = null } = {}) {
+    if (!byId.has(id)) throw new Error(`style.setParam: unknown parameter ${id}`);
+    if (part) this.partOverrides[part] = { ...this.partOverrides[part], [id]: value };
+    else this.overrides[id] = value;
+    this.show(this.resolve());
+  }
+  /** 'desktop' | 'mobile' | 'auto': mobile applies the look's phone tier. */
+  setQuality(q) {
+    this.quality = q === "auto" ? autoQuality() : q;
+    this.show(this.resolve());
+  }
+  show(r) {
+    this.resolved = r;
+    return this.runtime.apply(r);
+  }
+  /** Advances transitions and renders. `dt` defaults to the time since the last call. */
+  render(dt) {
+    const now = performance.now() / 1e3;
+    if (dt === void 0) dt = this.last ? Math.min(0.1, now - this.last) : 0;
+    this.last = now;
+    this.time += dt;
+    const tr = this.transition;
+    if (tr) {
+      tr.t = Math.min(1, tr.t + dt / tr.duration);
+      if (tr.type === "morph") this.show(tr.t >= 1 ? tr.to : blendResolved(tr.from, tr.to, ease(tr.t)));
+      else this.runtime.setTransition({ progress: ease(tr.t) });
+      if (tr.t >= 1) {
+        this.transition = null;
+        this.runtime.setTransition({ mode: null });
+      }
+    }
+    if (this.lens && this.camera.isPerspectiveCamera) this.applyLens();
+    const fps = this.resolved.global["motion.stepped.fps"] || 0;
+    const t = fps > 0 ? Math.floor(this.time * fps + 1e-6) / fps : this.time;
+    this.runtime.update(t, { focus: this.focus });
+    this.runtime.render();
+  }
+  /**
+   * The look's lens: the base FOV times lens.fovScale, with the camera dollied along its
+   * view line so the focus keeps its size on screen (only the perspective changes), as in
+   * Style Lab.
+   */
+  applyLens() {
+    const cam = this.camera;
+    const next = Math.min(110, this.baseFov * (this.resolved.global["lens.fovScale"] ?? 1));
+    if (Math.abs(next - cam.fov) < 1e-6) return;
+    const k = Math.tan(cam.fov * Math.PI / 360) / Math.tan(next * Math.PI / 360);
+    cam.position.sub(this.focus).multiplyScalar(k).add(this.focus);
+    cam.fov = next;
+    cam.updateProjectionMatrix();
+  }
+  dispose() {
+    this.runtime.dispose();
+    this.scene.traverse((o) => {
+      if (o.userData.stylelabHidden) o.visible = true;
+    });
+  }
+};
+async function createStyle(options) {
+  if (options.renderer.init && !options.renderer._initialized) await options.renderer.init();
+  return new Style(options);
+}
+
+// src/runtime/brief/brief.js
+var BRIEF_TARGETS = { runtime: "three.js r182 + Style Lab runtime", three: "three.js r182 without the runtime", engine: "Engine-agnostic spec (Godot, Unity, Unreal)" };
+var BRIEF_LENGTHS = { short: "Short", standard: "Standard", full: "Full" };
+var PHONE = { cheap: "Phone-safe: runs on most phones", medium: "High-end phones", heavy: "Desktop only" };
+var PART_NAMES = { sky: "Sky", terrain: "Terrain", water: "Water", foliage: "Foliage", architecture: "Architecture", props: "Props", characters: "Characters", hero: "Hero", vfx: "VFX" };
+var same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+var EFFECT_PARAMS = {
+  "grade.toneMapping": ["grade.toneMapping", "grade.exposure", "grade.temperature", "grade.tint"],
+  "grade.basic": ["grade.lift", "grade.gamma", "grade.gain", "grade.contrast", "grade.saturation", "grade.vibrance", "grade.hue", "grade.split.shadows", "grade.split.highlights", "grade.split.balance", "grade.split.amount"],
+  "quality.fxaa": ["quality.aa"],
+  "quality.smaa": ["quality.aa"],
+  "quality.traa": ["quality.aa"],
+  "retro.quantize": ["retro.quantize.mode", "retro.quantize.levels", "retro.quantize.palette", "retro.dither.amount", "retro.dither.pattern"]
+};
+var paramsOf = (id) => EFFECT_PARAMS[id] || REGISTRY.filter((e) => e.id.startsWith(`${id}.`)).map((e) => e.id);
+var THREE_HINTS = {
+  "lighting.ao": "GTAONode (three/addons/tsl/display/GTAONode.js) at half resolution",
+  "lighting.contact": "a short screen-space ray march toward the sun on the depth buffer",
+  "lens.bloom": "BloomNode (three/addons/tsl/display/BloomNode.js)",
+  "atmosphere.godRays": "a radial blur of the bright sky toward the sun's screen position",
+  "lens.motionBlur": "MotionBlur (three/addons/tsl/display/MotionBlur.js) with a velocity MRT",
+  "lens.dof": "DepthOfFieldNode (three/addons/tsl/display/DepthOfFieldNode.js)",
+  "lens.tiltShift": "a vertical blur band (GaussianBlurNode) masked by screen height",
+  "quality.traa": "TRAANode (three/addons/tsl/display/TRAANode.js), applied last",
+  "grade.toneMapping": "renderOutput() with the tone mapping below",
+  "grade.basic": "cdl(), saturation(), vibrance(), hue() from three/tsl",
+  "grade.lut": "texture3D() lookup of the exported grade.cube",
+  "media.kuwahara": "a generalized Kuwahara filter (8 sectors)",
+  "media.halftone": "rotated dot screens on luminance, in screen space",
+  "media.hatching": "rotated line screens below light thresholds",
+  "lines.screen": "Laplacian of inverse depth + normal and id edges from an MRT pass",
+  "retro.pixel": "render at ⌈H/p⌉ rows, nearest upscale, camera snapped to whole texels",
+  "quality.fxaa": "FXAANode",
+  "quality.smaa": "SMAANode",
+  "retro.quantize": "posterize or nearest-palette in OKLab, Bayer dither before quantizing",
+  "retro.crt": "scanlines, aperture mask, barrel curvature"
+};
+function notable(e, v, values) {
+  if (e.enabledBy && !values[e.enabledBy]) return false;
+  return !same(v, e.default);
+}
+var line = (e, v) => `- ${formatBrief(e, v)}`;
+function section(title, lines) {
+  return lines.length ? [`## ${title}`, ...lines, ""] : [];
+}
+function moduleLines(module, values, { skip = () => false } = {}) {
+  return REGISTRY.filter((e) => e.module === module && !skip(e) && notable(e, values[e.id], values)).map((e) => line(e, values[e.id]));
+}
+function postChain(global, parts) {
+  const v = withPartMasks(global, parts);
+  const active = new Set(activeEffects(v));
+  return EFFECTS.filter((e) => active.has(e.id) || e.always && paramsOf(e.id).some((id) => byId.has(id) && notable(byId.get(id), v[id], v))).map((e) => ({
+    id: e.id,
+    label: e.label,
+    masked: !!(e.mask && v[`@partial:${e.mask}`]),
+    parts: e.mask && v[`@partial:${e.mask}`] ? PARTS.filter((p12) => parts[p12][e.mask]) : null,
+    params: paramsOf(e.id).filter((id) => byId.has(id)).map((id) => byId.get(id)).filter((p12) => p12.type !== "bool" && (!p12.enabledBy || v[p12.enabledBy]))
+  }));
+}
+function partDiffs(resolved) {
+  const out = {};
+  for (const part of PARTS) {
+    const rank = (id) => id.startsWith("lines.") ? 0 : id.startsWith("surface.model") ? 1 : 2;
+    const diff = Object.entries(resolved.parts[part]).filter(([id, v]) => !same(v, resolved.global[id])).sort((a, b) => rank(a[0]) - rank(b[0]));
+    if (diff.length) out[part] = diff;
+  }
+  return out;
+}
+function paletteRows(g) {
+  const rows = [];
+  if (g["palette.remap"] > 0 && g["palette.colors"].length) rows.push(["Palette (base colors snap to these)", g["palette.colors"].join(" ")]);
+  rows.push(["Sky (zenith → horizon)", `${g["atmosphere.sky.zenith"]} → ${g["atmosphere.sky.horizon"]}`]);
+  rows.push(["Shadow tint", `${g["surface.shadowTint"]} at ${Math.round(g["surface.shadowTintStrength"] * 100)}%`]);
+  rows.push(["Key light", g["lighting.key.color"]]);
+  if (g["atmosphere.fog.type"] !== "off") rows.push(["Fog", g["atmosphere.fog.color"]]);
+  if (g["lines.screen.enabled"] || g["lines.hull.enabled"]) rows.push(["Ink", g["lines.screen.enabled"] ? g["lines.screen.color"] : g["lines.hull.color"]]);
+  return rows;
+}
+function implementation(target, look) {
+  if (target === "runtime") return [
+    "1. Add `stylelab-runtime.js`, `stylelab-kit.js` and `look.json` (exported with this brief) to the project. Use the import map from `starter.html` (three r182 from jsDelivr).",
+    "2. Create the style once:",
+    "   ```js",
+    "   import { createStyle } from './stylelab-runtime.js';",
+    `   const style = await createStyle( { renderer, scene, camera, looks: [ LOOK ] } ); // LOOK = the ${look.id} look.json`,
+    "   ```",
+    "3. Never create `MeshStandardMaterial` directly. Use `style.material( { part, color, role } )`, e.g. `style.material( { part: 'architecture', color: '#d9a066', role: 'wall' } )`.",
+    `4. Tag every mesh with its part: ${PARTS.filter((p12) => p12 !== "sky").join(" | ")} (\`style.tag( mesh, part )\`). Add new objects with \`style.add( object )\`.`,
+    "5. Render with `style.render()` instead of `renderer.render()`.",
+    "6. Existing game? Call `style.convertScene( scene )` once after building it: it keeps each color and guesses parts."
+  ];
+  if (target === "three") return [
+    "Implement the look yourself in three.js r182 (WebGPURenderer, TSL). Build it as: a styled material per part (custom lighting model with the bands, shadow tint, rim and specular below), a scene pass with MRT (output, normal, ids, depth) when lines or AO are on, then the post chain below in order. Building blocks per effect are listed with the chain.",
+    "Keep every continuous value a uniform, so tuning never recompiles shaders."
+  ];
+  return [
+    "No code: recreate each section with your engine's tools. Godot: a ShaderMaterial with a light() function for the bands; Environment for fog and glow; a CompositorEffect for lines. Unity (URP): a custom lit shader graph; Volume overrides for post; a renderer feature for outlines. Unreal: a material function for the light ramp; Post Process Volume; a post-process material for lines.",
+    "Import `grade.cube` as the color-grading LUT (display-referred, after tone mapping) and `palette.gpl` into your paint tools."
+  ];
+}
+function inkRule(g, resolved) {
+  const hull = PARTS.filter((p12) => resolved.parts[p12]["lines.hull.enabled"]);
+  if (g["lines.screen.enabled"]) return `- Ink: ${g["lines.screen.thickness"]} px screen-space lines in ${g["lines.screen.color"]}.`;
+  if (g["lines.hull.enabled"]) return `- Ink: ${g["lines.hull.thickness"]} px outlines in ${g["lines.hull.color"]} on everything.`;
+  if (hull.length) return `- Ink: ${resolved.parts[hull[0]]["lines.hull.thickness"]} px outlines in ${resolved.parts[hull[0]]["lines.hull.color"]} only on ${hull.map((p12) => PART_NAMES[p12].toLowerCase()).join(", ")}.`;
+  return "- No outlines.";
+}
+function proceduralRules(target, short) {
+  if (short) return ["- Build assets in code (three.js geometry, part-tagged, seeded, with complexity tiers), like `stylelab-kit.js`; put detail in geometry, not textures."];
+  return [
+    "- **Build assets procedurally, in code,** the way `stylelab-kit.js` does: compose three.js primitives (boxes, cylinders, lathes, extrusions), merge them per material, and tag each mesh with its part. Code-built assets stay readable and editable, fit in one HTML file, and this look's lighting, lines and grade dress them up.",
+    "- **Seeded randomness** for variety (a small PRNG with a seed per object), so a level rebuilds identically every time.",
+    "- **Complexity tiers** in every builder: Blockout (raw primitives) → Low-poly (intentional facets) → Crafted (bevels, smooth normals) → Detailed (subdivision, displacement). The same layout and colors at every tier.",
+    "- **Detail is geometry, not image textures:** panel seams, bevels, inset plates, trim, rivets, stones. Flat-colored low-poly models with geometric detail read well in every look.",
+    target === "runtime" ? "- Start from the kit: `import { house, tree, crate, character } from './stylelab-kit.js'` and extend it in the same style." : "- The kit's source (`stylelab-kit.js`) shows the pattern even if you don't run it."
+  ];
+}
+function generateBrief({ look, resolved, target = "runtime", length: length5 = "standard", shareUrl = null, mixedFrom = [], plan = null, tier = null }) {
+  const g = resolved.global;
+  const short = length5 === "short", full = length5 === "full";
+  const name = look.name;
+  const chain = postChain(g, resolved.parts);
+  const out = [];
+  out.push(`# Art direction: ${name} (stylelab look ${look.id}@${look.version ?? 1})`);
+  if (shareUrl) out.push(`Reopen in Style Lab: ${shareUrl}`);
+  out.push(`Target: ${BRIEF_TARGETS[target]}. Inspired by ${(look.inspiredBy || []).join(", ") || "original work"}${mixedFrom.length > 1 ? `; mixed from ${mixedFrom.join(" + ")}` : ""}.`);
+  if (look.description) out.push(look.description);
+  out.push("");
+  const pillars = (look.pillars || []).slice(0, short ? 4 : 5);
+  if (pillars.length) out.push(...section("Pillars (never break these)", pillars.map((p12, i) => `${i + 1}. ${p12}`)));
+  if (short) {
+    const rules = [
+      `- Shading: ${valueLabel(byId.get("surface.model"), g["surface.model"])}${g["surface.model"] !== "pbr" ? `, ${g["surface.bands"]} light band${g["surface.bands"] > 1 ? "s" : ""}` : ""}; shadows tinted ${g["surface.shadowTint"]}.`,
+      inkRule(g, resolved),
+      `- Light: key ${g["lighting.key.color"]} from ${g["lighting.key.elevation"]}° up; sky ${g["atmosphere.sky.zenith"]} → ${g["atmosphere.sky.horizon"]}.`,
+      g["atmosphere.fog.type"] !== "off" ? `- Fog: ${g["atmosphere.fog.type"]}, ${g["atmosphere.fog.color"]}.` : "- No fog.",
+      `- Post: ${chain.map((e) => e.label).join(" → ") || "none"}.`,
+      ...g["palette.remap"] > 0 && g["palette.colors"].length ? [`- Palette: ${g["palette.colors"].join(" ")}.`] : []
+    ];
+    out.push(...section("Rules", rules));
+    const build = {
+      runtime: ["- `const style = await createStyle( { renderer, scene, camera, looks: [ LOOK ] } )` from `stylelab-runtime.js` (LOOK = the exported look.json); render with `style.render()`.", "- Materials only via `style.material( { part, color } )`; tag every mesh with its part."],
+      three: ["- three.js r182 (WebGPU, TSL): a custom lighting model per part with the values above, then the post chain in order."],
+      engine: ["- Recreate with your engine's shader and post tools; import grade.cube and palette.gpl."]
+    }[target];
+    out.push(...section("Build", [...build, ...proceduralRules(target, true)]));
+    return out.join("\n").trim() + "\n";
+  }
+  out.push("## Palette (by role)", "| Role | Hex |", "|---|---|", ...paletteRows(g).map(([r, h]) => `| ${r} | ${h} |`), "Proportions: a dominant color for about 60% of the frame (sky and ground), a secondary for 30% (buildings, foliage), an accent for 10% (characters, interactables).", "");
+  if ((look.mistakes || []).length) out.push(...section("Avoid", look.mistakes.map((m) => `- ${m}`)));
+  out.push(...section("Lighting", moduleLines("lighting", g, { skip: (e) => e.id.startsWith("lighting.ao") || e.id.startsWith("lighting.contact") })));
+  const surface = moduleLines("surface", g, { skip: (e) => e.id.startsWith("surface.water.") && g["surface.model"] !== "toonWater" }).concat(moduleLines("palette", g, { skip: (e) => e.id === "palette.colors" }));
+  out.push(...section("Materials", surface.length ? surface : ["- Physically based, as the registry defaults."]));
+  const diffs = partDiffs(resolved);
+  if (Object.keys(diffs).length) {
+    const rows = [];
+    for (const [part, list] of Object.entries(diffs)) {
+      const shown = full ? list : list.slice(0, 4);
+      rows.push(`- **${PART_NAMES[part]}:** ${shown.map(([id, v]) => `${byId.get(id).label} ${valueLabel(byId.get(id), v)}`).join("; ")}${shown.length < list.length ? `; and ${list.length - shown.length} more` : ""}.`);
+    }
+    out.push(...section("Per part (differs from the above)", rows));
+  }
+  if (full) {
+    const ids = ["surface.model", "surface.bands", "surface.shadowTint", "surface.rim.intensity", "lines.hull.enabled", "lines.hull.thickness", "palette.saturation"];
+    out.push("## Per-part table", `| Part | ${ids.map((id) => byId.get(id).label).join(" | ")} |`, `|---|${ids.map(() => "---").join("|")}|`, ...PARTS.map((p12) => `| ${PART_NAMES[p12]} | ${ids.map((id) => valueLabel(byId.get(id), resolved.parts[p12][id])).join(" | ")} |`), "");
+  }
+  const hullParts = PARTS.filter((p12) => resolved.parts[p12]["lines.hull.enabled"]);
+  const inkParts = PARTS.filter((p12) => resolved.parts[p12]["lines.screen.enabled"]);
+  const partInk = [
+    ...!g["lines.hull.enabled"] && hullParts.length ? [`- Outlines (inverted hull) only on ${hullParts.map((p12) => PART_NAMES[p12].toLowerCase()).join(", ")}: ${resolved.parts[hullParts[0]]["lines.hull.thickness"]} px at 1080p, ${resolved.parts[hullParts[0]]["lines.hull.color"]}. Never on the other parts.`] : [],
+    ...g["lines.screen.enabled"] && inkParts.length < PARTS.length ? [`- Screen-space ink only on ${inkParts.map((p12) => PART_NAMES[p12].toLowerCase()).join(", ")}.`] : []
+  ];
+  const lines = moduleLines("lines", g, { skip: (e) => !full && e.id.startsWith("lines.screen.") && !["lines.screen.enabled", "lines.screen.thickness", "lines.screen.color", "lines.screen.colorFromSurface", "lines.screen.fade", "lines.screen.texture", "lines.screen.wobble"].includes(e.id) }).concat(partInk);
+  out.push(...section("Lines", lines.length ? lines : ["- No outlines anywhere."]));
+  out.push(...section("Atmosphere", moduleLines("atmosphere", g, { skip: (e) => e.id.startsWith("atmosphere.godRays") })));
+  const post = chain.map((e, i) => {
+    const vals = e.params.filter((p12) => full || notable(p12, g[p12.id], g)).map((p12) => `${p12.label} ${valueLabel(p12, g[p12.id])}`);
+    const hint = target === "three" && THREE_HINTS[e.id] ? ` Build with ${THREE_HINTS[e.id]}.` : "";
+    return `${i + 1}. **${e.label}**${e.parts ? ` (only on ${e.parts.join(", ")})` : ""}${vals.length ? `: ${vals.join(", ")}` : ""}.${hint}`;
+  });
+  out.push(...section("Post chain (in this order)", post.length ? post : ["None: the look is entirely in the materials."]));
+  const tierName = ["Blockout", "Low-poly", "Crafted", "Detailed"][tier ?? (look.phone === "cheap" ? 1 : 2)];
+  out.push(...section("Modeling rules", [
+    `- Target complexity: ${tierName}. Bevel box edges by 2–4% of their size where the tier calls for it.`,
+    "- Silhouettes first: every object must read as a solid shape at 64 px tall.",
+    "- Put detail near the player's path; keep distant geometry simple (fog and lines hide it).",
+    g["surface.flatNormals"] ? "- Flat-shaded facets are part of this look: keep polygons visible." : "- Smooth normals on curved shapes; hard edges where the form turns.",
+    ...proceduralRules(target, false)
+  ]));
+  out.push(...section("Motion", moduleLines("motion", g).concat(moduleLines("retro", g, { skip: (e) => !e.id.startsWith("retro.vertexSnap") }))));
+  const mobile = Object.entries(look.tiers?.mobile?.params || {}).filter(([id]) => byId.has(id)).map(([id, v]) => `${byId.get(id).label} ${valueLabel(byId.get(id), v)}`);
+  out.push(...section("Performance", [
+    `- ${PHONE[look.phone] || "Not rated"}.${chain.some((e) => ["lines.screen", "lighting.ao", "lighting.contact", "lens.dof", "lens.motionBlur", "quality.traa"].includes(e.id)) ? " Uses extra scene buffers (normals, ids or depth)." : " No extra scene buffers."}`,
+    mobile.length ? `- Mobile variant: ${mobile.join(", ")}.` : "- Mobile variant: the same look.",
+    ...moduleLines("quality", g).filter(() => full)
+  ]));
+  if (plan && (plan.levels?.length || plan.zones?.length || plan.modes?.length)) {
+    const rows = [
+      ...(plan.levels || []).map((l) => `- Level **${l.scene}**: ${l.look}${l.transition ? `, enter with a ${l.transition}` : ""}.`),
+      ...(plan.zones || []).map((z) => `- Zone **${z.zone}** (${z.scene}): ${z.look}; blend over ${z.blend ?? 2} m.`),
+      ...plan.modes?.length ? [`- Player visual modes (settings menu): ${plan.modes.map((m) => `${m.name} (${m.look})`).join(", ")}.`] : []
+    ];
+    out.push(...section("Look plan", rows));
+  }
+  out.push(...section(`Implementation (${BRIEF_TARGETS[target]})`, implementation(target, look)));
+  out.push(...section("Checklist for every new asset", [
+    target === "runtime" ? "- [ ] Uses `style.material()` with a palette color and the right `part`" : "- [ ] Uses the part's material settings above and a palette color",
+    "- [ ] Built in code with the kit's patterns (seeded, tiered, detail as geometry)",
+    "- [ ] Reads as a clear silhouette at 64 px and in the value (grayscale) view",
+    ...(look.pillars || []).slice(0, 3).map((p12) => `- [ ] ${p12}`)
+  ]));
+  return out.join("\n").trim() + "\n";
+}
+
+// src/runtime/export/files.js
+function toCube(table, size, { title = "Style Lab grade", channels = 4, bytes = false } = {}) {
+  const k = bytes ? 1 / 255 : 1;
+  const lines = [
+    `TITLE "${title.replace(/"/g, "")}"`,
+    "# Display-referred (sRGB in, sRGB out). Apply after tone mapping.",
+    `LUT_3D_SIZE ${size}`,
+    "DOMAIN_MIN 0.0 0.0 0.0",
+    "DOMAIN_MAX 1.0 1.0 1.0"
+  ];
+  for (let i = 0; i < size * size * size; i++) {
+    const o = i * channels;
+    lines.push(`${(table[o] * k).toFixed(6)} ${(table[o + 1] * k).toFixed(6)} ${(table[o + 2] * k).toFixed(6)}`);
+  }
+  return lines.join("\n") + "\n";
+}
+function toGpl(colors, { name = "Style Lab", names = [] } = {}) {
+  const rows = colors.map((hex, i) => {
+    const n = parseInt(hex.slice(1), 16);
+    const rgb = [n >> 16 & 255, n >> 8 & 255, n & 255].map((v) => String(v).padStart(3)).join(" ");
+    return `${rgb}	${names[i] || hex}`;
+  });
+  return ["GIMP Palette", `Name: ${name}`, `Columns: ${Math.min(8, colors.length)}`, "#", ...rows].join("\n") + "\n";
+}
+
+// src/runtime/look/zones.js
+var smoothstep13 = (x) => {
+  const t = Math.min(1, Math.max(0, x));
+  return t * t * (3 - 2 * t);
+};
+function zoneDistance(zone, p12) {
+  const [cx, cy, cz] = zone.center;
+  const dx = p12[0] - cx, dy = p12[1] - cy, dz = p12[2] - cz;
+  if (zone.shape === "sphere") return Math.hypot(dx, dy, dz) - zone.radius;
+  const [hx, hy, hz] = zone.size.map((s) => s / 2);
+  const qx = Math.abs(dx) - hx, qy = Math.abs(dy) - hy, qz = Math.abs(dz) - hz;
+  const outside = Math.hypot(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0));
+  return outside + Math.min(Math.max(qx, qy, qz), 0);
+}
+function zoneWeight(zone, p12) {
+  const d = zoneDistance(zone, p12);
+  const blend = Math.max(1e-6, zone.blend ?? 2);
+  return d <= 0 ? 1 : 1 - smoothstep13(d / blend);
+}
+function zoneWeights(zones, p12) {
+  return [...zones || []].map((zone, i) => ({ zone, weight: zoneWeight(zone, p12), i })).sort((a, b) => (a.zone.priority ?? 0) - (b.zone.priority ?? 0) || a.i - b.i).map(({ zone, weight }) => ({ zone, weight }));
+}
+function blendZones(base, weights, resolveZone) {
+  let r = base;
+  for (const { zone, weight } of weights) if (weight > 0) r = blendResolved(r, resolveZone(zone), weight);
+  return r;
+}
+
+// src/runtime/look/coherence.js
+var dist = (a, b) => {
+  const p12 = hexToOklab(a), q = hexToOklab(b);
+  return Math.hypot(p12[0] - q[0], p12[1] - q[1], p12[2] - q[2]);
+};
+function activeMedia(v) {
+  return [
+    v["media.kuwahara.enabled"] && "media.kuwahara.enabled",
+    v["media.watercolor.enabled"] && v["media.watercolor.edges"] > 0.2 && "media.watercolor.enabled",
+    v["media.halftone.enabled"] && v["media.halftone.amount"] > 0.5 && "media.halftone.enabled",
+    v["media.hatching.enabled"] && v["media.hatching.amount"] > 0.5 && "media.hatching.enabled"
+  ].filter(Boolean);
+}
+var COHERENCE_RULES = [
+  {
+    id: "two-media",
+    test: (v) => activeMedia(v).length >= 2,
+    message: "Pick one medium; two media read as noise.",
+    why: "Brush strokes, print dots, pen hatching and watercolor are each a complete way of making marks. Layered at full strength they fight for the same job, and the image turns into texture soup.",
+    fix: (v) => Object.fromEntries(activeMedia(v).slice(1).map((id) => [id, false])),
+    fixLabel: "Keep only the first medium"
+  },
+  {
+    id: "two-eras",
+    test: (v) => (v["retro.pixel.enabled"] || v["retro.vertexSnap.enabled"]) && (v["lens.dof.enabled"] || v["lens.motionBlur.enabled"]),
+    message: "Anachronistic: those consoles couldn't blur. Pick one era.",
+    why: 'Pixelation and vertex jitter say "old hardware"; bokeh and motion blur say "modern film camera". Together the image has no believable era.',
+    fix: () => ({ "lens.dof.enabled": false, "lens.motionBlur.enabled": false }),
+    fixLabel: "Turn off the blur"
+  },
+  {
+    id: "busy-lines",
+    test: (v, ctx) => v["lines.screen.enabled"] && v["lines.screen.thickness"] > 4 && (ctx.tier ?? 0) >= 3 && v["lines.screen.fade"] < 0.5,
+    message: "Busy: thick lines on dense detail turn into noise. Fade lines with distance or raise the crease threshold.",
+    why: "At high complexity every small crease and leaf gets ink. Illustrators simplify distant detail; distance fade does that for you.",
+    fix: () => ({ "lines.screen.fade": 1, "lines.screen.fadeStart": 15, "lines.screen.fadeEnd": 80 }),
+    fixLabel: "Fade lines with distance"
+  },
+  {
+    id: "bloom-clipping",
+    test: (v) => v["lens.bloom.enabled"] && v["lens.bloom.strength"] > 0.5 && v["grade.toneMapping"] === "none",
+    message: "Clipping: without tone mapping, bloom burns to white.",
+    why: "Bloom adds light on top of HDR highlights. Tone mapping rolls those values off smoothly; without it they clip to flat white blobs.",
+    fix: () => ({ "grade.toneMapping": "agx" }),
+    fixLabel: "Use AgX tone mapping"
+  },
+  {
+    id: "oversaturated",
+    test: (v) => Math.max(v["palette.saturation"], v["grade.saturation"]) > 1.4 && !(v["palette.remap"] > 0 && v["palette.colors"].length),
+    message: "Oversaturated colors fight; try palette remap.",
+    why: "Saturation multiplies whatever colors the scene has, including the random ones. A designed palette keeps strong color from turning garish.",
+    fix: (v) => v["palette.saturation"] > 1.4 ? { "palette.saturation": 1.3 } : { "grade.saturation": 1.3 },
+    fixLabel: "Bring saturation down to 1.3"
+  },
+  {
+    id: "fog-seam",
+    test: (v) => v["atmosphere.fog.type"] !== "off" && v["atmosphere.fog.amount"] > 0.2 && v["atmosphere.fog.skyTint"] < 0.5 && dist(v["atmosphere.fog.color"], v["atmosphere.sky.horizon"]) > 0.15,
+    message: "Fog doesn't match the sky, so the horizon will show a seam.",
+    why: "Distant objects fade toward the fog color while the sky behind them stays its own color. If the two differ, every silhouette on the horizon gets a halo.",
+    fix: () => ({ "atmosphere.fog.skyTint": 1 }),
+    fixLabel: "Tint the fog with the sky"
+  },
+  {
+    id: "grain-dither",
+    test: (v) => v["media.grain.amount"] > 0.02 && (v["retro.quantize.mode"] === "palette" && v["retro.quantize.palette"] === "onebit" || v["surface.dither.enabled"]),
+    message: "Redundant texture; the dither already breaks up the image.",
+    why: "Grain and 1-bit dithering both add fine noise. Together the pattern gets muddy and the two inks stop reading.",
+    fix: () => ({ "media.grain.amount": 0 }),
+    fixLabel: "Remove the grain"
+  }
+];
+function checkCoherence(values, ctx = {}) {
+  return COHERENCE_RULES.filter((r) => r.test(values, ctx)).map((r) => ({ id: r.id, message: r.message, why: r.why, fix: r.fix(values, ctx), fixLabel: r.fixLabel }));
+}
+
+// src/runtime/look/share.js
+var toBase64Url = (bytes) => {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 32768) s += String.fromCharCode(...bytes.subarray(i, i + 32768));
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+var fromBase64Url = (text) => {
+  const b64 = text.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((text.length + 3) % 4);
+  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+};
+async function pipe(bytes, stream) {
+  const out = new Response(new Blob([bytes]).stream().pipeThrough(stream));
+  return new Uint8Array(await out.arrayBuffer());
+}
+async function encodeShare(value) {
+  return toBase64Url(await pipe(new TextEncoder().encode(JSON.stringify(value)), new CompressionStream("deflate-raw")));
+}
+async function decodeShare(text) {
+  return JSON.parse(new TextDecoder().decode(await pipe(fromBase64Url(text), new DecompressionStream("deflate-raw"))));
+}
+function parseShareHash(hash) {
+  const m = /^#(state|look)=([A-Za-z0-9_-]+)$/.exec(hash || "");
+  return m ? { kind: m[1], text: m[2] } : null;
+}
+
+// src/runtime/perf/timer.js
+function timestampsSupported(renderer) {
+  return renderer.backend.trackTimestamp === true && renderer.hasFeature("timestamp-query");
+}
+async function gpuIdle(renderer) {
+  const backend = renderer.backend;
+  if (backend.isWebGPUBackend) {
+    await backend.device.queue.onSubmittedWorkDone();
+  } else {
+    const gl = backend.gl;
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+  }
+}
+async function measureFrames(renderer, renderFrame, { frames = 30, method = "auto" } = {}) {
+  const useTimestamps = method === "timestamp" || method === "auto" && timestampsSupported(renderer);
+  if (useTimestamps) {
+    await renderer.resolveTimestampsAsync("render");
+    for (let i = 0; i < frames; i++) renderFrame();
+    const total = await renderer.resolveTimestampsAsync("render");
+    return { method: "timestamp", msPerFrame: (total || 0) / frames };
+  }
+  await gpuIdle(renderer);
+  const t0 = performance.now();
+  for (let i = 0; i < frames; i++) renderFrame();
+  await gpuIdle(renderer);
+  return { method: "wallclock", msPerFrame: (performance.now() - t0) / frames };
+}
+
+// src/runtime/perf/cost-model.js
+var RUBRIC = {
+  "lighting.ao": { passes: 2, taps: 20, history: false, fpe: 1.6, note: "GTAO at half resolution plus a smoothing pass" },
+  "lighting.contact": { passes: 1, taps: 16, history: false, fpe: 1.2, note: "a 16-step ray march toward the sun" },
+  "lens.bloom": { passes: 10, taps: 9, history: false, fpe: 2.2, note: "a mip chain of downsample and blur passes" },
+  "atmosphere.godRays": { passes: 1, taps: 32, history: false, fpe: 1.5, note: "a 32-tap radial blur" },
+  "lens.motionBlur": { passes: 1, taps: 16, history: false, fpe: 1.3, note: "velocity buffer plus 16 taps" },
+  "lens.dof": { passes: 4, taps: 24, history: false, fpe: 3, note: "bokeh gather at half resolution plus composite" },
+  "lens.tiltShift": { passes: 2, taps: 18, history: false, fpe: 1.4, note: "a separable blur band" },
+  "quality.traa": { passes: 2, taps: 9, history: true, fpe: 1.4, note: "reprojection with a history buffer" },
+  "grade.toneMapping": { passes: 0, taps: 0, history: false, fpe: 0, note: "fused into the final pass" },
+  "grade.basic": { passes: 0, taps: 0, history: false, fpe: 0.1, note: "fused math" },
+  "grade.selective": { passes: 0, taps: 0, history: false, fpe: 0.1, note: "fused math (OKLab)" },
+  "grade.lut": { passes: 0, taps: 1, history: false, fpe: 0.2, note: "one 3D texture lookup" },
+  "grade.gradientMap": { passes: 0, taps: 0, history: false, fpe: 0.1, note: "fused math" },
+  "media.kuwahara": { passes: 1, taps: 0, history: false, fpe: (v) => 0.6 + 0.12 * (2 * v["media.kuwahara.radius"] + 1) ** 2 / 4, note: "8 sectors over a (2r + 1)² window: cost grows with the radius squared" },
+  "media.watercolor": { passes: 1, taps: 12, history: false, fpe: 1.2, note: "edge darkening and granulation" },
+  "media.halftone": { passes: 0, taps: 0, history: false, fpe: (v) => v["media.halftone.mode"] === "cmyk" ? 0.5 : 0.3, note: "fused dot screens" },
+  "media.hatching": { passes: 0, taps: 0, history: false, fpe: 0.3, note: "fused line screens" },
+  "lines.screen": { passes: 0, taps: 25, history: false, fpe: 1.4, note: "8 neighbors of depth, normal and ids (needs MRT)" },
+  "retro.pixel": { passes: 1, taps: 4, history: false, fpe: 0.3, note: "low-resolution scene pass and nearest upscale (cheaper scene)" },
+  "quality.fxaa": { passes: 1, taps: 9, history: false, fpe: 0.6, note: "one pass" },
+  "quality.smaa": { passes: 3, taps: 12, history: false, fpe: 1.5, note: "edge, weight and blend passes" },
+  "media.misregistration": { passes: 1, taps: 3, history: false, fpe: 0.4, note: "a texture boundary plus three taps" },
+  "media.paper": { passes: 0, taps: 1, history: false, fpe: 0.2, note: "procedural texture" },
+  "retro.quantize": { passes: 0, taps: 0, history: false, fpe: 0.2, note: "fused palette match and dither" },
+  "lens.ca": { passes: 1, taps: 3, history: false, fpe: 0.4, note: "a texture boundary plus three taps" },
+  "lens.distortion": { passes: 1, taps: 1, history: false, fpe: 0.4, note: "a texture boundary" },
+  "lens.vignette": { passes: 0, taps: 0, history: false, fpe: 0.05, note: "fused" },
+  "media.grain": { passes: 0, taps: 0, history: false, fpe: 0.05, note: "fused" },
+  "lens.letterbox": { passes: 0, taps: 0, history: false, fpe: 0.02, note: "fused" },
+  "retro.crt": { passes: 1, taps: 5, history: false, fpe: 0.6, note: "curvature needs a texture boundary" }
+};
+var BUFFER_FPE = 0.5;
+var SHADOW_FPE = { 512: 0.15, 1024: 0.3, 2048: 0.8, 4096: 2 };
+var SCENE_FPE = 1;
+var BUDGETS = [
+  { id: "desktop", label: "Desktop GPU, 1080p", fpe: 60, estimate: true },
+  { id: "laptop", label: "Laptop integrated GPU, 1080p", fpe: 18, estimate: true },
+  { id: "phone-high", label: "High-end phone (2023+), 0.75 render scale", fpe: 9, estimate: true },
+  { id: "phone-mid", label: "Mid-range phone, 0.75 render scale", fpe: 5, estimate: true },
+  { id: "phone-low", label: "Low-end phone", fpe: 2.5, estimate: true }
+];
+var VERDICTS = { safe: "✅ phone-safe", high: "⚠️ high-end phones only", desktop: "⛔ desktop or console only" };
+var fpeOf = (id, v) => {
+  const r = RUBRIC[id];
+  return r ? typeof r.fpe === "function" ? r.fpe(v) : r.fpe : 0.5;
+};
+function rubric(global, parts) {
+  const v = withPartMasks(global, parts);
+  const active = activeEffects(v);
+  const effects = active.map((id) => ({ id, label: EFFECTS.find((e) => e.id === id)?.label || id, fpe: Math.round(fpeOf(id, v) * 100) / 100, note: RUBRIC[id]?.note || "" }));
+  const buffers = [...passRequirements(v)];
+  const shadows = SHADOW_FPE[v["lighting.shadows.mapSize"]] ?? 0.8;
+  const scale = v["retro.pixel.enabled"] ? 0.5 : v["quality.resolution"] ?? 1;
+  const effectsTotal = effects.reduce((s, e) => s + e.fpe, 0);
+  const total = Math.round((SCENE_FPE * scale + effectsTotal * scale + buffers.length * BUFFER_FPE + shadows) * 100) / 100;
+  const budget = (id) => BUDGETS.find((b) => b.id === id).fpe;
+  const verdict = total <= budget("phone-mid") ? "safe" : total <= budget("phone-high") ? "high" : "desktop";
+  return { effects, buffers, shadows, scale, total, verdict, label: VERDICTS[verdict] };
+}
+function mobileSubstitutions(global, parts) {
+  const o = {}, partOverrides = {}, changes = [];
+  const set = (id, value, why) => {
+    if (global[id] !== value) {
+      o[id] = value;
+      changes.push(why);
+    }
+  };
+  if (global["lighting.ao.enabled"] || PARTS.some((p12) => parts[p12]["lighting.ao.enabled"])) set("lighting.ao.enabled", false, "Ambient occlusion off (two extra passes and two buffers).");
+  if (global["lighting.contact.enabled"]) set("lighting.contact.enabled", false, "Contact shadows off (a ray march per pixel).");
+  if (global["lens.dof.enabled"]) set("lens.dof.enabled", false, "Depth of field off (bokeh is the most expensive lens effect).");
+  if (global["lens.motionBlur.enabled"]) set("lens.motionBlur.enabled", false, "Motion blur off (needs a velocity buffer).");
+  if (global["atmosphere.godRays.enabled"]) set("atmosphere.godRays.enabled", false, "God rays off (a 32-tap radial blur).");
+  if (global["lens.tiltShift.enabled"]) set("lens.tiltShift.enabled", false, "Tilt-shift off.");
+  if (["traa", "smaa"].includes(global["quality.aa"])) set("quality.aa", "fxaa", "TRAA / SMAA → FXAA (one pass, no history).");
+  if (global["lens.bloom.enabled"] && global["lens.bloom.source"] !== "emissive") set("lens.bloom.source", "emissive", "Bloom only from emissive surfaces.");
+  if (global["media.kuwahara.enabled"] && global["media.kuwahara.radius"] > 2) {
+    set("media.kuwahara.radius", 2, "Painterly radius 2 (cost grows with the radius squared)…");
+    set("quality.resolution", Math.min(global["quality.resolution"], 0.5), "…at half render scale.");
+  }
+  if (global["lighting.shadows.mapSize"] > 1024) set("lighting.shadows.mapSize", 1024, "Shadow map 1024.");
+  const inked = PARTS.filter((p12) => parts[p12]["lines.screen.enabled"]);
+  if (inked.length) {
+    o["lines.screen.enabled"] = false;
+    for (const p12 of ["characters", "hero", "props", "architecture"]) {
+      if (!inked.includes(p12)) continue;
+      partOverrides[p12] = { "lines.hull.enabled": true, "lines.hull.thickness": Math.min(4, Math.max(1, parts[p12]["lines.screen.thickness"] * 0.8)), "lines.hull.color": parts[p12]["lines.screen.color"] };
+    }
+    changes.push("Screen-space lines → hull outlines on characters, props and buildings (no extra buffers).");
+  }
+  return { overrides: o, partOverrides, changes };
+}
+
 // src/runtime/index.js
-var RUNTIME_VERSION = "0.5.0";
+var RUNTIME_VERSION = "0.10.0";
 export {
+  BRIEF_LENGTHS,
+  BRIEF_TARGETS,
+  BUDGETS,
+  COHERENCE_RULES,
   EFFECTS,
   LOOK_SCHEMA,
   LUT_PRESETS,
+  MASKED,
   MODULES,
   PALETTES,
   PARTS,
   PART_INDEX,
   PART_KEYWORDS,
+  PART_MODULES,
   REGISTRY,
+  RUBRIC,
   RUNTIME_VERSION,
+  Style,
   StyleLightingModel,
   StyleRuntime,
   StyleSurfaceMaterial,
+  VERDICTS,
+  VIEWS,
   activeEffects,
   applyStrength,
   bakeLut,
   bayerMatrix,
+  blendResolved,
+  blendZones,
   byId,
+  checkCoherence,
   checkValue,
   color_exports as color,
   computeOutlineNormals,
   createHullMaterial,
+  createStyle,
   createSurfaceUniforms,
+  decodeShare,
   defaults,
+  designerView,
+  encodeShare,
   formatBrief,
+  generateBrief,
   gpuIdle,
   guessParts,
+  lookFromResolved,
   lookValue,
   measureFrames,
   migrateLook,
   mixValue,
+  mobileSubstitutions,
+  parseShareHash,
+  partRecipe,
   passRequirements,
   pixelGrid,
+  postChain,
   resolveLook,
+  resolveRecipe,
+  resolvedHash,
+  rubric,
+  styleFromMaterial,
+  tagMeshes,
   timeOfDay,
   timestampsSupported,
+  toCube,
+  toGpl,
   validateLook,
-  valueLabel
+  valueLabel,
+  withPartMasks,
+  zoneWeight,
+  zoneWeights
 };
