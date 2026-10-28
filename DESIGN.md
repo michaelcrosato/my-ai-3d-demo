@@ -1302,7 +1302,7 @@ Each milestone ends with: `npm test` and `npm run smoke` green, a rebuilt `dist/
 - **Verify checks:** backend badge shows WebGPU on your machine · the file works when opened from disk · the report shows no errors.
 
 ### M1 — Vertical slice: plain vs. styled
-- **Status:** done (v0.2.0), waiting on the Verify report. Every acceptance item has a numeric smoke check on WebGPU and WebGL2. Decisions made while building it:
+- **Status:** done (v0.2.0) and verified on real hardware (Chrome 156 / Windows / NVIDIA Ampere at 2502×1839, all eight checks pass, GPU 3.92 ms/frame). Look ratings, evokes/likes out of 5: Sea Breeze Toon 3/4, Graffiti Rush 3/4, Golden Hour 4/4, Phone-Safe Toon 4/5. Every acceptance item has a numeric smoke check on WebGPU and WebGL2. Decisions made while building it:
   - **Strength** fades only continuous parameters toward `neutral`. Switches and structural values keep the look's value, so the slider never rebuilds; strength 0 equals that look's neutral version exactly.
   - **Tune overrides beat the look's part values** (resolution: global → look parts → overrides → part overrides), so a slider always changes what you see.
   - **Baseline looks** (`baseline: true`, used by Plain) skip the scene's light rig and sky, so the Plain look matches the P set exactly (since M2, when the baseline started using the model's roughness and metalness).
@@ -1331,12 +1331,13 @@ Each milestone ends with: `npm test` and `npm run smoke` green, a rebuilt `dist/
 - **Verify checks:** look buttons apply instantly · hold compare feels instant (keyboard and gamepad) · the split divider drags smoothly · outlines stay stable while orbiting (no shimmer, gaps or cracks at hard edges) · cel bands are crisp · the tier slider changes geometry without moving the composition · rate the four looks.
 
 ### M2 — Scene library and asset kit
-- **Status:** done (v0.3.0), waiting on the Verify report. Ten scenes build deterministically at all four tiers (equal triangles and capture hashes on rebuild), and every scene × look passes the M1 checks on WebGPU and WebGL2. Decisions made while building it:
+- **Status:** done (v0.3.0) and verified on real hardware (Chrome 156 / Windows / NVIDIA Ampere at 2502×1839, all six checks pass, GPU 4.22 ms/frame). Ten scenes build deterministically at all four tiers (equal triangles and capture hashes on rebuild), and every scene × look passes the M1 checks on WebGPU and WebGL2. Decisions made while building it:
   - **The plain baseline uses the model's own material values** (roughness, metalness, emissive, textures), defaulting to roughness 0.8 and metalness 0. An agent's export carries those values, and it makes the Plain look equal the baseline exactly.
   - **Practical lights** (torches, lamps, campfires) live in the scene, light both render sets, and cast no shadows. Flicker is scene animation.
   - **Grass is merged blades** with a wind `positionNode` (the sea's wave node generalized), not InstancedMesh, for the same hull reason as M1. Deformed, skinned and see-through meshes get no hull.
   - **Scene lighting must stay readable under any look that inherits it.** The dungeon's first rig (moonlight 0.6, ambient 0.4) left Phone-Safe Toon nearly black, so dark scenes keep enough ambient for shadows to read.
   - **Imports** are scaled to a 10 m bounding radius and placed on y = 0, so looks' fog and lines behave. A neutral ground is added when nothing is guessed as terrain or water. The first animation clip plays on the app clock; skinned meshes get skinned twins. Draco and meshopt decoders load on demand; KTX2 textures and morph-target twins are not supported yet. Complexity and density don't apply to imports.
+  - **Geometric micro-detail stands in for textures.** Panel seams, bevels and inset plates (like the hangar walls) give flat-colored low-poly models depth that every look can light and outline; Verify called it out. Later kit work keeps adding detail as geometry rather than image textures.
   - **Part guessing** is a pure runtime function (`guessParts`), for later reuse by `convertScene()`. Order: tag → keywords on mesh, material, then ancestors (nearest first) → emissive → the largest low flat mesh is terrain (water if blue) → props.
 - **Scope:**
   - Scenes `garden`, `plaza`, `dungeon`, `kart`, `platforms`, `hangar`, `meadow`, `campsite` (P1 set) on the shared kit
