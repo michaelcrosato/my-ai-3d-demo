@@ -10,6 +10,7 @@
 import * as THREE from 'three/webgpu';
 import { texture, vec2, vec4, screenUV, float } from 'three/tsl';
 import { timestampsSupported, gpuIdle } from '../../runtime/perf/timer.js';
+import { stepNodeFrame } from '../gpu/readback.js';
 import { rubric, BUDGETS, VERDICTS } from '../../runtime/perf/cost-model.js';
 import { EFFECTS, activeEffects, withPartMasks, passRequirements } from '../../runtime/post/graph.js';
 import { resolveLook } from '../../runtime/look/resolve.js';
@@ -79,7 +80,10 @@ export async function runAudit( { app, renderer, target = 'desktop', rounds = 3,
 	];
 
 	// One frame's GPU time: timestamps when the renderer has them, else render → GPU idle.
+	// Each is a new node frame, so post effects run all their passes every time.
 	const frame = async () => {
+
+		stepNodeFrame( renderer );
 
 		if ( timer === 'timestamp' ) {
 
@@ -103,6 +107,7 @@ export async function runAudit( { app, renderer, target = 'desktop', rounds = 3,
 
 		runtime.apply( variant.values );
 		const t0 = performance.now();
+		stepNodeFrame( renderer );
 		runtime.render();
 		await gpuIdle( renderer );
 		variant.compileMs = round( performance.now() - t0, 0 );
@@ -153,6 +158,7 @@ export async function runAudit( { app, renderer, target = 'desktop', rounds = 3,
 	// One clean frame of the full look for the per-frame counters.
 	runtime.apply( full );
 	renderer.info.reset();
+	stepNodeFrame( renderer );
 	runtime.render();
 	const info = { ...renderer.info.render };
 	const report = {

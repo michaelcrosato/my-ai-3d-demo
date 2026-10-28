@@ -120,3 +120,16 @@ export function pixelStats( pixels, step = 2 ) {
 	return { meanLuma: mean, lumaStd: Math.sqrt( Math.max( 0, sum2 / n - mean * mean ) ), clippedBlack: black / n, clippedWhite: white / n };
 
 }
+
+/**
+ * Advances three's node frame, as the renderer's animation loop does each frame. Post nodes
+ * (depth of field, bloom, AO…) run their internal passes once per node frame, so renders
+ * made outside the loop (captures, the audit) would otherwise reuse the previous render's
+ * results: a capture after an audit showed the audit's depth of field, and back-to-back
+ * audit frames skipped those passes.
+ */
+export function stepNodeFrame( renderer ) {
+
+	renderer._nodes?.nodeFrame?.update();
+
+}

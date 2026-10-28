@@ -5,7 +5,7 @@ import * as THREE from 'three/webgpu';
 import { installErrorCapture } from './diagnostics/errors.js';
 import { parseParams } from './boot/params.js';
 import { createRenderer, collectCaps, backendName } from './boot/renderer.js';
-import { renderToPixels, withRendererSize, pixelStats } from './gpu/readback.js';
+import { renderToPixels, withRendererSize, pixelStats, stepNodeFrame } from './gpu/readback.js';
 import { runSpikes as runSpikeSuite, SPIKES } from './spikes/index.js';
 import { createVerifyPanel } from './verify/panel.js';
 import { createApp } from './app.js';
@@ -383,7 +383,10 @@ async function boot() {
 
 					app.runtime.apply( app.resolveFor( id ) );
 					app.runtime.update( app.frozenTime ?? 1, { focus: app.controls.target } );
+					app.runtime.P.get( 'lens.motionBlur.shutter' ).value = 0; // a still: no motion, no blur
+					stepNodeFrame( renderer );
 					await renderToPixels( renderer, w, hgt, () => app.runtime.render() ); // compiles
+					stepNodeFrame( renderer );
 					const px = await renderToPixels( renderer, w, hgt, () => app.runtime.render() );
 					const c = document.createElement( 'canvas' );
 					c.width = w; c.height = hgt;
@@ -566,8 +569,10 @@ async function boot() {
 					// A still capture has no motion, so no motion blur: renders outside the animation
 					// loop would otherwise read stale previous-frame matrices in the velocity buffer.
 					if ( ! advance ) shutter.value = 0;
+					stepNodeFrame( renderer );
 					await renderToPixels( renderer, width, height, () => app.runtime.render() ); // warm-up: compiles after rebuilds
 					if ( advance && t0 !== null ) { app.actions.freeze( t0 + advance ); app.tick( 0 ); }
+					stepNodeFrame( renderer );
 					const pixels = await renderToPixels( renderer, width, height, () => app.runtime.render() );
 					// With trackTimestamp on, unresolved queries pile up while the loop is paused.
 					if ( stats.method === 'timestamp' ) await renderer.resolveTimestampsAsync( 'render' );
