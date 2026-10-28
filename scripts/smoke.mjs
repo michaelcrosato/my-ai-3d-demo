@@ -346,7 +346,7 @@ async function m4Checks( page, fail, run ) {
 		check( 'parts: kuwahara runs, masked to the terrain', effects.includes( 'media.kuwahara' ) && s.app.runtime.graphKey.includes( 'media.kuwahara@mask' ), [ effects, s.app.runtime.graphKey ] );
 		const p0 = s.info();
 		s.app.actions.setParam( 'lines.screen.thickness', 3, { part: 'characters' } );
-		s.app.actions.setParam( 'surface.bands', 4, { part: 'terrain' } );
+		s.app.actions.setParam( 'surface.softness', 0.4, { part: 'terrain' } );
 		s.app.actions.setParam( 'palette.saturation', 0.6, { part: 'foliage' } );
 		const p1 = s.info();
 		check( 'parts: part sliders never rebuild', p1.graphBuilds === p0.graphBuilds && p1.passBuilds === p0.passBuilds && p1.materialBuilds === p0.materialBuilds, [ p0, p1 ].map( ( i ) => [ i.materialBuilds, i.graphBuilds, i.passBuilds ] ) );
@@ -356,16 +356,16 @@ async function m4Checks( page, fail, run ) {
 		const back = await cap();
 		check( 'parts: clearing the parts returns to the global look exactly', s.diff( global.id, back.id ).mae < 0.001, s.diff( global.id, back.id ).mae );
 
-		// Masks stay in their parts: kuwahara on the sky only leaves the lower frame alone.
+		// Masks stay in their parts: halftone on the sky only leaves the lower frame (the floor) alone.
 		await s.setScene( 'lookdev', { tier: 1 } );
 		await s.applyLook( 'sea-breeze' );
 		const plainSky = await cap();
-		s.app.actions.setParam( 'media.kuwahara.enabled', true, { part: 'sky' } );
-		s.app.actions.setParam( 'media.kuwahara.radius', 8, { part: 'sky' } );
+		const dots = { 'media.halftone.amount': 1, 'media.halftone.size': 8 };
+		s.app.actions.setParam( 'media.halftone.enabled', true, { part: 'sky' } );
+		for ( const [ k, v ] of Object.entries( dots ) ) s.app.actions.setParam( k, v, { part: null } );
 		const skyOnly = await cap();
 		await s.setParts( {} );
-		s.app.actions.setParam( 'media.kuwahara.enabled', true );
-		s.app.actions.setParam( 'media.kuwahara.radius', 8 );
+		s.app.actions.setParam( 'media.halftone.enabled', true );
 		const everywhere = await cap();
 		s.app.actions.resetParams();
 		const low = { rect: [ 0.1, 0.75, 0.9, 1 ] };
