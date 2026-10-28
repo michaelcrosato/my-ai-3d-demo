@@ -702,7 +702,8 @@ Each rule carries a short *why*. Agents follow rules more reliably when they kno
 | `STYLE.md` | The brief |
 | `look.json` / `looks.json` | One look, or a plan with several looks, zones and modes (schema `stylelab.look@1`) |
 | `stylelab-runtime.js` | The style engine as an ES module (imports `three/webgpu`, `three/tsl`, `three/addons/`). The same code the tool runs ([Appendix C](#appendix-c--runtime-api)). |
-| `starter.html` | A minimal single-file game scaffold wired to the runtime and the look: ground, a controllable capsule, props tagged by part, a look switcher. It proves parity and gives agents a template to start from. |
+| `starter.html` | A minimal single-file game scaffold wired to the runtime and the look: ground, a controllable capsule, props tagged by part, a look switcher. Its props come from `stylelab-kit.js`. It proves parity and gives agents a template to start from. |
+| `stylelab-kit.js` | The procedural asset kit as an ES module (imports only `three`): the shapes, buildings, nature, characters, creatures and props the scenes are built from, with part tags, seeded randomness and complexity tiers. A starter library the agent extends in the same style. |
 | `grade.cube` | The grade module baked into a 33³ LUT, for other engines |
 | `palette.gpl` + `palette.png` | Palette for paint tools and engines |
 | `reference.png`, `contact-sheet.png` | Current view; the look across all scenes. For humans and for agents that accept images. |
@@ -1402,13 +1403,15 @@ Each milestone ends with: `npm test` and `npm run smoke` green, a rebuilt `dist/
   - Harden the runtime/editor boundary
   - `createStyle()` public API including `convertScene()` retrofit
   - Brief generator: 3 targets × 3 lengths, templates from the registry, look metadata, plan and modes, mobile tier, acceptance checklist
-  - Exports: `STYLE.md`, `look(s).json`, `stylelab-runtime.js`, `starter.html`, `grade.cube`, palette files, reference and contact sheet, snapshot snippet
+  - **Procedural assets:** the brief tells the agent to build assets in code the way the kit does. That means three.js geometry with `userData.style` part tags, seeded randomness, complexity tiers, and detail as geometry (seams, bevels, inset plates) rather than image textures. Code-built assets stay readable and editable for agents, fit in one HTML file, and the look's lighting, lines and grade dress them up. The kit ships as `stylelab-kit.js`, a starter library.
+  - Exports: `STYLE.md`, `look(s).json`, `stylelab-runtime.js`, `stylelab-kit.js`, `starter.html`, `grade.cube`, palette files, reference and contact sheet, snapshot snippet
   - Share and QR tab
 - **Acceptance:**
   - `starter.html` matches the tool's render (smoke parity check).
   - The brief for every built-in look passes unit snapshot checks: no missing values, all enabled effects in pipeline order.
   - `.cube` export round-trips through `LUTCubeLoader` with low error.
-- **Verify checks:** **paste the brief into one of your agents, ask for a small scene, and report how close it gets** · open `starter.html` next to the tool and compare · try `convertScene()` on an existing agent-made game.
+  - `stylelab-kit.js` builds every kit asset outside the tool with the same triangle counts as inside it.
+- **Verify checks:** **paste the brief into one of your agents, ask for a small scene, and report how close it gets and whether its assets follow the kit** · open `starter.html` next to the tool and compare · try `convertScene()` on an existing agent-made game.
 
 ### M7 — Performance audit
 - **Scope:**
