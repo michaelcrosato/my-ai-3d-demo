@@ -678,9 +678,12 @@ async function m6Checks( page, fail, run, base ) {
 	} );
 
 	// starter.html renders the same frame as the tool (same runtime, look, scene and camera).
+	// Both pages share one GPU process: the tool's loop pauses while the starter runs, and the
+	// starter closes before the tool renders its side.
 	const backendQuery = run.backend === 'WebGL2' ? '&backend=webgl' : '';
 	for ( const [ look, scene ] of [ [ 'sea-breeze', 'lookdev' ], [ 'graffiti-rush', 'plaza' ] ] ) try {
 
+		await page.evaluate( () => window.__stylelab.pauseLoop( true ) );
 		const starter = await page.context().newPage();
 		const errors = [];
 		starter.on( 'pageerror', ( e ) => errors.push( String( e ) ) );
@@ -689,24 +692,6 @@ async function m6Checks( page, fail, run, base ) {
 		await starter.goto( `${base}/dist/starter.html?scene=${scene}&look=${look}${backendQuery}`, { waitUntil: 'commit' } );
 		await starter.waitForFunction( () => window.__starterReady, null, { timeout: 180000 } );
 		const px = await starter.evaluate( () => window.__starter.capture( { width: 480, height: 270, time: 1 } ) );
-		const parity = await page.evaluate( async ( { look, scene, px } ) => {
-
-			const s = window.__stylelab;
-			await s.setScene( scene, { tier: 1 } );
-			await s.applyLook( look );
-			s.freeze( 1 );
-			const c = await s.capture( { width: 480, height: 270 } );
-			const img = await createImageBitmap( await ( await fetch( s.captureURL( c.id ) ) ).blob() );
-			const cv = document.createElement( 'canvas' ); cv.width = 480; cv.height = 270;
-			const ctx = cv.getContext( '2d' ); ctx.drawImage( img, 0, 0 );
-			const tp = ctx.getImageData( 0, 0, 480, 270 ).data;
-			let sum = 0;
-			for ( let i = 0; i < tp.length; i += 4 ) for ( let k = 0; k < 3; k ++ ) sum += Math.abs( tp[ i + k ] - px[ i + k ] );
-			s.freeze( null );
-			return sum / ( 480 * 270 * 3 ) / 255;
-
-		}, { look, scene, px } );
-		out.checks.push( { name: `starter.html matches the tool (${look} on ${scene})`, pass: parity < 0.004 && ! errors.length, value: { mae: parity, errors } } );
 
 		// convertScene(): a plain three.js scene, styled in one call.
 		if ( look === 'sea-breeze' ) {
@@ -740,10 +725,30 @@ async function m6Checks( page, fail, run, base ) {
 		}
 
 		await starter.close();
+		await page.evaluate( () => window.__stylelab.pauseLoop( false ) );
+		const parity = await page.evaluate( async ( { look, scene, px } ) => {
+
+			const s = window.__stylelab;
+			await s.setScene( scene, { tier: 1 } );
+			await s.applyLook( look );
+			s.freeze( 1 );
+			const c = await s.capture( { width: 480, height: 270 } );
+			const img = await createImageBitmap( await ( await fetch( s.captureURL( c.id ) ) ).blob() );
+			const cv = document.createElement( 'canvas' ); cv.width = 480; cv.height = 270;
+			const ctx = cv.getContext( '2d' ); ctx.drawImage( img, 0, 0 );
+			const tp = ctx.getImageData( 0, 0, 480, 270 ).data;
+			let sum = 0;
+			for ( let i = 0; i < tp.length; i += 4 ) for ( let k = 0; k < 3; k ++ ) sum += Math.abs( tp[ i + k ] - px[ i + k ] );
+			s.freeze( null );
+			return sum / ( 480 * 270 * 3 ) / 255;
+
+		}, { look, scene, px } );
+		out.checks.push( { name: `starter.html matches the tool (${look} on ${scene})`, pass: parity < 0.004 && ! errors.length, value: { mae: parity, errors } } );
 
 	} catch ( e ) {
 
 		out.checks.push( { name: `starter.html (${look} on ${scene}) loads and renders`, pass: false, value: String( e.message || e ).split( '\n' )[ 0 ] } );
+		await page.evaluate( () => window.__stylelab.pauseLoop( false ) );
 
 	}
 

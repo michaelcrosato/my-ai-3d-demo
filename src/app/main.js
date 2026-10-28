@@ -440,6 +440,8 @@ async function boot() {
 		setTransition: ( patch ) => app.actions.setTransition( patch ),
 		/** Advances the app clock by dt seconds (drives transitions while captures are paused). */
 		tick: ( dt ) => app.tick( dt ),
+		/** Stops (true) or restarts the render loop, so another page in the browser gets the GPU. */
+		pauseLoop: ( on ) => { paused = !! on; },
 		/** The current state as a share URL hash (`#state=…`), and opening one. */
 		shareHash: () => app.actions.shareHash(),
 		openShare: async ( hash ) => { const p = parseShareHash( hash ); if ( ! p ) throw new Error( 'not a share hash' ); await app.actions.openShare( p.kind, p.text ); await nextFrames(); },
