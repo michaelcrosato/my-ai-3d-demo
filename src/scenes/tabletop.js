@@ -149,7 +149,7 @@ export default {
 	focus: [ 0, 0.4, 0.6 ],
 	shadow: { center: [ 0, 0, 0 ], radius: 13 },
 	far: 300,
-	fogFocus: 0.75,
+	fogFocus: 0.5, // fog starts halfway to the board's center, so fog looks band its far rows
 	params: {
 		'lighting.key.elevation': 52, 'lighting.key.azimuth': 140, 'lighting.key.color': '#fff0d8', 'lighting.key.intensity': 3,
 		'lighting.ambient.sky': '#cfd9ee', 'lighting.ambient.ground': '#6b5440', 'lighting.ambient.intensity': 0.75,

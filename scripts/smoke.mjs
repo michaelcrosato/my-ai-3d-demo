@@ -635,11 +635,11 @@ async function m10Checks( page, fail ) {
 		await page.mouse.move( touch.x, touch.y );
 		await page.mouse.down();
 		await page.mouse.move( touch.x, touch.y - 80, { steps: 4 } );
-		const during = await page.evaluate( () => [ ...window.__stylelab.app.walkInput.padMove ] );
+		const during = await page.evaluate( () => [ ...window.__stylelab.app.walkInput.touchMove ] );
 		await page.waitForTimeout( 2000 ); // a few frames: SwiftShader walks the garden at a few fps
 		const moved = await page.evaluate( ( p ) => Math.hypot( ...window.__stylelab.app.walk.position().map( ( v, i ) => v - p[ i ] ) ), touch.at );
 		await page.mouse.up();
-		const after = await page.evaluate( () => [ ...window.__stylelab.app.walkInput.padMove ] );
+		const after = await page.evaluate( () => [ ...window.__stylelab.app.walkInput.touchMove ] );
 		if ( ! ( during[ 1 ] > 0.9 && moved > 0.05 && after[ 0 ] === 0 && after[ 1 ] === 0 ) ) fail( `M10: the touch stick walks the player (${JSON.stringify( { during, moved, after } )})` );
 
 	}
@@ -1163,6 +1163,9 @@ async function m9Checks( page, fail, run, base ) {
 
 		check( 'Set it up for me loads each check\'s scene and look', loaded.every( ( [ id, scene, look ] ) => { const c = s.checkSetup( id ); return ( ! c.scene || c.scene === scene ) && ( ! c.look || c.look === look ); } ), loaded );
 		if ( s.app.walking ) await s.setWalk( false );
+		// M8-02 opened the Analyze tab, whose critic re-measures every 2.5 s with the loop
+		// paused: back to the Look tab, or later checks that need the loop lose frames to it.
+		document.querySelector( 'nav.tabs button[data-tab="look"]' ).click();
 		document.querySelector( '#verify .close' ).click();
 
 		// The welcome and the key map.

@@ -78,7 +78,7 @@ export function createApp( { renderer, canvas, persist = true } ) {
 	let clock = 0, frozen = null;
 	// M5: physics (toybox and walk mode), look zones, the plan player and mode cycling.
 	let physics = null, physicsLoading = null, walk = null;
-	const walkInput = { keys: new Set(), padMove: [ 0, 0 ], padLook: [ 0, 0 ], padJump: false, padRun: false, mouse: [ 0, 0 ] };
+	const walkInput = { keys: new Set(), padMove: [ 0, 0 ], padLook: [ 0, 0 ], padJump: false, padRun: false, touchMove: [ 0, 0 ], touchJump: false, touchRun: false, mouse: [ 0, 0 ] };
 	let zoneCache = { target: null, map: new Map() }, zoneKey = '';
 	let playing = null, cycling = null;
 
@@ -968,13 +968,13 @@ export function createApp( { renderer, canvas, persist = true } ) {
 
 			}
 
-			// Walk mode input (keyboard, gamepad, mouse drag) → the controller; physics steps at 1/60 s.
+			// Walk mode input (keyboard, gamepad, touch stick, mouse drag) → the controller; physics steps at 1/60 s.
 			if ( walk ) {
 
 				const k = walkInput.keys, clamp = ( v ) => Math.max( - 1, Math.min( 1, v ) );
-				walk.input.move = [ clamp( ( k.has( 'd' ) || k.has( 'arrowright' ) ? 1 : 0 ) - ( k.has( 'a' ) || k.has( 'arrowleft' ) ? 1 : 0 ) + walkInput.padMove[ 0 ] ), clamp( ( k.has( 'w' ) || k.has( 'arrowup' ) ? 1 : 0 ) - ( k.has( 's' ) || k.has( 'arrowdown' ) ? 1 : 0 ) + walkInput.padMove[ 1 ] ) ];
-				walk.input.jump = k.has( ' ' ) || walkInput.padJump;
-				walk.input.run = k.has( 'shift' ) || walkInput.padRun;
+				walk.input.move = [ clamp( ( k.has( 'd' ) || k.has( 'arrowright' ) ? 1 : 0 ) - ( k.has( 'a' ) || k.has( 'arrowleft' ) ? 1 : 0 ) + walkInput.padMove[ 0 ] + walkInput.touchMove[ 0 ] ), clamp( ( k.has( 'w' ) || k.has( 'arrowup' ) ? 1 : 0 ) - ( k.has( 's' ) || k.has( 'arrowdown' ) ? 1 : 0 ) + walkInput.padMove[ 1 ] + walkInput.touchMove[ 1 ] ) ];
+				walk.input.jump = k.has( ' ' ) || walkInput.padJump || walkInput.touchJump;
+				walk.input.run = k.has( 'shift' ) || walkInput.padRun || walkInput.touchRun;
 				walk.input.look = [ walkInput.mouse[ 0 ] + walkInput.padLook[ 0 ] * dt * 2.4, walkInput.mouse[ 1 ] + walkInput.padLook[ 1 ] * dt * 1.6 ];
 				walkInput.mouse = [ 0, 0 ];
 

@@ -112,6 +112,9 @@ export default {
 		'lighting.ambient.sky': '#43538a', 'lighting.ambient.ground': '#2a2026', 'lighting.ambient.intensity': 1,
 		'atmosphere.sky.zenith': '#06070e', 'atmosphere.sky.horizon': '#25304d', 'atmosphere.sky.ground': '#0e1018',
 		'atmosphere.fog.color': '#202842',
+		// Exposed up for night, as a camera would be: day looks keep their low ambient, and the
+		// walls hide their sun.
+		'grade.exposure': 0.6,
 		// The scene's weather: rain, in every styled look (the plain baseline has none).
 		'atmosphere.particles.enabled': true, 'atmosphere.particles.type': 'rain', 'atmosphere.particles.density': 0.7, 'atmosphere.particles.color': '#b7c8ff',
 	},
@@ -121,7 +124,7 @@ export default {
 		{ id: 'neon', label: 'Under the neon', lookName: 'Neon wash', shape: 'sphere', center: [ - 1.5, 1, - 6 ], radius: 3, blend: 3, priority: 1,
 			params: { 'grade.temperature': - 0.15, 'grade.tint': 0.25, 'grade.saturation': 1.2, 'lighting.practicals.intensity': 1.6 } },
 		{ id: 'lamp', label: 'Under the lamp', lookName: 'Lamplight', shape: 'sphere', center: [ 1.8, 1, 3 ], radius: 2.5, blend: 3, priority: 0,
-			params: { 'grade.temperature': 0.3, 'grade.exposure': 0.25 } },
+			params: { 'grade.temperature': 0.3, 'grade.exposure': 0.85 } },
 	],
 
 	build( { tier = 0, seed = 31, density = 1 } = {} ) {

@@ -1,4 +1,4 @@
-/* Style Lab kit v1.1.0 (3e44e41): procedural assets, part-tagged, seeded, tiered */
+/* Style Lab kit v1.1.0 (bb7ddef): procedural assets, part-tagged, seeded, tiered */
 // src/scenes/kit/core.js
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -2662,7 +2662,8 @@ var tabletop_default = {
   focus: [0, 0.4, 0.6],
   shadow: { center: [0, 0, 0], radius: 13 },
   far: 300,
-  fogFocus: 0.75,
+  fogFocus: 0.5,
+  // fog starts halfway to the board's center, so fog looks band its far rows
   params: {
     "lighting.key.elevation": 52,
     "lighting.key.azimuth": 140,
@@ -2843,6 +2844,9 @@ var alley_default = {
     "atmosphere.sky.horizon": "#25304d",
     "atmosphere.sky.ground": "#0e1018",
     "atmosphere.fog.color": "#202842",
+    // Exposed up for night, as a camera would be: day looks keep their low ambient, and the
+    // walls hide their sun.
+    "grade.exposure": 0.6,
     // The scene's weather: rain, in every styled look (the plain baseline has none).
     "atmosphere.particles.enabled": true,
     "atmosphere.particles.type": "rain",
@@ -2871,7 +2875,7 @@ var alley_default = {
       radius: 2.5,
       blend: 3,
       priority: 0,
-      params: { "grade.temperature": 0.3, "grade.exposure": 0.25 }
+      params: { "grade.temperature": 0.3, "grade.exposure": 0.85 }
     }
   ],
   build({ tier = 0, seed = 31, density = 1 } = {}) {

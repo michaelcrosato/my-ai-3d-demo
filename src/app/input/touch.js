@@ -1,8 +1,8 @@
 // Touch controls for walk mode (design §5.3: "virtual stick (P2)"): a stick on the left
 // moves (pushed to the rim: run), dragging anywhere else on the view looks around (the
 // canvas handles that), and a button jumps. They show in walk mode on touch screens
-// (pointer: coarse), or on any screen with ?touch=1. They feed the same walk input as the
-// gamepad, so walk mode needs no code of its own for touch.
+// (pointer: coarse), or on any screen with ?touch=1. They feed the walk input beside the
+// gamepad's (own fields, so a connected pad polling its idle sticks doesn't cancel them).
 
 import { h } from '../ui/dom.js';
 
@@ -28,11 +28,11 @@ export function createTouchControls( viewport, app, { force = false } = {} ) {
 		if ( len > RADIUS ) { dx *= RADIUS / len; dy *= RADIUS / len; }
 		knob.style.transform = `translate(${dx}px, ${dy}px)`;
 		// Screen y grows down; forward is up.
-		input.padMove = [ dx / RADIUS, - dy / RADIUS ];
-		input.padRun = len >= RADIUS * 0.95;
+		input.touchMove = [ dx / RADIUS, - dy / RADIUS ];
+		input.touchRun = len >= RADIUS * 0.95;
 
 	};
-	const release = () => { active = null; knob.style.transform = ''; input.padMove = [ 0, 0 ]; input.padRun = false; };
+	const release = () => { active = null; knob.style.transform = ''; input.touchMove = [ 0, 0 ]; input.touchRun = false; };
 
 	stick.addEventListener( 'pointerdown', ( e ) => {
 
@@ -47,10 +47,10 @@ export function createTouchControls( viewport, app, { force = false } = {} ) {
 	stick.addEventListener( 'pointermove', ( e ) => { if ( e.pointerId === active ) move( e.clientX, e.clientY ); } );
 	for ( const type of [ 'pointerup', 'pointercancel', 'lostpointercapture' ] ) stick.addEventListener( type, ( e ) => { if ( e.pointerId === active ) release(); } );
 
-	jump.addEventListener( 'pointerdown', ( e ) => { e.preventDefault(); input.padJump = true; } );
-	for ( const type of [ 'pointerup', 'pointercancel', 'pointerleave' ] ) jump.addEventListener( type, () => { input.padJump = false; } );
+	jump.addEventListener( 'pointerdown', ( e ) => { e.preventDefault(); input.touchJump = true; } );
+	for ( const type of [ 'pointerup', 'pointercancel', 'pointerleave' ] ) jump.addEventListener( type, () => { input.touchJump = false; } );
 
-	const update = () => { root.hidden = ! ( app.walking && coarse() ); if ( root.hidden ) { release(); input.padJump = false; } };
+	const update = () => { root.hidden = ! ( app.walking && coarse() ); if ( root.hidden ) { release(); input.touchJump = false; } };
 	app.on( ( type ) => { if ( type === 'walk' ) update(); } );
 	window.matchMedia?.( '(pointer: coarse)' ).addEventListener?.( 'change', update );
 	update();
