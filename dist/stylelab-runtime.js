@@ -1,4 +1,4 @@
-/* Style Lab runtime v1.1.0 (0f8dafb) */
+/* Style Lab runtime v1.1.0 (120ecd7) */
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -6242,6 +6242,16 @@ var TONE_MAPPING = {
   neutral: THREE7.NeutralToneMapping
 };
 var linear = (u) => sRGBTransferEOTF2(u);
+function rebindAfterUpdate(node) {
+  const updateBefore = node.updateBefore;
+  node.updateBefore = function(frame) {
+    const result = updateBefore.call(this, frame);
+    const backend = frame.renderer.backend;
+    if (backend.isWebGLBackend && backend._currentContext) backend._setFramebuffer(backend._currentContext);
+    return result;
+  };
+  return node;
+}
 var CAMERA = [
   {
     id: "lighting.ao",
@@ -6458,7 +6468,7 @@ var CAMERA = [
     enabled: (v) => !v["retro.pixel.enabled"] && v["quality.aa"] === "traa",
     requires: () => ["depth", "velocity"],
     build(c, ctx) {
-      return vec37(ctx.own(traa(ctx.texture(c), ctx.tex("depth"), ctx.tex("velocity"), ctx.camera)).rgb);
+      return vec37(ctx.own(rebindAfterUpdate(traa(ctx.texture(c), ctx.tex("depth"), ctx.tex("velocity"), ctx.camera))).rgb);
     }
   },
   {

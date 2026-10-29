@@ -32,6 +32,29 @@ export const TONE_MAPPING = {
 
 const linear = ( u ) => sRGBTransferEOTF( u );
 
+/**
+ * three r182 on WebGL2: TRAA ends its per-frame work with history copies
+ * (copyTextureToTexture) that leave no framebuffer bound, so the rest of the frame would
+ * draw to the canvas instead of the current render target: black captures, held frames
+ * and transition snapshots. A render after it (the plain baseline, while it ran every
+ * frame) used to hide this. Rebinds the open render context (backend internals: three is
+ * pinned).
+ */
+function rebindAfterUpdate( node ) {
+
+	const updateBefore = node.updateBefore;
+	node.updateBefore = function ( frame ) {
+
+		const result = updateBefore.call( this, frame );
+		const backend = frame.renderer.backend;
+		if ( backend.isWebGLBackend && backend._currentContext ) backend._setFramebuffer( backend._currentContext );
+		return result;
+
+	};
+	return node;
+
+}
+
 export const CAMERA = [
 	{
 		id: 'lighting.ao', label: 'Ambient occlusion', stage: 'camera',
@@ -274,7 +297,7 @@ export const CAMERA = [
 		requires: () => [ 'depth', 'velocity' ],
 		build( c, ctx ) {
 
-			return vec3( ctx.own( traa( ctx.texture( c ), ctx.tex( 'depth' ), ctx.tex( 'velocity' ), ctx.camera ) ).rgb );
+			return vec3( ctx.own( rebindAfterUpdate( traa( ctx.texture( c ), ctx.tex( 'depth' ), ctx.tex( 'velocity' ), ctx.camera ) ) ).rgb );
 
 		},
 	},
