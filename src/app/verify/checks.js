@@ -5,12 +5,107 @@
 // (M4) a `recipe`, `parts` and the inspector `tab` to open, (M5) `walk: true`.
 // `learn` is what the check teaches; `signoff: false` marks optional tour steps.
 
-export const CURRENT_MILESTONE = 'M9';
+export const CURRENT_MILESTONE = 'M10';
 // Sign-off checks from this milestone on are listed in the report until you mark them
 // (M0–M2 were reported; M3 on are owed).
 export const REPORT_FROM = 'M3';
 
+/** A milestone's number ('M10' → 10), so M10 sorts after M9 and M3. */
+export const milestoneNumber = ( m ) => Number( String( m ).replace( /\D/g, '' ) );
+
 export const CHECKS = [
+	// M10: the P2 stretch scope (v1.1.0).
+	{
+		id: 'M10-01', milestone: 'M10',
+		title: 'New effects contact sheet: report bad cells',
+		steps: [ 'Press "Render the new effects sheet" below. It renders every effect added in v1.1 (lens flare, VHS, Gooch, particles, the PS1 texture filters…), each on a scene where it shows.', 'Look at each cell and its label. Note any cell that is black, blank, garbled, or doesn\'t look like its label.' ],
+		expected: 'Every cell shows its effect clearly. Report problems by cell id, for example "E70 looks wrong". Effects that need motion (afterimage, low frame rate, stepped parts) differ only slightly in a still.',
+		learn: 'The stretch catalog at a glance: what each new effect adds and where it belongs.',
+		setup: { scene: 'lookdev', look: 'plain', tier: 1 },
+		actions: [ 'effectSheetP2' ],
+	},
+	{
+		id: 'M10-02', milestone: 'M10',
+		title: 'Tabletop Map and Noir Alley read as their genres',
+		steps: [ 'Scene tab → Tabletop Map. Try Miniature Diorama, Sea Breeze Toon and Retro PS1. Orbit and change the Complexity.', 'Scene tab → Noir Alley. Try Noir, Synthwave Neon and Retro PS1; hold Space to compare with plain.' ],
+		expected: 'The board reads as a board game: every tile type and both armies are clear from the tilted camera, and Miniature turns it into a model. The alley reads as a wet night alley: the light comes from neon, windows and the lamp, rain falls, and Noir keeps the neon readable by value alone.',
+		learn: 'Two genres with opposite needs: dozens of small tiles read by color, versus a dark scene lit by its own lights.',
+		setup: { scene: 'alley', look: 'noir', tier: 2 },
+	},
+	{
+		id: 'M10-03', milestone: 'M10', signoff: false,
+		title: 'Shading models: Gooch, matcap and baked vertex AO',
+		steps: [ 'Tune → Surface → Shading model: Gooch (cool to warm). Move Gooch strength.', 'Shading model: Matcap; step through the four matcaps.', 'Tune → Lighting → Baked vertex AO on; move its strength (nothing rebuilds while you drag).' ],
+		expected: 'Gooch keeps every face readable without dark shadows (cool shade, warm light). Matcaps look the same from every angle and ignore the sun. Vertex AO darkens creases and the bases of objects, steadily, with no shimmer.',
+		learn: 'Three ways to show form cheaply, and why technical illustration, sculpting tools and phone games use them.',
+		setup: { scene: 'lookdev', look: 'phone-safe-toon', tier: 2, params: { 'surface.model': 'gooch', 'surface.bands': 1 } },
+	},
+	{
+		id: 'M10-04', milestone: 'M10',
+		title: 'PS1 textures: nearest texels, N64 blending, affine warp',
+		steps: [ 'The alley is set up with Retro PS1, which now uses nearest texels and the affine warp. Orbit slowly and watch the bricks and cobbles near the camera.', 'Tune → Retro → Texture filtering: N64 three-point; then Bilinear. Turn Affine texture warp off and on.' ],
+		expected: 'With the warp on, textures bend along triangle edges and swim as the camera moves, like on a PS1; nearest shows blocky texels up close; N64 looks soft with faint diamond shapes. Untextured surfaces don\'t change.',
+		learn: 'Hardware signatures: why PS1 floors wobble (no perspective correction) and why N64 textures look smeared (three-point filtering).',
+		setup: { scene: 'alley', look: 'retro-ps1', tier: 1, shot: 'close' },
+	},
+	{
+		id: 'M10-05', milestone: 'M10',
+		title: 'Effects in motion: speed lines, afterimage, VHS, low frame rate',
+		steps: [ 'Watch the kart race with the speed lines (set up). Then Tune → Lens → Afterimage trails on.', 'Tune → Retro → VHS on: watch the tracking tear roll and the color smear.', 'Tune → Motion → Render at… 8 fps, then Animate on… 8 with Render at… 0: compare the two cadences.' ],
+		expected: 'Speed lines flicker around the center a few times a second and stay clear of the middle. Trails follow the karts and fade. VHS smears color but keeps edges sharp. Render at 8 steps the whole image, camera included; Animate on 8 steps only the karts.',
+		learn: 'Time is part of a style: stepped animation vs. a capped frame rate, and screen effects that only exist in motion.',
+		setup: { scene: 'kart', look: 'sea-breeze', tier: 1, shot: 'gameplay', params: { 'motion.speedLines.enabled': true } },
+	},
+	{
+		id: 'M10-06', milestone: 'M10', signoff: false,
+		title: 'Per part: fog and stepped animation',
+		steps: [ 'Parts tab → Terrain → Edit overrides → Atmosphere → Fog on this part: 0. The island stays clear while the distant islands fog.', 'Parts tab → Characters → Motion → Animate on… 6, while everything else stays smooth.' ],
+		expected: 'Only the chosen part changes; the rest of the scene keeps the look\'s fog and smooth animation.',
+		learn: 'Art direction exempts things: a hero that reads at any distance, a background that animates on twos while the player stays smooth.',
+		setup: { scene: 'harbor', look: 'sea-breeze', tier: 1, tab: 'parts', params: { 'atmosphere.fog.density': 0.02 } },
+	},
+	{
+		id: 'M10-07', milestone: 'M10', signoff: false,
+		title: 'What changed, and Randomize',
+		steps: [ 'Hold Space for a second, then let go. Read the "What changed" toast; the Analyze tab keeps the numbers.', 'Tune → 🎲 Randomize a few times, then Ctrl+Z.' ],
+		expected: 'The summary names the biggest changes against plain in plain words (for Comic Ink: more silhouette contrast, a wider value range). Randomize changes the look\'s own effects within sensible ranges, never rebuilds, and one Ctrl+Z undoes a roll.',
+		learn: 'Measuring a look instead of guessing, and exploring a look\'s neighborhood.',
+		setup: { scene: 'plaza', look: 'comic-ink', tier: 1, tab: 'analyze' },
+	},
+	{
+		id: 'M10-08', milestone: 'M10', signoff: false,
+		title: 'Import a .cube LUT',
+		steps: [ 'Brief → Files → download grade.cube (or use a .cube from Resolve, Photoshop or Lightroom).', 'Tune → Import .cube (or drop the file on the window).' ],
+		expected: 'A toast names the LUT; Grade → LUT preset is "Imported .cube" and the image takes the grade. Saved looks and exported look.json files carry the LUT with them.',
+		learn: 'How a grade moves between tools: a 3D LUT is a complete color transform in one small file.',
+		setup: { scene: 'lookdev', look: 'golden-hour', tier: 1, tab: 'tune' },
+		actions: [ 'openFiles' ],
+	},
+	{
+		id: 'M10-09', milestone: 'M10',
+		title: 'Touch stick, and the gamepad in panels',
+		steps: [ 'On a phone or tablet: press Walk in the Play tab. Move with the stick bottom-left (push to the rim to run), drag elsewhere to look, tap Jump.', 'With a gamepad: open this tour, then use the D-pad to move between buttons, ←/→ on a slider or list, A to press, B to close. Change looks with LB/RB and feel the rumble.' ],
+		expected: 'The stick and Jump show only in walk mode on touch screens and move the player smoothly. In a panel the D-pad moves a yellow focus ring and never switches scenes; outside panels it works as before. Pads that support it rumble briefly on a look change (Play → Gamepad tester can turn it off).',
+		learn: 'One tool for every input: the same walk and panel actions from keys, touch and pads.',
+		setup: { scene: 'garden', look: 'garden-prank', tier: 1, tab: 'play' },
+	},
+	{
+		id: 'M10-10', milestone: 'M10', signoff: false,
+		title: 'Download everything as one .zip, and the offline build',
+		steps: [ 'Brief → Files → ⇩ Download all (.zip). Open the zip.', 'Optional, in a checkout: npm run build:offline, then open dist/style-lab-offline.html with the network off.' ],
+		expected: 'The zip opens in any archive tool and holds every export file. The offline page starts and works with no network (only compressed-glTF decoders still need it).',
+		learn: 'Handing off in one piece: a bundle for the agent, and a tool that works on a plane.',
+		setup: { scene: 'lookdev', look: 'sea-breeze', tier: 1 },
+		actions: [ 'openFiles' ],
+	},
+	{
+		id: 'M10-11', milestone: 'M10', signoff: false,
+		title: 'Your model: KTX2 textures and morph targets',
+		steps: [ 'Drop a .glb that uses KTX2 (Basis) textures or morph targets (a face, a flag) onto the window.' ],
+		expected: 'The textures show on the styled model and on the plain baseline, and morph animation plays on both (hold Space while it moves).',
+		learn: 'What real game assets bring: compressed GPU textures and blend shapes, kept intact under any look.',
+		setup: { scene: 'lookdev', look: 'sea-breeze', tier: 1, tab: 'scene' },
+	},
 	{
 		id: 'M9-01', milestone: 'M9',
 		title: 'First visit: the welcome, the tour and the key map',

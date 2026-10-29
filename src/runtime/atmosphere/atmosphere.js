@@ -1,9 +1,10 @@
-// Atmosphere (design §6.4 D, §7.7 WORLD stage): gradient sky with a sun disc and toon
-// clouds on a camera-centered dome, and distance plus height fog evaluated inside every
-// styled material (scene.fogNode), optionally tinted by the sky in the view direction.
+// Atmosphere (design §6.4 D, §7.7 WORLD stage): a gradient or physical (Preetham) sky with
+// a sun disc and toon clouds on a camera-centered dome, and distance plus height fog
+// evaluated inside every styled material (scene.fogNode), optionally tinted by the sky in
+// the view direction and scaled per part.
 
 import * as THREE from 'three/webgpu';
-import { Fn, uniform, vec2, vec3, float, mix, smoothstep, step, select, exp, floor, fract, fwidth, max, abs, acos, clamp, positionWorld, positionView, cameraPosition, fog, mrt, output, mx_fractal_noise_float } from 'three/tsl';
+import { Fn, uniform, vec2, vec3, float, mix, smoothstep, step, select, exp, floor, fract, fwidth, max, abs, acos, cos, pow, clamp, positionWorld, positionView, cameraPosition, fog, mrt, output, mx_fractal_noise_float } from 'three/tsl';
 
 export function createAtmosphereUniforms() {
 
@@ -36,6 +37,8 @@ export function createAtmosphereUniforms() {
 		cloudSpeed: uniform( 0.3 ),
 		cloudColor: uniform( new THREE.Color( '#ffffff' ) ),
 		cloudShade: uniform( new THREE.Color( '#a9b8dc' ) ),
+		turbidity: uniform( 4 ),
+		rayleigh: uniform( 1.5 ),
 		time: uniform( 0 ), // the runtime shares its clock uniform here
 	};
 
@@ -50,6 +53,45 @@ export function skyGradient( u, dir ) {
 	const above = mix( u.horizon, u.zenith, up );
 	const below = mix( u.horizon, u.ground, smoothstep( 0, 0.08, dir.y.negate() ) );
 	return mix( below, above, step( 0, dir.y ) );
+
+}
+
+/**
+ * Physical sky (Preetham, as three's SkyMesh, evaluated per pixel): Rayleigh and Mie
+ * scattering of the sun along the view direction, with haze from the turbidity. The
+ * result is scaled into the same range as the gradient sky; the sun disc is drawn by skyColor().
+ */
+export function physicalSky( u, dir ) {
+
+	const pi = Math.PI;
+	const up = vec3( 0, 1, 0 );
+	const sun = u.sunDirection;
+	// Sun intensity falls off below the horizon (the earth's shadow), as in the original.
+	const zenithCos = clamp( sun.dot( up ), - 1, 1 );
+	const sunE = float( 1000 ).mul( max( 0, float( 1 ).sub( exp( float( 1.6110731556870734 ).sub( acos( zenithCos ) ).div( 1.5 ).negate() ) ) ) );
+	const sunfade = float( 1 ).sub( clamp( float( 1 ).sub( exp( sun.y.mul( 0.1 ) ) ), 0, 1 ) );
+	const betaR = vec3( 5.804542996261093E-6, 1.3562911419845635E-5, 3.0265902468824876E-5 ).mul( u.rayleigh.sub( sunfade.oneMinus() ) );
+	const betaM = vec3( 1.8399918514433978E14, 2.7798023919660528E14, 4.0790479543861094E14 ).mul( float( 0.434 ).mul( u.turbidity ).mul( 0.2 ).mul( 10E-18 ) ).mul( 0.005 );
+	// Optical length along the view ray.
+	const zenith = acos( max( 0, dir.dot( up ) ) );
+	const inverse = float( 1 ).div( cos( zenith ).add( float( 0.15 ).mul( pow( float( 93.885 ).sub( zenith.mul( 180 / pi ) ), - 1.253 ) ) ) );
+	const Fex = exp( betaR.mul( inverse.mul( 8.4E3 ) ).add( betaM.mul( inverse.mul( 1.25E3 ) ) ).negate() );
+	// In-scattering.
+	const cosTheta = dir.dot( sun );
+	const rPhase = float( 3 / ( 16 * pi ) ).mul( pow( cosTheta.mul( 0.5 ).add( 0.5 ), 2 ).add( 1 ) );
+	const g = 0.8;
+	const mPhase = float( ( 1 - g * g ) / ( 4 * pi ) ).div( pow( float( 1 + g * g ).sub( cosTheta.mul( 2 * g ) ), 1.5 ) );
+	const ratio = betaR.mul( rPhase ).add( betaM.mul( mPhase ) ).div( betaR.add( betaM ) );
+	const Lin = pow( sunE.mul( ratio ).mul( Fex.oneMinus() ), vec3( 1.5 ) ).mul( mix( vec3( 1 ), pow( sunE.mul( ratio ).mul( Fex ), vec3( 0.5 ) ), clamp( pow( float( 1 ).sub( up.dot( sun ) ), 5 ), 0, 1 ) ) );
+	const color = Lin.add( vec3( 0.1 ).mul( Fex ) ).mul( 0.04 ).add( vec3( 0, 0.0003, 0.00075 ) );
+	return pow( color, vec3( float( 1 ).div( sunfade.mul( 1.2 ).add( 1.2 ) ) ) ).mul( 0.4 );
+
+}
+
+/** The sky's base color in direction `dir`: the gradient, or the physical sky. */
+export function skyBase( u, dir, physical = false ) {
+
+	return physical ? physicalSky( u, dir ) : skyGradient( u, dir );
 
 }
 
@@ -73,14 +115,14 @@ export function cloudLayer( u, dir, sky ) {
 
 }
 
-/** Full sky color: gradient plus a sun disc with a soft halo, and clouds over both. */
-export function skyColor( u, dir ) {
+/** Full sky color: gradient (or physical sky) plus a sun disc with a soft halo, and clouds over both. */
+export function skyColor( u, dir, physical = false ) {
 
 	const angle = acos( clamp( dir.dot( u.sunDirection ), - 1, 1 ) );
 	const r = max( u.sunRadius, 1e-4 );
 	const disc = smoothstep( r.mul( u.sunSoftness.mul( - 0.85 ).add( 1 ) ).sub( 1e-4 ), r, angle ).oneMinus().mul( step( 1e-4, u.sunRadius ) );
 	const halo = exp( angle.div( r.mul( 3 ) ).negate() ).mul( 0.15 ).mul( step( 1e-4, u.sunRadius ) );
-	return cloudLayer( u, dir, skyGradient( u, dir ).add( u.sunColor.mul( disc.add( halo ) ) ) );
+	return cloudLayer( u, dir, skyBase( u, dir, physical ).add( u.sunColor.mul( disc.add( halo ) ) ) );
 
 }
 
@@ -118,13 +160,22 @@ export function fogFactor( u, distance, world = null ) {
 
 }
 
-/** scene.fogNode for the styled set. Plain materials set `fog = false`. */
-export function createFogNode( u ) {
+/**
+ * scene.fogNode for the styled set. Plain materials set `fog = false`. `amountFor(material)`
+ * returns a material's per-part fog amount (a uniform), read when each material is built.
+ */
+export function createFogNode( u, { physical = false, amountFor = () => null } = {} ) {
 
 	const viewDir = positionWorld.sub( cameraPosition ).normalize();
 	const flat = vec3( viewDir.x, max( viewDir.y, 0 ), viewDir.z ).normalize();
-	const color = mix( u.fogColor, skyGradient( u, flat ), u.fogSkyTint );
-	return fog( color, fogFactor( u, positionView.length(), positionWorld ) );
+	const color = mix( u.fogColor, skyBase( u, flat, physical ), u.fogSkyTint );
+	const factor = fogFactor( u, positionView.length(), positionWorld );
+	return fog( color, Fn( ( _, builder ) => {
+
+		const amount = amountFor( builder.material );
+		return amount ? factor.mul( amount ) : factor;
+
+	} )() );
 
 }
 
@@ -148,12 +199,20 @@ function dome( material, layer ) {
 export function createSkyDomes( u, { layerStyled, layerPlain, idsNode } ) {
 
 	const styled = new THREE.MeshBasicNodeMaterial( { side: THREE.BackSide, depthWrite: false, fog: false } );
-	styled.colorNode = Fn( () => skyColor( u, positionWorld.sub( cameraPosition ).normalize() ) )();
+	setSkyModel( styled, u, false );
 	styled.mrtNode = mrt( { output, ids: idsNode } );
 
 	// The baseline's solid sky-blue background (design §6.9 "agent default").
 	const plain = new THREE.MeshBasicNodeMaterial( { side: THREE.BackSide, depthWrite: false, fog: false, color: new THREE.Color( '#87ceeb' ) } );
 
 	return { styled: dome( styled, layerStyled ), plain: dome( plain, layerPlain ) };
+
+}
+
+/** Points the styled dome's material at the gradient or the physical sky (a structural change). */
+export function setSkyModel( material, u, physical ) {
+
+	material.colorNode = Fn( () => skyColor( u, positionWorld.sub( cameraPosition ).normalize(), physical ) )();
+	material.needsUpdate = true;
 
 }

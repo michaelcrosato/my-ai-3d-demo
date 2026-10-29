@@ -11,9 +11,11 @@ export default [
 			{ value: 'halfLambert', label: 'Half-Lambert (soft wrap)' },
 			{ value: 'flat', label: 'Flat (cast shadows only)' },
 			{ value: 'toonWater', label: 'Toon water (depth color + foam)' },
+			{ value: 'gooch', label: 'Gooch (cool to warm)' },
+			{ value: 'matcap', label: 'Matcap (painted sphere)' },
 		],
 		learn: {
-			what: 'How a surface turns light into color. Toon bands the light into flat tones; half-Lambert wraps light softly around the form; flat ignores the surface angle; PBR is physically based.',
+			what: 'How a surface turns light into color. Toon bands the light into flat tones; half-Lambert wraps light softly around the form; flat ignores the surface angle; Gooch shades from a cool to a warm color instead of dark to light; matcap reads its shading from a painted sphere; PBR is physically based.',
 			why: 'The shading model is the biggest single decision in a style. Banded light simplifies shapes into a few readable planes, which is why toon styles make simple geometry look intentional.',
 			avoid: 'PBR on blockout geometry: it shows every flaw of the primitives. Toon water is meant for the water part only.',
 		},
@@ -390,5 +392,49 @@ export default [
 		learn: { what: 'Slow waves of stronger wind rolling across the scene.', why: 'Gusts make wind travel across a field instead of everything moving in lockstep.' },
 		brief: 'Gusts {value}.',
 		tags: [ 'wind' ],
+	} ),
+	// P2 (M10): Gooch and matcap shading.
+	p( {
+		id: 'surface.gooch.cool', label: 'Gooch cool', type: 'color', default: '#2f4fd0',
+		learn: {
+			what: 'The color the Gooch model pushes surfaces toward where they face away from the light.',
+			why: 'Gooch shading replaces dark shadows with a cool color, so every surface stays readable: the technical-illustration trick that keeps form legible without black.',
+		},
+		brief: 'Gooch cool tone {value}.',
+		tags: [ 'gooch', 'shading' ],
+	} ),
+	p( {
+		id: 'surface.gooch.warm', label: 'Gooch warm', type: 'color', default: '#ffcc55',
+		learn: {
+			what: 'The color the Gooch model pushes surfaces toward where they face the light.',
+			why: 'Warm light against cool shade is how painters separate planes by temperature instead of by value.',
+		},
+		brief: 'Gooch warm tone {value}.',
+		tags: [ 'gooch', 'shading' ],
+	} ),
+	p( {
+		id: 'surface.gooch.strength', label: 'Gooch strength', type: 'float', min: 0, max: 1, step: 0.01, default: 0.45, neutral: 0,
+		learn: {
+			what: 'How far the base colors move toward the cool and warm tones.',
+			why: 'Low values keep the palette and add temperature; high values give the classic blue-to-yellow technical-illustration look.',
+			typical: '0.3–0.6.',
+		},
+		brief: 'Gooch strength {value}.',
+		tags: [ 'gooch' ],
+	} ),
+	p( {
+		id: 'surface.matcap.preset', label: 'Matcap', type: 'enum', default: 'clay', structural: true,
+		options: [
+			{ value: 'clay', label: 'Studio clay' },
+			{ value: 'toon', label: 'Two-tone toon' },
+			{ value: 'chrome', label: 'Chrome' },
+			{ value: 'pearl', label: 'Pearl (soft rim)' },
+		],
+		learn: {
+			what: 'Which painted sphere the matcap model reads its shading from. A matcap ("material capture") looks up a picture of a lit ball by the surface\'s view-space normal.',
+			why: 'Matcaps fake complex lighting (studio softboxes, chrome reflections, rim light) for the price of one texture fetch, and they look the same from every angle: why sculpting tools and many phone games use them.',
+		},
+		brief: 'Matcap: {label}.',
+		tags: [ 'matcap', 'shading', 'unlit' ],
 	} ),
 ];

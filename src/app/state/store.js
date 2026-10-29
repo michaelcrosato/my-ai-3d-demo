@@ -22,6 +22,8 @@ const initial = () => ( {
 	modes: [], // player-selectable visual modes: [{ name, look }]
 	mode: - 1,
 	deadzone: 0.15, // gamepad sticks (radial)
+	rumble: true, // a short gamepad rumble on look change (where the pad supports it)
+	showChanges: true, // "what changed" toast after hold-to-compare
 	view: null, // designer view (Analyze tab)
 	lessons: { done: [] },
 	compare: { mode: 'off', splitPos: 0.5 },

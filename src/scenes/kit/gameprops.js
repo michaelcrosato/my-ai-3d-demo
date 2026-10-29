@@ -1,7 +1,8 @@
 // Game props for the M2 scenes: karts, coins, pipes, blocks, chests, cones, tires,
-// benches, a well, a campfire, a dropship, holograms and trash cans.
+// benches, a well, a campfire, a dropship, holograms and trash cans. Coins, item blocks
+// and chests are tagged interactable (what the highlight outlines).
 
-import { THREE, byTier, faceted, mesh, merge, place, group, practical } from './core.js';
+import { THREE, byTier, faceted, mesh, merge, place, group, practical, interactable } from './core.js';
 import { box, cylinder } from './shapes.js';
 import { character } from './characters.js';
 
@@ -73,7 +74,7 @@ export function coin( tier, { seed = 0 } = {} ) {
 	g.rotateX( Math.PI / 2 );
 	const m = mesh( ft( g, tier ), { part: 'vfx', color: '#ffd23f', emissive: '#ffb300', emissiveIntensity: 0.8, roughness: 0.3, metalness: 0.5 } );
 	m.userData.animate = ( t ) => { m.rotation.y = t * 2.5 + seed; };
-	return m;
+	return interactable( m );
 
 }
 
@@ -106,7 +107,7 @@ export function block( tier, { kind = 'item', size = 1 } = {} ) {
 
 	}
 
-	return root;
+	return kind === 'item' ? interactable( root ) : root;
 
 }
 
@@ -138,7 +139,7 @@ export function chest( tier, { color = '#8b5a2b' } = {} ) {
 
 	}
 
-	return root;
+	return interactable( root );
 
 }
 

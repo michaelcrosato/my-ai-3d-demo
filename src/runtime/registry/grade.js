@@ -185,8 +185,9 @@ export default [
 			{ value: 'cross', label: 'Cross-processed' },
 			{ value: 'faded', label: 'Faded print' },
 			{ value: 'cool-night', label: 'Cool night' },
+			{ value: 'custom', label: 'Imported .cube' },
 		],
-		learn: { what: 'Which generated grade the LUT holds.', why: 'Each preset is a recognizable film or photo-lab look; compare them at full strength, then dial the amount back.' },
+		learn: { what: 'Which grade the LUT holds: a generated preset, or a .cube file you imported (drop it on the window, or Import .cube in the Look tab).', why: 'Each preset is a recognizable film or photo-lab look; compare them at full strength, then dial the amount back. Importing a .cube brings a grade from any color tool (Resolve, Photoshop, Lightroom).' },
 		brief: 'LUT preset: {label}.',
 		tags: [ 'lut' ],
 	} ),
@@ -216,5 +217,38 @@ export default [
 		learn: { what: 'Blends between the image and its gradient-mapped version.', why: 'At 20–40% a gradient map becomes a subtle unifying tint.' },
 		brief: 'Gradient map at {value}.',
 		tags: [ 'gradient map' ],
+	} ),
+	// P2 (M10): sepia and bleach bypass.
+	p( {
+		id: 'grade.sepia.enabled', label: 'Sepia', type: 'bool', default: false, structural: true, cost: CHEAP,
+		learn: {
+			what: 'Tones the image warm brown, like an old photographic print.',
+			why: 'Sepia reads instantly as the past: flashbacks, westerns, old letters and memories.',
+			avoid: 'A partial sepia on a colorful palette: it looks dirty rather than old. Go most of the way, or leave it off.',
+		},
+		brief: 'Sepia toning.',
+		tags: [ 'grade', 'sepia', 'vintage', 'flashback' ],
+	} ),
+	p( {
+		id: 'grade.sepia.amount', label: 'Sepia amount', type: 'float', min: 0, max: 1, step: 0.01, default: 1, neutral: 0, enabledBy: 'grade.sepia.enabled',
+		learn: { what: 'Blends between the image and its sepia print.', why: 'Full sepia is a photograph; half keeps a memory of the colors.', typical: '0.6–1.' },
+		brief: 'Sepia at {value}.',
+		tags: [ 'sepia' ],
+	} ),
+	p( {
+		id: 'grade.bleach.enabled', label: 'Bleach bypass', type: 'bool', default: false, structural: true, cost: CHEAP,
+		learn: {
+			what: 'Imitates skipping the bleach step when developing film: the silver stays in the print, so colors drain and contrast turns hard and metallic.',
+			why: 'It is the gritty war-film look: drained color and crunchy contrast make a scene feel harsh and real.',
+			avoid: 'Bright, playful looks, and stacking it with the Bleach bypass LUT preset (the same idea twice).',
+		},
+		brief: 'Bleach bypass (desaturated, hard contrast).',
+		tags: [ 'grade', 'bleach bypass', 'film', 'gritty' ],
+	} ),
+	p( {
+		id: 'grade.bleach.amount', label: 'Bleach amount', type: 'float', min: 0, max: 1, step: 0.01, default: 0.8, neutral: 0, enabledBy: 'grade.bleach.enabled',
+		learn: { what: 'How strong the bleach bypass is.', why: 'Around 0.5 is grit; full strength is nearly monochrome.', typical: '0.4–0.9.' },
+		brief: 'Bleach bypass at {value}.',
+		tags: [ 'bleach bypass' ],
 	} ),
 ];

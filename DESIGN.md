@@ -191,7 +191,7 @@ Mouse, touch, keyboard and gamepad all work. The core actions are one key or one
 | Previous / next scene | `[` / `]` | scene picker | D-pad ← / → |
 | Complexity tier | `-` / `=` | slider | D-pad ↓ / ↑ |
 | Orbit / look | drag | one-finger drag | right stick |
-| Walk mode | `Tab`, then `WASD` | virtual stick (P2) | `L3` toggles; left stick moves |
+| Walk mode | `Tab`, then `WASD` | virtual stick (P2 ✓) | `L3` toggles; left stick moves |
 
 The full map is in [Appendix D](#appendix-d--input-map).
 
@@ -207,7 +207,7 @@ The full map is in [Appendix D](#appendix-d--input-map).
 
 ## 6. Feature specifications
 
-Priorities: **P0** = vertical slice, **P1** = alpha, **P2** = stretch.
+Priorities: **P0** = vertical slice, **P1** = alpha, **P2** = stretch. **P2 ✓** marks stretch items built in v1.1 (M10).
 
 ### 6.1 Scene library
 
@@ -225,9 +225,9 @@ All scenes are built procedurally in code from a shared asset kit, with a seeded
 | `hangar` | **Sci-fi Hangar** | *Metroid Prime*, *Halo* | Over-shoulder | Metal, emissive strips, holograms, chromatic aberration and scanlines, reflections | P1 |
 | `meadow` | **Meadow Shrine** | *Breath of the Wild*, *Ōkami*, *Ghost of Tsushima* | Third-person | Instanced grass with wind, foliage density vs. line noise, painterly looks | P1 |
 | `campsite` | **Dusk Campsite** | *Firewatch*, *A Short Hike* | Third-person | Layered silhouettes, colored fog bands, campfire light, golden hour | P1 |
-| `tabletop` | **Tabletop Map** | *Civilization*, *Townscaper*, *Bad North* | Tilted top-down | Tilt-shift miniature look, hex tiles, units | P2 |
-| `toybox` | **Physics Toybox** | Physics sandboxes such as *Gang Beasts* | Orbit | Motion, temporal stability of lines and dither, Rapier props you can throw | P2 |
-| `alley` | **Noir Alley** | Noir detective games | Street level | Night, wet reflections (SSR), neon, rain, black and white | P2 |
+| `tabletop` | **Tabletop Map** | *Civilization*, *Townscaper*, *Bad North* | Tilted top-down | Tilt-shift miniature look, hex tiles, units | P2 ✓ |
+| `toybox` | **Physics Toybox** | Physics sandboxes such as *Gang Beasts* | Orbit | Motion, temporal stability of lines and dither, Rapier props you can throw | P2 ✓ |
+| `alley` | **Noir Alley** | Noir detective games | Street level | Night, wet reflections (SSR), neon, rain, black and white | P2 ✓ |
 
 **Scene contract** (one module per scene):
 
@@ -316,8 +316,8 @@ Key:
 | Contact shadows | Post | length, thickness, intensity | mask | 🟡 | `sss()` | P1 |
 | Blob shadows | Scene | size, softness, opacity | ✓ | 🟢 | soft decal mesh | P1 |
 | Ambient occlusion | Post | radius, intensity, tint color, "ink" mode | mask | 🔴 | `ao()` (GTAO) | P1 |
-| Baked vertex AO | Mat | strength | ✓ | 🟢 | vertex colors at build time | P2 |
-| Screen-space GI | Post | radius, intensity | — | 🔴 | `ssgi()` | P2 |
+| Baked vertex AO | Mat | strength | ✓ | 🟢 | vertex colors at build time | P2 ✓ |
+| Screen-space GI | Post | radius, intensity | — | 🔴 | `ssgi()` | P2 ✓ |
 | Time of day | Scene | preset (dawn, noon, golden, blue hour, night), sun path | — | 🟢 | drives key light, sky and fog | P1 |
 | Practical light flicker | Scene | amount, speed | — | 🟢 | noise on point-light intensity | P1 |
 
@@ -325,14 +325,14 @@ Key:
 
 | Effect | Where | Key parameters | Per part | Cost | r182 building block | Pri |
 |---|---|---|---|---|---|---|
-| Shading model | Mat | toon, half-Lambert, flat/unlit, Gooch, PBR | ✓ | 🟢 (PBR 🟡) | custom `LightingModel`; `MeshStandardNodeMaterial` | P0 (Gooch P2) |
+| Shading model | Mat | toon, half-Lambert, flat/unlit, Gooch, PBR | ✓ | 🟢 (PBR 🟡) | custom `LightingModel`; `MeshStandardNodeMaterial` | P0 (Gooch P2 ✓) |
 | Cel ramp | Mat | bands (1–5), thresholds, edge softness, custom gradient | ✓ | 🟢 | `StyleLightingModel` | P0 |
 | Toon specular | Mat | size, softness, intensity, color | ✓ | 🟢 | stepped Blinn term | P0 |
 | Rim light (fresnel) | Mat | width, softness, intensity, color, lit side only | ✓ | 🟢 | fresnel term | P0 |
 | Flat (faceted) normals | Mat | on/off | ✓ | 🟢 | `material.flatShading` | P0 |
 | Color variation | Mat | amount, scale, hue/value split, world or object space | ✓ | 🟢 | `mx_noise_float` | P1 |
 | Vertical gradient | Mat | base darkening, top lightening, height range | ✓ | 🟢 | `positionWorld.y` | P1 |
-| Matcap | Mat | procedural matcap choice | ✓ | 🟢 | `MeshMatcapNodeMaterial` | P2 |
+| Matcap | Mat | procedural matcap choice | ✓ | 🟢 | `MeshMatcapNodeMaterial` | P2 ✓ |
 | Halftone shading | Mat | dot size, angle, which bands, screen or world space | ✓ | 🟢 | pattern in lighting model `finish()` | P1 |
 | Hatching shading | Mat | density, layers, angles, thresholds, space | ✓ | 🟢 | pattern in `finish()` | P1 |
 | 1-bit dither shading | Mat | pattern (Bayer, blue noise), levels | ✓ | 🟢 | `bayer16()` (`tsl/math/Bayer.js`) | P1 |
@@ -340,7 +340,7 @@ Key:
 | Emissive | Mat | color, intensity, pulse | ✓ | 🟢 | `emissiveNode` → `emissive` MRT output | P0 |
 | Wind sway | Mat | strength, speed, gusts | ✓ | 🟢 | `positionNode` | P1 |
 | Vertex snapping (PS1) | Mat | grid resolution | ✓ | 🟢 | clip-space snap in `vertexNode` | P1 |
-| Affine texture warp (PS1) | Mat | amount | ✓ | 🟢 | `varying(uv·w)` / `varying(w)` trick | P2 |
+| Affine texture warp (PS1) | Mat | amount | ✓ | 🟢 | `varying(uv·w)` / `varying(w)` trick | P2 ✓ |
 
 #### C. Lines and edges
 
@@ -355,22 +355,22 @@ Key:
 | Light-weighted lines | Post | extra thickness in shadow | — | 🟢 | luminance sample | P1 |
 | Wobble and boil | Post | amplitude (px), frequency, boil FPS | — | 🟢 | noise UV offset with stepped time | P1 |
 | Line texture | Post | pencil, brush, ink; strength | — | 🟢 | procedural noise | P1 |
-| Image-space Sobel | Post | threshold | — | 🟡 | `sobel()` (in a lesson: why geometry-aware edges win) | P2 |
-| Interactable highlight | Post | color, pulse, thickness | per object | 🟡 | `outline()` | P2 |
+| Image-space Sobel | Post | threshold | — | 🟡 | `sobel()` (in a lesson: why geometry-aware edges win) | P2 ✓ |
+| Interactable highlight | Post | color, pulse, thickness | per object | 🟡 | `outline()` | P2 ✓ |
 
 #### D. Atmosphere and sky
 
 | Effect | Where | Key parameters | Per part | Cost | r182 building block | Pri |
 |---|---|---|---|---|---|---|
-| Distance fog | Mat | linear, exp, exp²; start, end, density; color | — (per-part amount P2) | 🟢 | `scene.fogNode` with `fog()`, `rangeFogFactor()`, `densityFogFactor()` | P0 |
+| Distance fog | Mat | linear, exp, exp²; start, end, density; color | — (per-part amount P2 ✓) | 🟢 | `scene.fogNode` with `fog()`, `rangeFogFactor()`, `densityFogFactor()` | P0 |
 | Sky-tinted fog (atmospheric perspective) | Mat | amount (fog color taken from the sky gradient in the view direction) | — | 🟢 | custom `fogNode` | P0 |
 | Height fog | Mat | base height, falloff, density | — | 🟢 | custom `fogNode` | P1 |
 | Toon fog bands | Mat | band count, softness | — | 🟢 | quantized fog factor | P1 |
 | Gradient sky and sun disc | Scene | zenith, horizon and ground colors, exponent, sun size, softness | — | 🟢 | `scene.backgroundNode` | P0 |
 | Toon clouds | Scene | coverage, softness, bands, speed | — | 🟢 | noise in `backgroundNode` or cloud meshes | P1 |
-| Physical sky | Scene | turbidity, Rayleigh, sun | — | 🟢 | `SkyMesh` | P2 |
+| Physical sky | Scene | turbidity, Rayleigh, sun | — | 🟢 | `SkyMesh` | P2 ✓ |
 | God rays | Post | intensity, decay, samples; source is the sun | — | 🟡 | `radialBlur()` on a bright/sky mask | P1 |
-| Ambient particles | Scene | type (dust, pollen, embers, snow), density | — | 🟢 | instanced quads | P2 |
+| Ambient particles | Scene | type (dust, pollen, embers, snow, rain), density | — | 🟢 | instanced quads | P2 ✓ |
 
 #### E. Lens and camera
 
@@ -383,11 +383,11 @@ Key:
 | Vignette | Post | amount, softness, roundness, color | — | 🟢 | inline | P0 |
 | Chromatic aberration | Post | amount, radial falloff | — | 🟢 | `chromaticAberration()` | P1 |
 | Lens distortion (barrel, fisheye) | Post | amount | — | 🟢 | UV remap | P1 |
-| Lens flare | Post | intensity, threshold | — | 🟡 | `lensflare()` | P2 |
-| Anamorphic streaks | Post | intensity, threshold, tint | — | 🟡 | `anamorphic()` | P2 |
+| Lens flare | Post | intensity, threshold | — | 🟡 | `lensflare()` | P2 ✓ |
+| Anamorphic streaks | Post | intensity, threshold, tint | — | 🟡 | `anamorphic()` | P2 ✓ |
 | Letterbox | Post | aspect (2.39, 1.85, 4:3), color | — | 🟢 | inline | P1 |
 | Motion blur | Post | shutter angle (0–360°), samples | — | 🔴 | `motionBlur()` + `velocity` MRT output | P1 |
-| Afterimage trails | Post | damping | — | 🟡 | `afterImage()` | P2 |
+| Afterimage trails | Post | damping | — | 🟡 | `afterImage()` | P2 ✓ |
 
 #### F. Color and tone
 
@@ -401,14 +401,14 @@ Key:
 | Lift / gamma / gain | Post | slope, offset, power, saturation | — | 🟢 | `cdl()` (ASC CDL) | P1 |
 | Split toning | Post | shadow color, highlight color, balance | — | 🟢 | inline | P1 |
 | Hue shift | Post | degrees | — | 🟢 | `hue()` | P1 |
-| Selective color | Post | kept hue, range, desaturate the rest | — | 🟢 | inline (OKLCH) | P2 |
-| 3D LUT | Post | generated presets (import `.cube` P2), intensity | — | 🟢 | `lut3D()`, `LUTCubeLoader` | P1 |
+| Selective color | Post | kept hue, range, desaturate the rest | — | 🟢 | inline (OKLCH) | P2 ✓ |
+| 3D LUT | Post | generated presets (import `.cube` P2 ✓), intensity | — | 🟢 | `lut3D()`, `LUTCubeLoader` | P1 |
 | Palette remap by role | Mat | palette, mapping by part and role, keep value | ✓ | 🟢 | material base-color uniforms | P0 |
 | Palette transform | Mat | saturation, value, hue shift | ✓ | 🟢 | material uniforms | P0 |
 | Posterize | Post | levels | — | 🟢 | `posterize()` | P1 |
 | Palette quantization | Post | palette (PICO-8, Game Boy, CGA, custom, from look); nearest color in OKLab | — | 🟡 | custom `Loop` | P1 |
 | Gradient map / duotone | Post | gradient stops | — | 🟢 | inline | P1 |
-| Sepia, bleach bypass | Post | amount | — | 🟢 | `sepia()`, `bleach()` | P2 |
+| Sepia, bleach bypass | Post | amount | — | 🟢 | `sepia()`, `bleach()` | P2 ✓ |
 
 #### G. Media and texture
 
@@ -416,13 +416,13 @@ Key:
 |---|---|---|---|---|---|---|
 | Film grain | Post | amount, size, animated, luminance response | — | 🟢 | `film()` | P0 |
 | Paper / canvas | Post | type (newsprint, watercolor, canvas, kraft), scale, strength, color | mask | 🟢 | procedural noise | P1 |
-| Painterly (Kuwahara) | Post | radius, sectors, sharpness, anisotropic (P2) | mask | 🔴 | custom (`Loop`) | P1 |
+| Painterly (Kuwahara) | Post | radius, sectors, sharpness, anisotropic (P2 ✓) | mask | 🔴 | custom (`Loop`) | P1 |
 | Watercolor | Post | edge darkening, granulation, wobble, bleed | mask | 🟡 | custom | P1 |
 | Halftone (post) | Post | mono or CMYK, dot size, screen angles, shadows only | mask | 🟢 | custom (`dotScreen()` as reference) | P1 |
 | Hatching (post) | Post | layers, density, angle, thresholds | mask | 🟢 | custom | P1 |
 | CMYK misregistration | Post | offset (px), angle | — | 🟢 | `rgbShift()`-style offset | P1 |
 | Dithering | Post | Bayer 2/4/8/16, blue noise; strength | — | 🟢 | `bayer16()` | P1 |
-| Sharpen | Post | amount | — | 🟢 | custom unsharp mask | P2 |
+| Sharpen | Post | amount | — | 🟢 | custom unsharp mask | P2 ✓ |
 
 #### H. Retro and display
 
@@ -431,17 +431,17 @@ Key:
 | Render scale / pixelation | Pass + Post | pixel size (px at 1080p), nearest upscale, post UVs snapped to the pixel grid | — | 🟢 (saves cost) | `pass().setResolutionScale()`; `pixelationPass()` as reference | P1 |
 | Pixel-art edge highlights | Post | normal and depth edge strength | — | 🟢 | as in `pixelationPass` | P1 |
 | Color depth | Post | bits per channel (15-bit, 12-bit, palette) | — | 🟢 | posterize + dither | P1 |
-| Texture filtering emulation | Mat | nearest, bilinear, N64 3-point | ✓ | 🟢 | custom sampling function | P2 |
+| Texture filtering emulation | Mat | nearest, bilinear, N64 3-point | ✓ | 🟢 | custom sampling function | P2 ✓ |
 | CRT | Post | scanlines, aperture mask, curvature, glow, flicker | — | 🟢 | custom | P1 |
-| VHS | Post | chroma bleed, noise, tracking jitter | — | 🟡 | custom | P2 |
+| VHS | Post | chroma bleed, noise, tracking jitter | — | 🟡 | custom | P2 ✓ |
 
 #### I. Motion and time
 
 | Effect | Where | Key parameters | Per part | Cost | r182 building block | Pri |
 |---|---|---|---|---|---|---|
-| Stepped animation ("on twos/threes") | Scene | animation FPS; the camera stays smooth | per part (P2) | 🟢 | quantized animation clock | P1 |
-| Low frame-rate rendering | Scene | FPS cap | — | 🟢 | skip renders | P2 |
-| Speed lines | Post | intensity, center | — | 🟢 | custom radial pattern | P2 |
+| Stepped animation ("on twos/threes") | Scene | animation FPS; the camera stays smooth | per part (P2 ✓) | 🟢 | quantized animation clock | P1 |
+| Low frame-rate rendering | Scene | FPS cap | — | 🟢 | skip renders | P2 ✓ |
+| Speed lines | Post | intensity, center | — | 🟢 | custom radial pattern | P2 ✓ |
 
 #### J. Anti-aliasing and resolution
 
@@ -583,7 +583,7 @@ The **Tune** tab is generated from the parameter registry, so it always covers e
 - a cost badge (🟢🟡🔴) on effect toggles
 - a lock icon that keeps the value when you switch looks ("keep my fog")
 
-**Panel features:** search box (by name, tag or "what does X"), **Show modified only**, per-module reset, **undo/redo** (`Ctrl+Z` / `Ctrl+Shift+Z`; a 100-step ring buffer, one step committed per slider release), a per-module A/B eye toggle, and **Randomize within ranges** (P2) for exploration.
+**Panel features:** search box (by name, tag or "what does X"), **Show modified only**, per-module reset, **undo/redo** (`Ctrl+Z` / `Ctrl+Shift+Z`; a 100-step ring buffer, one step committed per slider release), a per-module A/B eye toggle, and **Randomize within ranges** (P2 ✓) for exploration.
 
 **Scoped editing:** a chip at the top of the panel shows whether you are editing the global look or a part ("Editing: Terrain").
 
@@ -605,7 +605,7 @@ The **Tune** tab is generated from the parameter registry, so it always covers e
 
 **Match brightness** (toggle): scales the baseline so its mean luminance equals the styled image's. That way a look isn't preferred just for being brighter. The Learn card calls this "louder isn't better".
 
-Swaps are instant because the baseline is always rendered in the editor ([§7.12](#712-compare-rendering-and-render-sets)).
+Swaps are instant: the baseline compiles with the scene and renders on the frame that shows it ([§7.12](#712-compare-rendering-and-render-sets)).
 
 ### 6.10 Looks in a game: switching, zones and plans
 
@@ -709,7 +709,7 @@ Each rule carries a short *why*. Agents follow rules more reliably when they kno
 | `reference.png`, `contact-sheet.png` | Current view; the look across all scenes. For humans and for agents that accept images. |
 | `snapshot-snippet.js` | Code the agent adds to its game to export the scene as `.glb` with part tags for Style Lab ([§6.1](#61-scene-library)) |
 
-Files download individually; a store-only zip writer (~80 lines, no dependency) is P2.
+Files download individually, or all at once: **Download all (.zip)** uses a store-only zip writer (~80 lines, no dependency; P2 ✓).
 
 **Retrofit mode.** `style.convertScene(scene, { guessParts: true })` converts the `MeshStandardMaterial`s of an existing agent-made game in one call. It keeps each base color, guesses parts with the importer's heuristics, and swaps in style materials. Getting an existing game styled is then a one-line change.
 
@@ -728,7 +728,7 @@ Teaching is layered, from zero effort to deliberate study:
 | **Lessons** | 10 guided tours that drive the app and set small tasks ([Appendix E](#appendix-e--lessons)) |
 | **Designer views** | Analysis overlays that train the eye (table below) |
 | **Critic** | Heuristic tips from frame statistics, each with "Fix it" and "Why" (table below) |
-| **What changed** (P2) | After a compare, a summary such as: *"Your look raised silhouette contrast 2.3× and reduced dominant hues from 9 to 4."* |
+| **What changed** (P2 ✓) | After a compare, a summary such as: *"Your look raised silhouette contrast 2.3× and reduced dominant hues from 9 to 4."* |
 | **Glossary** | Searchable; terms link from every card ([Appendix F](#appendix-f--glossary-seed)) |
 | **Pipeline inspector** | The pipeline strip, plus a buffers view (depth, normals, part IDs, AO, emissive): *this is what the outline shader sees* |
 
@@ -835,7 +835,7 @@ Perf: full look 3.1 ms GPU @1080p (timestamps), plain 0.9 ms
 | Build | esbuild + a Node script | `esbuild@0.28.2` (dev only) | Bundles and inlines into one HTML file |
 | Tests | `node:test`; Playwright with Chromium | Node 22, Playwright 1.63 | Unit tests + smoke tests |
 
-**Import map** (in the dev `index.html` and the built file; every URL was checked to resolve):
+**Import map** (in the dev `index.html`; the built pages use the same pins with minified three, below; every URL was checked to resolve):
 
 ```html
 <script type="importmap">
@@ -854,7 +854,7 @@ Perf: full look 3.1 ms GPU @1080p (timestamps), plain 0.9 ms
 </script>
 ```
 
-Mapping `three` to `three.webgpu.js` follows the official r182 WebGPU examples, so addons that import `three` get the WebGPU build.
+Mapping `three` to `three.webgpu.js` follows the official r182 WebGPU examples, so addons that import `three` get the WebGPU build. The built pages (`dist/style-lab.html`, `starter.html` and the exports) swap three's two build files for their minified versions from the same release (`scripts/importmap.mjs` `distImportMap()`): about a third of the bytes to download and parse. The dev page keeps the readable files for debugging. The tool page also preloads three's three files (`<link rel="modulepreload">`, after the import map) so they download alongside the page instead of after it.
 
 ### 7.2 Source layout
 
@@ -865,7 +865,8 @@ my-ai-3d-demo/
 ├─ index.html                  # dev entry: import map → CDN, loads src/app/main.js (no build needed)
 ├─ package.json                # devDependencies: esbuild · scripts: dev, build, test, smoke
 ├─ scripts/
-│  ├─ build.mjs                # bundle app + runtime, inline both → dist/style-lab.html (+ dist/stylelab-runtime.js)
+│  ├─ build.mjs                # bundle app + runtime, inline both → dist/style-lab.html (+ dist/stylelab-runtime.js); --offline inlines the dependencies too
+│  ├─ fixtures.mjs             # test assets built in code (a .glb with a KTX2 texture and a morph target)
 │  └─ smoke.mjs                # Playwright: scenes × looks, errors, numeric checks, contact sheet
 ├─ src/
 │  ├─ runtime/                 # ← exported as stylelab-runtime.js; never imports app/ or the DOM
@@ -1152,7 +1153,7 @@ A **render set** is a layer + a material set + a light rig + a post branch.
 | Set | Layer | Contents | When it renders |
 |---|---|---|---|
 | **A — styled** | 1 | Style materials, hull lines, look light rig | Always |
-| **P — plain** | 2 | Baseline materials, baseline rig, ACES + sRGB only | Always in the editor, for instant compare; excluded from audits; absent in the exported runtime |
+| **P — plain** | 2 | Baseline materials, baseline rig, ACES + sRGB only | While the frame shows it (hold, split, flicker), plus the first frame after a build so its shaders are compiled before the first compare; excluded from audits; absent in the exported runtime |
 | **B — second look** | 3 | Style materials for look B | On demand: A/B compare, crossfade and wipe transitions |
 
 How it works:
@@ -1194,8 +1195,8 @@ Fallback if layered shadows misbehave: swap materials and light rigs between pas
 - Radial deadzone 0.15 (configurable). Edge detection gives pressed/released events; analog triggers drive the split wipe.
 - Glyph set (Xbox, PlayStation, generic) is detected from `gamepad.id`.
 - Hot-plug is handled with `gamepadconnected` / `gamepaddisconnected` and a toast.
-- Optional rumble on look change via `vibrationActuator.playEffect('dual-rumble', …)` where supported (P2).
-- D-pad focus navigation inside open panels is P2.
+- Optional rumble on look change via `vibrationActuator.playEffect('dual-rumble', …)` where supported (P2 ✓; Play → Gamepad tester turns it off).
+- D-pad focus navigation inside open panels (P2 ✓): ↑/↓ move focus, ←/→ change sliders and lists, A presses, B closes; outside panels the D-pad keeps its scene and complexity actions.
 
 ### 7.17 Analysis readback
 
@@ -1229,7 +1230,7 @@ Fallback if layered shadows misbehave: swap materials and light rigs between pas
   5. It injects `APP_VERSION` and the git short SHA.
   6. It does not minify (readable and debuggable; size isn't a concern).
 - **The built file works from `file://`** (inline module and CDN imports) and from any static host. For the phone QR flow, host `dist/` on GitHub Pages.
-- **Fully offline build** (P2): a flag that inlines three.js and the other dependencies too.
+- **Fully offline build** (P2 ✓): `npm run build:offline` writes `dist/style-lab-offline.html` with three.js, Rapier, Tweakpane and uqr inlined (not committed; the smoke test runs it with the CDN blocked).
 
 ### 7.20 Test API
 
@@ -1247,6 +1248,11 @@ window.__stylelab = {
   capture({ width, height }),              // → { dataURL, stats: { meanLuma, lumaStd, meanSat, clipped } }
   diff(a, b),                              // → { mae } between two captures
   audit(opts), contactSheet({ looks, scenes, cell }),
+  // v1.1 (M10)
+  whatChanged(),                           // → { summary, changes } plain vs. the look on this frame
+  exportZip(),                             // → { names, size, head } every export file as one zip
+  padInfo(), activePanel(),                // gamepad layer (rumbles played) and the panel the D-pad drives
+  touchVisible(), forceTouch(on),          // the walk-mode touch controls
 };
 ```
 
@@ -1418,7 +1424,7 @@ Each milestone ends with: `npm test` and `npm run smoke` green, a rebuilt `dist/
   - Full gamepad map, glyphs, gamepad tester
   - Look zones in `dungeon`, `campsite` and `harbor`
   - Level look plan with Play plan; player-selectable modes with a cycle demo
-  - P2 scenes `tabletop` and `alley` if time allows
+  - P2 scenes `tabletop` and `alley` if time allows (built in M10, v1.1.0)
 - **Acceptance:**
   - Walking between zones morphs looks continuously, with no pops.
   - Physics stays deterministic per seed for audits.
@@ -1479,7 +1485,7 @@ Each milestone ends with: `npm test` and `npm run smoke` green, a rebuilt `dist/
   - Look breakdown with the build-up replay
   - 10 lessons; designer views (all of §6.13); critic rules with fixes
   - Glossary; buffers view; pipeline-strip drill-down
-  - "What changed" summaries (P2)
+  - "What changed" summaries (P2; built in M10, v1.1.0)
 - **Acceptance:**
   - The registry test enforces complete Learn content.
   - Every lesson can be completed start to finish by a test script driving the test API.
@@ -1501,6 +1507,18 @@ Each milestone ends with: `npm test` and `npm run smoke` green, a rebuilt `dist/
   - S1–S7 from §2 are met or have a documented gap.
   - A clean first run on desktop and on phone has no errors.
 - **Verify checks:** full pass; the first-run experience; phone layout.
+
+### M10 — P2 stretch scope
+- **Status:** done (v1.1.0). Every item tagged P2 in this document that v1.0 left unbuilt. Scenes: `tabletop` (a hex board on a planked table; terrain assigned by rank so every seed gives a full map) and `alley` (a wet night alley with neon, a lamp, fire escapes, scene rain and two look zones), both at four tiers. Effects, each with registry entries, Learn cards, brief lines, a rubric entry and a contact-sheet cell (E63 on): Gooch and matcap shading models, baked vertex AO, screen-space GI, the physical (Preetham) sky, ambient particles, per-part fog amount, lens flare, anamorphic streaks, afterimage trails, sepia, bleach bypass, `.cube` import, sharpen, anisotropic Kuwahara, image-space Sobel (with a step in lesson L2), the interactable highlight, texture filtering emulation, the affine warp, VHS, low frame-rate rendering, speed lines and per-part stepped animation. Tool: what changed, randomize within ranges, the touch stick, gamepad rumble and D-pad focus navigation in panels, the zip export, the offline build, and KTX2 textures and morph targets in `.glb` imports. Smoke checks (M10) on WebGPU and WebGL2, plus an offline run with the CDN blocked. Decisions made while building it:
+  - **Particles never touch the line buffers.** One instanced sprite draws them; positions come from the instance index and the clock in the shader (deterministic, no simulation). Their extra MRT outputs carry alpha 0, so with normal blending the normal, ids, emissive and velocity attachments keep the scene behind them: ink, masks and AO ignore snowflakes.
+  - **The sky model is structural, but only for the sky.** Switching gradient ↔ physical rebuilds the dome's material and the fog node (fog takes the sky's color), counted in `info.skyBuilds`; no material or graph rebuilds.
+  - **Per-part fog and stepping are uniforms.** The shared fog node reads the material's part when each material builds and scales the factor by that part's uniform; the runtime steps the clock per part (`steppedTime(t, part)`), for the materials' waves and wind and for the scene's animators.
+  - **Low frame-rate rendering holds a frame, it doesn't skip one.** Frames render into a held target and every call shows it, so captures and the audit see the cadence too; a new frame is drawn when the clock enters the next slot, or at once when the compare state, the graph or the size changes (hold-to-compare stays instant).
+  - **Retro texturing applies to maps, through the material's own color node** (references named to the material, because the shadow pass reads the node's alpha with its own material). Kit textures (bricks, cobbles, planks) are 64² procedural `DataTexture`s, so the PS1 filters have something to show on.
+  - **Baked vertex AO is per geometry, from the object itself.** A coarse voxel grid of the object's surface plus the ground it stands on (its asset's origin, or `userData.groundY`), marched from every vertex: crevices, overhangs and contact, deterministic and shared by every copy of a geometry. Separate objects don't occlude each other.
+  - **An imported `.cube` is one slot, carried by looks.** It is resampled to 33³ (the grade stage's size), stored apart from the autosaved state, and written into saved and exported looks (`lut`, base64 RGB), so `createStyle()` restores it too.
+  - **Milestones compare as numbers**, so M10 sorts after M9 in the report of owed sign-offs.
+- **Verify checks:** M10-01 the new effects sheet · M10-02 the two scenes read as their genres · M10-04 PS1 textures · M10-05 effects in motion · M10-09 touch stick and the gamepad in panels; optional M10-03, M10-06, M10-07, M10-08, M10-10, M10-11.
 
 ---
 
@@ -1557,6 +1575,7 @@ Recommended reasoning effort for the implementing model, one milestone per sessi
 | **M7** Performance audit | **high** | Measurement methodology (warm-up, interleaving, timestamp quirks), cost model, state restore | **xhigh** if results aren't repeatable |
 | **M8** Education layer | **high** | Accuracy and teaching quality of a lot of content, plus analysis heuristics | **medium** for bulk glossary and card text entry |
 | **M9** Verify hardening, polish and release | **medium** | Integration polish, docs, deployment | **low** for copy edits |
+| **M10** P2 stretch scope | **high** | Many independent effects and tool features on a settled architecture; the sky, particle and low-frame-rate paths touch the runtime's core | **xhigh** if an effect needs a new kind of pass |
 
 Rule of thumb: run each milestone at its level. Escalate one level only when a concrete trigger in the last column happens. Drop a level for chores inside a milestone.
 
@@ -1800,6 +1819,11 @@ style.setQuality('mobile');
 // Frame
 renderer.setAnimationLoop(() => { update(); style.render(); });
 
+// Imported grades (v1.1): a look with grade.lut.preset 'custom' carries its LUT (`lut`);
+// a .cube can also be loaded directly.
+import { parseCube, setCustomLut } from './stylelab-runtime.js';
+setCustomLut(parseCube(await (await fetch('grade.cube')).text()));
+
 // Teardown
 style.dispose();
 ```
@@ -1829,9 +1853,10 @@ The runtime has no DOM dependencies. It expects the host page to provide the sam
 | Screenshot | `Shift+S` | — |
 | Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` | — |
 | Close panel / back | `Esc` | `B` / `○` |
+| Move inside an open panel (v1.1) | `Tab` | D-pad (↑/↓ focus, ←/→ change a slider or list), `A` presses |
 | Shortcut overlay | `?` | — |
 
-In walk mode, `Space` jumps. Hold compare moves to `X` / `□` on the gamepad, or to the on-screen button.
+In walk mode, `Space` jumps. Hold compare moves to `X` / `□` on the gamepad, or to the on-screen button. On touch screens (v1.1), walk mode shows a stick bottom-left (push to the rim to run) and a Jump button; dragging elsewhere looks around. A look change rumbles pads that support it.
 
 ---
 

@@ -1,6 +1,7 @@
 // .glb / .gltf import (design §6.1): load with GLTFLoader, guess a part for every mesh,
-// keep the model's colors, textures and vertex colors, normalize its size, and build a
-// scene definition (shots and shadow frame from the bounds) the app can load like any scene.
+// keep the model's colors, textures (KTX2 too) and vertex colors, morph targets and the
+// first animation, normalize its size, and build a scene definition (shots and shadow frame
+// from the bounds) the app can load like any scene.
 
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -9,7 +10,7 @@ import { describeMesh, styleFromMaterial } from '../../runtime/parts/convert.js'
 
 const RADIUS = 10; // imported models are scaled to this bounding radius, so looks' fog and lines behave
 
-async function createLoader( buffer ) {
+async function createLoader( buffer, renderer ) {
 
 	const loader = new GLTFLoader();
 	// Compressed files need decoders; load them only when the file asks for them.
@@ -30,6 +31,18 @@ async function createLoader( buffer ) {
 
 	}
 
+	// KTX2 textures (KHR_texture_basisu): Basis Universal transcodes to what this GPU supports;
+	// uncompressed KTX2 loads as is.
+	if ( json.includes( 'KHR_texture_basisu' ) ) {
+
+		const { KTX2Loader } = await import( 'three/addons/loaders/KTX2Loader.js' );
+		const ktx2 = new KTX2Loader();
+		ktx2.setTranscoderPath( 'https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/libs/basis/' );
+		if ( renderer ) ktx2.detectSupport( renderer );
+		loader.setKTX2Loader( ktx2 );
+
+	}
+
 	return loader;
 
 }
@@ -39,9 +52,9 @@ async function createLoader( buffer ) {
  * @param {string} name - file name, for labels
  * @returns {Promise<{def: object, meshes: number, guesses: object[], warnings: string[]}>}
  */
-export async function importModel( buffer, name = 'model.glb' ) {
+export async function importModel( buffer, name = 'model.glb', { renderer = null } = {} ) {
 
-	const loader = await createLoader( buffer );
+	const loader = await createLoader( buffer, renderer );
 	const gltf = await loader.parseAsync( buffer, '' );
 	const model = gltf.scene;
 	const warnings = [];
@@ -58,12 +71,13 @@ export async function importModel( buffer, name = 'model.glb' ) {
 	holder.scale.setScalar( scale );
 	holder.position.set( - sphere.center.x * scale, - bounds.min.y * scale, - sphere.center.z * scale );
 	holder.add( model );
+	// The ground for baked vertex AO is the world floor (y = 0), where the model now stands.
+	holder.userData.groundY = 0;
 	root.add( holder );
 	root.updateMatrixWorld( true );
 
 	const meshes = [];
 	model.traverse( ( o ) => { if ( o.isMesh ) meshes.push( o ); } );
-	if ( meshes.some( ( m ) => m.morphTargetInfluences?.length ) ) warnings.push( 'Morph targets are not animated on the styled and plain twins yet.' );
 	if ( meshes.some( ( m ) => Array.isArray( m.material ) ) ) warnings.push( 'Meshes with several materials use their first material.' );
 
 	const descriptors = meshes.map( ( m ) => describeMesh( m, model.parent ) );

@@ -104,8 +104,10 @@ test( 'effects declare the buffers they read; sliders never change the graph key
 	assert.notEqual( graphKey( { ...on, 'lens.bloom.source': 'all' }, '0|depth' ), key, 'structural values rebuild' );
 	assert.notEqual( graphKey( { ...on, 'grade.toneMapping': 'agx' }, '0|depth' ), key );
 
-	// Every registry switch that adds a post effect has an effect module.
-	const switches = REGISTRY.filter( ( e ) => e.type === 'bool' && e.structural && [ 'lens', 'grade', 'retro', 'atmosphere', 'media' ].includes( e.module ) && e.id !== 'retro.vertexSnap.enabled' );
+	// Every registry switch that adds a post effect has an effect module. Material and scene
+	// switches (shadows, time of day, vertex snap, affine warp, particles) and options of an effect are not post effects.
+	const notPost = new Set( [ 'retro.vertexSnap.enabled', 'retro.affine.enabled', 'atmosphere.particles.enabled', 'lighting.shadows.enabled', 'lighting.tod.enabled' ] );
+	const switches = REGISTRY.filter( ( e ) => e.type === 'bool' && e.structural && [ 'lens', 'grade', 'retro', 'atmosphere', 'media', 'lines', 'motion', 'lighting' ].includes( e.module ) && e.scope !== 'both' && ! e.enabledBy && ! notPost.has( e.id ) );
 	for ( const e of switches ) assert.ok( EFFECTS.some( ( fx ) => fx.enabled( { ...v, [ e.id ]: true }, { samples: 0 } ) && ! fx.always ), e.id );
 
 } );

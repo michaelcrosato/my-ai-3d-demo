@@ -307,6 +307,14 @@ table.keys td { padding: 2px 6px 2px 0; vertical-align: top; }
 #fatal a { color: var(--accent); }
 /* Touch screens: bigger targets. Phones: a compact top bar. */
 @media (pointer: coarse) { button, select { min-height: 34px; } }
+
+/* Touch controls for walk mode (P2): a stick bottom-left, a jump button bottom-right. */
+.touch-controls { position: absolute; inset: auto 0 0 0; height: 0; pointer-events: none; z-index: 5; }
+.touch-stick { position: absolute; left: 28px; bottom: 28px; width: 132px; height: 132px; border-radius: 50%; background: rgb(255 255 255 / 0.12); border: 2px solid rgb(255 255 255 / 0.35); touch-action: none; pointer-events: auto; display: flex; align-items: center; justify-content: center; }
+.touch-knob { width: 56px; height: 56px; border-radius: 50%; background: rgb(255 255 255 / 0.55); box-shadow: 0 2px 8px rgb(0 0 0 / 0.35); transition: transform 0.06s; }
+.touch-jump { position: absolute; right: 32px; bottom: 44px; width: 84px; height: 84px; border-radius: 50%; background: rgb(255 255 255 / 0.18); border: 2px solid rgb(255 255 255 / 0.4); color: #fff; font-weight: 600; touch-action: none; pointer-events: auto; }
+/* D-pad focus inside panels (P2): the focused control gets a strong ring. */
+.pad-focus { outline: 3px solid #ffd54a !important; outline-offset: 2px; }
 @media (max-width: 560px) {
 	.brand, #turntable-btn, .field.tier, #backend-badge { display: none; }
 	.field { font-size: 0; gap: 0; }

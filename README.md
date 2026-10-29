@@ -2,7 +2,7 @@
 
 **Style Lab** (working title): a hands-on preview tool for choosing a game's art style. Try stylized looks live on sample scenes, mix and tune them, compare against plain, check what they cost on phones, and export the style as a brief and a drop-in runtime for your AI agents.
 
-**Status:** v1.0.0, all milestones (M0–M9) built. Twenty looks in eleven genre scenes at four complexity tiers, 62 effects over 243 parameters, mixing per module and per part, walk mode with physics, look zones and a level plan, a performance audit with phone verdicts, an agent brief with a drop-in runtime and asset kit, and an education layer: eleven lessons, designer views, a critic and a Learn card for every parameter. The 🧪 Verify panel is a guided tour of all of it. Still owed: your sign-off reports from M3 on, and the phone measurements that replace the estimated budgets (see the PR). See the [user guide](docs/user-guide.md), [DESIGN.md](DESIGN.md) for the design and milestones, and [CHANGELOG.md](CHANGELOG.md) for what changed.
+**Status:** v1.1.0: all milestones (M0–M9) plus the P2 stretch scope (M10) built. Twenty looks in thirteen scenes at four complexity tiers (eleven genre scenes, the reference stage and a physics toybox), 85 effects over 306 parameters, mixing per module and per part, walk mode with physics (keys, gamepad or a touch stick), look zones and a level plan, a performance audit with phone verdicts, an agent brief with a drop-in runtime and asset kit (one zip, `.cube` LUTs in and out), and an education layer: eleven lessons, designer views, a critic, "what changed" against plain, and a Learn card for every parameter. The 🧪 Verify panel is a guided tour of all of it. Still owed: your sign-off reports from M3 on, and the phone measurements that replace the estimated budgets. See the [user guide](docs/user-guide.md), [DESIGN.md](DESIGN.md) for the design and milestones, and [CHANGELOG.md](CHANGELOG.md) for what changed.
 
 ## Try it
 
@@ -20,11 +20,12 @@ Requires Node 22+.
 npm install        # pinned dev dependencies (esbuild, plus the same three/Rapier/Tweakpane versions the page loads)
 npm run dev        # static server → http://localhost:5173/index.html (runs src/ directly, no build)
 npm run build      # → dist/style-lab.html, stylelab-runtime.js, stylelab-kit.js and starter.html
+npm run build:offline  # also dist/style-lab-offline.html: three.js, Rapier, Tweakpane inlined, no network needed (~5 MB, not committed)
 npm test           # unit tests (node:test)
-npm run smoke      # build, then headless Chromium: 5 targets × 8 spikes, plus every milestone's checks (M1–M9) on WebGL2 and WebGPU
+npm run smoke      # build (with the offline page), then headless Chromium: 6 targets × 8 spikes, plus every milestone's checks (M1–M10) on WebGL2 and WebGPU
 ```
 
-- **Playwright for the smoke test.** Install it locally if you don't have it: `npm i -D playwright && npx playwright install chromium`. The smoke test serves CDN requests from `node_modules`, so it runs offline.
+- **Playwright for the smoke test.** Install it locally if you don't have it: `npm i -D playwright && npx playwright install chromium`. The smoke test serves CDN requests from `node_modules`, so it runs offline. A full run takes a long time on a software GPU; `--only <target>` and `--checks m1,m10` narrow it.
 - **Running a scratch module in the page.** `node scripts/dev/eval.mjs <module.js> [--backend webgl|webgpu]` boots the dev page headless and runs the module's default export with `window.__stylelab`.
 
 ## Use the style in your own game
@@ -53,10 +54,10 @@ src/runtime/          style engine: no DOM, exported as stylelab-runtime.js (cre
   atmosphere/ post/   sky, fog and clouds; post graph (camera, grade, medium and display effects)
   render/             light rigs for the styled and plain render sets
 src/app/              the tool: app controller, UI, input, physics (Rapier walk mode), Verify panel, diagnostics, spikes
-src/scenes/           eleven scenes and the procedural asset kit (kit/)
+src/scenes/           thirteen scenes and the procedural asset kit (kit/, with a few procedural textures)
 src/app/import/       .glb import (part guessing lives in src/runtime/parts/)
 src/export/           the kit bundle entry and the starter.html template
-scripts/              build, dev server, smoke test, import-map helpers
+scripts/              build (and --offline), dev server, smoke test and its fixtures, import-map helpers
 tests/                unit tests
 docs/spikes.md        M0 spike results and decisions
 docs/user-guide.md    the user guide

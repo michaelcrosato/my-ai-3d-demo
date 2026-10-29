@@ -68,6 +68,22 @@ export const COHERENCE_RULES = [
 		fixLabel: 'Tint the fog with the sky',
 	},
 	{
+		id: 'double-ink',
+		test: ( v ) => v[ 'lines.sobel.enabled' ] && v[ 'lines.sobel.amount' ] > 0.5 && v[ 'lines.screen.enabled' ],
+		message: 'Two kinds of ink draw most edges twice.',
+		why: 'Screen-space ink already outlines silhouettes and folds from the geometry. Sobel adds a second line next to many of them, plus lines on every shadow edge, so the drawing doubles up.',
+		fix: () => ( { 'lines.sobel.enabled': false } ),
+		fixLabel: 'Keep the geometry ink',
+	},
+	{
+		id: 'bleach-twice',
+		test: ( v ) => v[ 'grade.bleach.enabled' ] && v[ 'grade.lut.enabled' ] && v[ 'grade.lut.preset' ] === 'bleach',
+		message: 'Bleach bypass twice: the LUT preset already is one.',
+		why: 'The Bleach bypass LUT and the bleach bypass grade are the same film process. Stacked, the color drains away and the contrast crunches far past the look either one gives.',
+		fix: () => ( { 'grade.bleach.enabled': false } ),
+		fixLabel: 'Keep only the LUT',
+	},
+	{
 		id: 'grain-dither',
 		test: ( v ) => v[ 'media.grain.amount' ] > 0.02 && ( ( v[ 'retro.quantize.mode' ] === 'palette' && v[ 'retro.quantize.palette' ] === 'onebit' ) || v[ 'surface.dither.enabled' ] ),
 		message: 'Redundant texture; the dither already breaks up the image.',

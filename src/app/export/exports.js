@@ -7,6 +7,8 @@ import { toCube, toGpl } from '../../runtime/export/files.js';
 import { lookFromResolved } from '../../runtime/look/resolve.js';
 import { SCENES } from '../../scenes/index.js';
 import { bakeGradeLut } from './grade.js';
+import { lutFor } from '../app.js';
+import { zip, toBytes } from './zip.js';
 
 /* global __STYLELAB_FILES__ */
 const EMBEDDED = typeof __STYLELAB_FILES__ !== 'undefined' ? __STYLELAB_FILES__ : null;
@@ -69,6 +71,9 @@ export function exportState( app ) {
 		description: base.description, phone: base.phone, version: 1,
 	} ) : { ...base };
 	delete look.user;
+	// An imported .cube travels with the look that uses it.
+	const lut = lutFor( resolved.global );
+	if ( lut ) look.lut = lut;
 
 	const name = ( id ) => app.getLook( id ).name;
 	const levels = Object.entries( s.plan.levels ).filter( ( [ , l ] ) => l.look ).map( ( [ scene, l ] ) => ( { scene, look: name( l.look ), lookId: l.look, transition: l.transition || 'morph' } ) );
@@ -177,6 +182,16 @@ export function exportFiles( app, { share } ) {
 }
 
 /** Saves text or a data URL as a file. */
+/** Every export file in one store-only zip (§6.12, P2). Returns { bytes, names }. */
+export async function exportZip( app, options ) {
+
+	const files = exportFiles( app, options );
+	const entries = [];
+	for ( const f of files ) entries.push( { name: f.name, data: await toBytes( await f.make() ) } );
+	return { bytes: zip( entries ), names: entries.map( ( e ) => e.name ) };
+
+}
+
 export function download( name, content, type = 'text/plain' ) {
 
 	const a = document.createElement( 'a' );

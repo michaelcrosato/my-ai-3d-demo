@@ -23,6 +23,16 @@ export class StylePassNode extends PassNode {
 		super( PassNode.COLOR, scene, camera, options );
 		/** Target pixel rows in pixel looks; null renders at the resolution scale. */
 		this.pixelRows = null;
+		/** While nothing shows the pass it keeps its last image and skips the render. */
+		this.idle = false;
+
+	}
+
+	updateBefore( frame ) {
+
+		// false: not done for this frame, so a later render in the same frame can still draw it.
+		if ( this.idle ) return false;
+		return super.updateBefore( frame );
 
 	}
 

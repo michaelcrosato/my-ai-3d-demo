@@ -17,19 +17,45 @@ import { LOOKS, lookById } from '../content/looks/index.js';
 import { SCENES, sceneById, buildScene, TIERS, DENSITY } from '../scenes/index.js';
 import { createStore } from './state/store.js';
 import { createHistory } from './state/history.js';
+import { randomOverrides } from './state/randomize.js';
 import { importModel } from './import/glb.js';
 import { loadRapier, PhysicsWorld } from './physics/world.js';
 import { WalkController, findHero } from './physics/walk.js';
 import { LAYER_STYLED } from '../runtime/materials/factory.js';
+import { parseCube, setCustomLut, customLut, encodeLut, decodeLut } from '../runtime/color/lut.js';
 
 const sameValue = ( a, b ) => JSON.stringify( a ) === JSON.stringify( b );
 const copy = ( v ) => JSON.parse( JSON.stringify( v ) );
 const ease = ( t ) => ( t < 0.5 ? 2 * t * t : 1 - Math.pow( - 2 * t + 2, 2 ) / 2 );
 const LOOK_DEFAULTS = { inspiredBy: [], tags: [], pillars: [], mistakes: [], description: '', parts: {} };
 
+// The imported .cube (one slot, the LUT preset 'custom') is kept apart from the autosaved
+// state: it is ~140 kB, and the state saves on every change.
+const LUT_KEY = 'stylelab.lut.v1';
+function loadCustomLut() {
+
+	try { const j = JSON.parse( localStorage.getItem( LUT_KEY ) ); if ( j ) setCustomLut( decodeLut( j ) ); } catch { /* storage blocked or the LUT is damaged: no imported LUT */ }
+
+}
+
+function saveCustomLut( lut ) {
+
+	try { localStorage.setItem( LUT_KEY, JSON.stringify( encodeLut( lut ) ) ); } catch { /* storage full or blocked: the LUT lasts this session */ }
+
+}
+
+/** The imported LUT, for a look that uses it (grade.lut.preset 'custom'); else undefined. */
+export function lutFor( values ) {
+
+	const lut = customLut();
+	return lut && values[ 'grade.lut.enabled' ] && values[ 'grade.lut.preset' ] === 'custom' ? encodeLut( lut ) : undefined;
+
+}
+
 export function createApp( { renderer, canvas, persist = true } ) {
 
 	const store = createStore( { persist } );
+	if ( persist ) loadCustomLut();
 	const camera = new THREE.PerspectiveCamera( 45, 1, 0.1, 1000 );
 	const controls = new OrbitControls( camera, canvas );
 	controls.enableDamping = true;
@@ -52,7 +78,7 @@ export function createApp( { renderer, canvas, persist = true } ) {
 	let clock = 0, frozen = null;
 	// M5: physics (toybox and walk mode), look zones, the plan player and mode cycling.
 	let physics = null, physicsLoading = null, walk = null;
-	const walkInput = { keys: new Set(), padMove: [ 0, 0 ], padLook: [ 0, 0 ], padJump: false, padRun: false, mouse: [ 0, 0 ] };
+	const walkInput = { keys: new Set(), padMove: [ 0, 0 ], padLook: [ 0, 0 ], padJump: false, padRun: false, touchMove: [ 0, 0 ], touchJump: false, touchRun: false, mouse: [ 0, 0 ] };
 	let zoneCache = { target: null, map: new Map() }, zoneKey = '';
 	let playing = null, cycling = null;
 
@@ -313,6 +339,8 @@ export function createApp( { renderer, canvas, persist = true } ) {
 			let id = idOrLook;
 			if ( typeof idOrLook === 'object' ) id = registerLook( idOrLook ).id;
 			else if ( ! hasLook( id ) ) throw new Error( `Unknown look ${id}` );
+			// A look that carries an imported LUT puts it in the custom slot.
+			if ( getLook( id ).lut ) { const lut = setCustomLut( decodeLut( getLook( id ).lut ) ); if ( persist ) saveCustomLut( lut ); }
 			commit();
 			store.set( { recipe: { base: id, modules: {}, morph: null } } );
 			resolve( { animate } );
@@ -430,6 +458,19 @@ export function createApp( { renderer, canvas, persist = true } ) {
 
 		},
 
+		/**
+		 * Randomize within ranges (§6.8, P2): rolls the continuous values of the effects this look
+		 * uses, within the library's ranges, as one undoable step. Returns the overrides set.
+		 */
+		randomize( { seed = Math.floor( Math.random() * 2 ** 31 ) } = {} ) {
+
+			const roll = randomOverrides( target.global, LOOKS, seed );
+			actions.applyOverrides( roll );
+			emit( 'randomized', { seed, count: Object.keys( roll ).length } );
+			return { seed, overrides: roll };
+
+		},
+
 		/** Replaces a look's Tune overrides wholesale (restoring state after demos and lessons). */
 		setOverrides( lookId, map ) {
 
@@ -518,6 +559,8 @@ export function createApp( { renderer, canvas, persist = true } ) {
 				tags: base.tags.filter( ( t ) => t !== 'baseline' ), pillars: base.pillars, mistakes: base.mistakes,
 				description: `Saved from ${mixed.join( ' + ' )}.`, phone: base.phone,
 			} );
+			const lut = lutFor( resolveTarget().global );
+			if ( lut ) saved.lut = lut;
 			store.set( { userLooks: [ ...state().userLooks, saved ] } );
 			emit( 'library' );
 			actions.setLook( id, { transition: false } );
@@ -532,11 +575,33 @@ export function createApp( { renderer, canvas, persist = true } ) {
 			if ( lookById.has( l.id ) || userLook( l.id ) ) l.id = `${l.id}-${Date.now().toString( 36 ).slice( - 4 )}`;
 			const { ok, errors } = validateLook( l );
 			if ( ! ok ) throw new Error( errors.slice( 0, 3 ).join( '; ' ) );
+			if ( l.lut ) { const lut = setCustomLut( decodeLut( l.lut ) ); if ( persist ) saveCustomLut( lut ); }
 			store.set( { userLooks: [ ...state().userLooks, l ] } );
 			emit( 'library' );
 			return l;
 
 		},
+
+		/**
+		 * Imports a .cube LUT (§6.4 F) into the custom slot and turns the look's LUT on with it.
+		 * Returns { title, size } (the size of the file; it is resampled to 33³).
+		 */
+		importCube( text, name = 'grade.cube' ) {
+
+			const parsed = parseCube( text );
+			if ( parsed.title === 'Imported LUT' ) parsed.title = name.replace( /\.cube$/i, '' );
+			const lut = setCustomLut( parsed );
+			if ( persist ) saveCustomLut( lut );
+			actions.setParam( 'grade.lut.enabled', true );
+			actions.setParam( 'grade.lut.preset', 'custom' );
+			runtime.apply( resolved ); // the custom texture changed even if the values did not
+			emit( 'lut', { title: lut.title, size: parsed.size } );
+			return { title: lut.title, size: parsed.size };
+
+		},
+
+		/** The imported LUT's title, or null. */
+		customLutTitle: () => customLut()?.title ?? null,
 
 		deleteLook( id ) {
 
@@ -610,7 +675,7 @@ export function createApp( { renderer, canvas, persist = true } ) {
 		/** Loads a .glb/.gltf (ArrayBuffer) as the "Imported" scene. Resolves with what was found. */
 		async importModel( buffer, name ) {
 
-			const result = await importModel( buffer, name );
+			const result = await importModel( buffer, name, { renderer: runtime.renderer } );
 			imported = result.def;
 			store.set( { sceneId: 'import', shot: null } );
 			loadScene( { moveCamera: true } );
@@ -903,13 +968,13 @@ export function createApp( { renderer, canvas, persist = true } ) {
 
 			}
 
-			// Walk mode input (keyboard, gamepad, mouse drag) → the controller; physics steps at 1/60 s.
+			// Walk mode input (keyboard, gamepad, touch stick, mouse drag) → the controller; physics steps at 1/60 s.
 			if ( walk ) {
 
 				const k = walkInput.keys, clamp = ( v ) => Math.max( - 1, Math.min( 1, v ) );
-				walk.input.move = [ clamp( ( k.has( 'd' ) || k.has( 'arrowright' ) ? 1 : 0 ) - ( k.has( 'a' ) || k.has( 'arrowleft' ) ? 1 : 0 ) + walkInput.padMove[ 0 ] ), clamp( ( k.has( 'w' ) || k.has( 'arrowup' ) ? 1 : 0 ) - ( k.has( 's' ) || k.has( 'arrowdown' ) ? 1 : 0 ) + walkInput.padMove[ 1 ] ) ];
-				walk.input.jump = k.has( ' ' ) || walkInput.padJump;
-				walk.input.run = k.has( 'shift' ) || walkInput.padRun;
+				walk.input.move = [ clamp( ( k.has( 'd' ) || k.has( 'arrowright' ) ? 1 : 0 ) - ( k.has( 'a' ) || k.has( 'arrowleft' ) ? 1 : 0 ) + walkInput.padMove[ 0 ] + walkInput.touchMove[ 0 ] ), clamp( ( k.has( 'w' ) || k.has( 'arrowup' ) ? 1 : 0 ) - ( k.has( 's' ) || k.has( 'arrowdown' ) ? 1 : 0 ) + walkInput.padMove[ 1 ] + walkInput.touchMove[ 1 ] ) ];
+				walk.input.jump = k.has( ' ' ) || walkInput.padJump || walkInput.touchJump;
+				walk.input.run = k.has( 'shift' ) || walkInput.padRun || walkInput.touchRun;
 				walk.input.look = [ walkInput.mouse[ 0 ] + walkInput.padLook[ 0 ] * dt * 2.4, walkInput.mouse[ 1 ] + walkInput.padLook[ 1 ] * dt * 1.6 ];
 				walkInput.mouse = [ 0, 0 ];
 
@@ -924,11 +989,9 @@ export function createApp( { renderer, canvas, persist = true } ) {
 
 			if ( state().compare.mode === 'flicker' ) runtime.setCompare( { flicker: Math.floor( clock / 0.5 ) % 2 === 1 } );
 			if ( ! walk ) controls.update( dt );
-			// Stepped animation ("on twos"): the clock is quantized, the camera stays smooth.
-			const fps = resolved?.global[ 'motion.stepped.fps' ] || 0;
-			const ta = fps > 0 ? Math.floor( t * fps + 1e-6 ) / fps : t;
-			built?.animate( ta );
-			runtime.update( ta, { focus: controls.target } );
+			// Stepped animation ("on twos"): the clock is quantized per part, the camera stays smooth.
+			built?.animate( t, ( part ) => runtime.steppedTime( t, part ) );
+			runtime.update( t, { focus: controls.target } );
 
 		},
 

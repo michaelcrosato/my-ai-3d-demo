@@ -44,3 +44,14 @@ export function localFileFor( url ) {
 	return existsSync( file ) ? file : null;
 
 }
+
+/**
+ * The import map the built pages ship: the same pins, with three's minified builds (a third
+ * of the bytes to download and parse). The dev page keeps the readable files for debugging.
+ */
+export function distImportMap( map = readImportMap() ) {
+
+	const imports = Object.fromEntries( Object.entries( map.imports ).map( ( [ k, url ] ) => [ k, url.replace( /\/build\/three\.(webgpu|tsl)\.js$/, '/build/three.$1.min.js' ) ] ) );
+	return { ...map, imports };
+
+}

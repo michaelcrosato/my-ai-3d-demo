@@ -198,4 +198,86 @@ export default [
 		brief: 'Line texture amount {value}.',
 		tags: [ 'lines', 'texture' ],
 	} ),
+	// P2 (M10): image-space Sobel edges and the interactable highlight.
+	p( {
+		id: 'lines.sobel.enabled', label: 'Image edges (Sobel)', type: 'bool', default: false, structural: true, cost: { ...MEDIUM, fpe: 0.6 },
+		learn: {
+			what: 'Finds edges in the finished image itself, wherever brightness changes sharply, and inks them. It knows nothing about the geometry.',
+			why: 'It shows why geometry-aware ink wins: Sobel traces shadows, highlights and texture as eagerly as silhouettes, and misses the edge between two equally bright objects. As a deliberate style it gives a rough, photocopied or rotoscoped look.',
+			avoid: 'Using it instead of screen-space ink for clean cel lines, and on noisy images (grain, dither), where it inks the noise.',
+		},
+		brief: 'Image-space Sobel edge lines (brightness edges, not geometry).',
+		tags: [ 'lines', 'sobel', 'edges', 'photocopy' ],
+	} ),
+	p( {
+		id: 'lines.sobel.threshold', label: 'Edge threshold', type: 'float', min: 0.01, max: 1, step: 0.01, default: 0.25, enabledBy: 'lines.sobel.enabled',
+		learn: { what: 'How strong a brightness change must be to become a line.', why: 'Low thresholds ink every texture and shadow; high ones keep only the strongest contrasts.', typical: '0.15–0.4.' },
+		brief: 'Sobel threshold {value}.',
+		tags: [ 'sobel' ],
+	} ),
+	p( {
+		id: 'lines.sobel.thickness', label: 'Edge thickness', type: 'float', min: 0.5, max: 4, step: 0.05, unit: 'px@1080p', default: 1.2, enabledBy: 'lines.sobel.enabled',
+		learn: { what: 'The kernel spacing, in pixels at 1080p: wider kernels give thicker, softer lines.', why: 'Thick Sobel lines read as marker; thin ones as a photocopy.' },
+		brief: 'Sobel lines {value} px at 1080p.',
+		tags: [ 'sobel' ],
+	} ),
+	p( {
+		id: 'lines.sobel.color', label: 'Edge color', type: 'color', default: '#141414', enabledBy: 'lines.sobel.enabled',
+		learn: { what: 'The ink color of the image edges.', why: 'Near-black reads as ink; a dark hue from the palette keeps the lines in the picture.' },
+		brief: 'Sobel ink {value}.',
+		tags: [ 'sobel' ],
+	} ),
+	p( {
+		id: 'lines.sobel.amount', label: 'Edge opacity', type: 'float', min: 0, max: 1, step: 0.01, default: 1, neutral: 0, enabledBy: 'lines.sobel.enabled',
+		learn: { what: 'How opaque the image edges are.', why: 'Partial opacity layers the edges under geometry ink without doubling every line.' },
+		brief: 'Sobel opacity {value}.',
+		tags: [ 'sobel' ],
+	} ),
+	p( {
+		id: 'lines.highlight.enabled', label: 'Interactable highlight', type: 'bool', default: false, structural: true, cost: { ...MEDIUM, fpe: 0.6 }, requires: [ 'ids' ],
+		learn: {
+			what: 'Outlines what a player can use (pickups, chests, item blocks), or a whole part, in a color of its own, with an optional pulse.',
+			why: 'Games highlight what can be touched so players read the world at a glance. A consistent highlight color and width belong in the style guide, not in each asset.',
+			avoid: 'Highlighting too much: when everything glows, nothing reads as special. Pick one color nothing else in the palette uses.',
+		},
+		brief: 'Interactable highlight outline.',
+		tags: [ 'lines', 'highlight', 'outline', 'gameplay', 'readability' ],
+	} ),
+	p( {
+		id: 'lines.highlight.target', label: 'Highlight', type: 'enum', default: 'interactable', enabledBy: 'lines.highlight.enabled',
+		options: [
+			{ value: 'interactable', label: 'Interactable objects' },
+			{ value: 'hero', label: 'The hero' },
+			{ value: 'characters', label: 'Characters' },
+			{ value: 'props', label: 'Props' },
+			{ value: 'vfx', label: 'VFX' },
+		],
+		learn: { what: 'What gets the outline: objects tagged interactable (coins, chests, item blocks, or `userData.style.interactable` on your meshes), or every object of one part.', why: 'Tag what matters to the player; outlining a whole part is for teaching and debugging reads.' },
+		brief: 'Highlights: {label}.',
+		tags: [ 'highlight' ],
+	} ),
+	p( {
+		id: 'lines.highlight.color', label: 'Highlight color', type: 'color', default: '#ffd54a', enabledBy: 'lines.highlight.enabled',
+		learn: { what: 'The outline color.', why: 'Warm yellow and white read as "pick me up" in most games; use one hue nothing else in the scene uses.' },
+		brief: 'Highlight color {value}.',
+		tags: [ 'highlight' ],
+	} ),
+	p( {
+		id: 'lines.highlight.thickness', label: 'Highlight width', type: 'float', min: 1, max: 8, step: 0.1, unit: 'px@1080p', default: 3, enabledBy: 'lines.highlight.enabled',
+		learn: { what: 'The outline width in pixels at 1080p.', why: 'Wider than the ink lines, so the highlight never reads as part of the drawing.' },
+		brief: 'Highlight {value} px at 1080p.',
+		tags: [ 'highlight' ],
+	} ),
+	p( {
+		id: 'lines.highlight.pulse', label: 'Highlight pulse', type: 'float', min: 0, max: 1, step: 0.01, default: 0.5, neutral: 0, enabledBy: 'lines.highlight.enabled',
+		learn: { what: 'How much the outline breathes in and out (about once a second).', why: 'Motion draws the eye in the periphery, where a static outline is missed.' },
+		brief: 'Highlight pulse {value}.',
+		tags: [ 'highlight' ],
+	} ),
+	p( {
+		id: 'lines.highlight.fill', label: 'Highlight fill', type: 'float', min: 0, max: 1, step: 0.01, default: 0.15, neutral: 0, enabledBy: 'lines.highlight.enabled',
+		learn: { what: 'A tint of the highlight color over the highlighted objects themselves.', why: 'A faint fill makes small pickups readable even when their outline is hidden.' },
+		brief: 'Highlight fill {value}.',
+		tags: [ 'highlight' ],
+	} ),
 ];

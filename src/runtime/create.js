@@ -13,6 +13,7 @@ import { resolveRecipe, blendResolved } from './look/resolve.js';
 import { validateLook } from './look/validate.js';
 import { tagMeshes } from './parts/convert.js';
 import { byId, PARTS } from './registry/index.js';
+import { setCustomLut, decodeLut } from './color/lut.js';
 
 const PLAIN = { schema: 'stylelab.look@1', id: 'plain', name: 'Plain', baseline: true, params: {} };
 const ease = ( t ) => ( t < 0.5 ? 2 * t * t : 1 - Math.pow( - 2 * t + 2, 2 ) / 2 );
@@ -81,6 +82,8 @@ export class Style {
 		if ( json.looks ) { this.plan = json; for ( const l of json.looks ) this.addLook( l ); return; }
 		const { ok, errors } = validateLook( json );
 		if ( ! ok ) throw new Error( `createStyle: invalid look ${json.id}: ${errors.slice( 0, 3 ).join( '; ' )}` );
+		// An imported .cube travels inside the look (grade.lut.preset 'custom').
+		if ( json.lut ) setCustomLut( decodeLut( json.lut ) );
 		this.looks.set( json.id, json );
 
 	}
@@ -192,9 +195,8 @@ export class Style {
 		}
 
 		if ( this.lens && this.camera.isPerspectiveCamera ) this.applyLens();
-		const fps = this.resolved.global[ 'motion.stepped.fps' ] || 0;
-		const t = fps > 0 ? Math.floor( this.time * fps + 1e-6 ) / fps : this.time;
-		this.runtime.update( t, { focus: this.focus } );
+		// The runtime steps the clock ("animate on twos", per part); the camera stays smooth.
+		this.runtime.update( this.time, { focus: this.focus } );
 		this.runtime.render();
 
 	}

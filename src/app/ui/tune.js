@@ -6,7 +6,7 @@
 
 import { Pane } from 'tweakpane';
 import { REGISTRY, MODULES } from '../../runtime/registry/index.js';
-import { h } from './dom.js';
+import { h, toast } from './dom.js';
 
 const COST = { cheap: '🟢', medium: '🟡', heavy: '🔴' };
 
@@ -29,9 +29,21 @@ function bindingOptions( e ) {
 export function createTune( root, app, openLearn ) {
 
 	const chip = h( 'span.scope-chip', {}, 'Editing: global look' );
+	// .cube import (§6.4 F): a hidden file input behind a button; dropping a .cube on the window works too.
+	const cubeInput = h( 'input', { type: 'file', accept: '.cube', hidden: true, onchange: async () => {
+
+		const f = cubeInput.files[ 0 ];
+		cubeInput.value = '';
+		if ( ! f ) return;
+		try { const r = app.actions.importCube( await f.text(), f.name ); toast( `Imported the LUT "${r.title}" (${r.size}³): LUT preset is now Imported .cube.`, 5000 ); } catch ( e ) { toast( `LUT import failed: ${e.message}`, 6000 ); }
+
+	} } );
 	const header = h( 'div.tune-head', {},
 		chip,
 		h( 'button', { onclick: () => app.actions.resetParams(), title: 'Clear every tweak in this scope' }, 'Reset all tweaks' ),
+		h( 'button', { onclick: () => { const r = app.actions.randomize(); toast( `Rolled ${Object.keys( r.overrides ).length} values within the library's ranges (seed ${r.seed}). Ctrl+Z undoes it.`, 4000 ); }, title: 'New values for the effects this look uses, within the ranges the built-in looks use (switches stay, nothing rebuilds). Ctrl+Z undoes it.' }, '🎲 Randomize' ),
+		h( 'button', { onclick: () => cubeInput.click(), title: 'Import a 3D LUT (.cube) from any grading tool; it becomes the LUT preset "Imported .cube"' }, 'Import .cube' ),
+		cubeInput,
 	);
 	const host = h( 'div.tune-pane' );
 	root.append( header, host );
@@ -101,7 +113,8 @@ export function createTune( root, app, openLearn ) {
 
 	}
 
-	app.on( ( type ) => { if ( type === 'resolved' || type === 'scope' ) sync(); } );
+	// Hidden, the controls wait: the inspector syncs them when the tab opens again.
+	app.on( ( type ) => { if ( ( type === 'resolved' || type === 'scope' ) && ! root.hidden ) sync(); } );
 	sync();
 	return { pane, sync };
 

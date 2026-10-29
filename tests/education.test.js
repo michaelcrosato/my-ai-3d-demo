@@ -162,3 +162,28 @@ test( 'palette extraction finds the dominant colors', () => {
 	assert.ok( frameStats( px, 160, 90 ).dominantHues <= 4 );
 
 } );
+
+test( 'what changed: a styled frame with more contrast and fewer hues says so', async () => {
+
+	const { whatChanged } = await import( '../src/app/analysis/changes.js' );
+	const W = 64, H = 36;
+	// Plain: low-contrast stripes in many hues. Styled: the same layout in two strong values and two hues.
+	const plain = new Uint8Array( W * H * 4 ), styled = new Uint8Array( W * H * 4 );
+	const hues = [ [ 150, 120, 110 ], [ 120, 150, 110 ], [ 110, 120, 150 ], [ 150, 150, 110 ], [ 150, 110, 150 ], [ 110, 150, 150 ] ];
+	for ( let y = 0; y < H; y ++ ) for ( let x = 0; x < W; x ++ ) {
+
+		const i = ( y * W + x ) * 4, band = Math.floor( x / 8 ) % hues.length;
+		plain.set( [ ...hues[ band ], 255 ], i );
+		styled.set( [ ...( band % 2 ? [ 240, 200, 60 ] : [ 30, 40, 120 ] ), 255 ], i );
+
+	}
+
+	const r = whatChanged( plain, styled, W, H );
+	assert.match( r.summary, /^Your look /, r.summary );
+	const by = Object.fromEntries( r.changes.map( ( c ) => [ c.id, c ] ) );
+	assert.ok( by.value.to > by.value.from && by.edges.to > by.edges.from, 'more value range and edge contrast' );
+	assert.ok( r.changes[ 0 ].weight >= r.changes.at( - 1 ).weight, 'sorted biggest first' );
+	assert.match( r.summary, /raised silhouette contrast|widened the value range/ );
+	assert.equal( whatChanged( plain, plain, W, H ).summary.includes( 'barely changes' ), true, 'no change: says so' );
+
+} );

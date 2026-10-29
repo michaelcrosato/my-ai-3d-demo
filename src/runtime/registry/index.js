@@ -14,16 +14,16 @@ import motion from './motion.js';
 import quality from './quality.js';
 
 export const MODULES = [
-	{ id: 'lighting', label: 'Lighting', stage: 'WORLD', perPart: 'ambient only' },
+	{ id: 'lighting', label: 'Lighting', stage: 'WORLD + CAMERA', perPart: 'ambient, blob shadows, vertex AO' },
 	{ id: 'surface', label: 'Surface', stage: 'WORLD', perPart: 'yes' },
 	{ id: 'lines', label: 'Lines', stage: 'WORLD + MEDIUM', perPart: 'hull lines' },
 	{ id: 'palette', label: 'Palette', stage: 'WORLD', perPart: 'yes' },
-	{ id: 'atmosphere', label: 'Atmosphere', stage: 'WORLD', perPart: 'no' },
+	{ id: 'atmosphere', label: 'Atmosphere', stage: 'WORLD', perPart: 'fog amount' },
 	{ id: 'lens', label: 'Lens', stage: 'CAMERA + DISPLAY', perPart: 'no' },
 	{ id: 'grade', label: 'Grade', stage: 'CAMERA + GRADE', perPart: 'no' },
 	{ id: 'media', label: 'Media', stage: 'MEDIUM + DISPLAY', perPart: 'no' },
-	{ id: 'retro', label: 'Retro', stage: 'pass + DISPLAY', perPart: 'vertex snap' },
-	{ id: 'motion', label: 'Motion', stage: 'clock', perPart: 'no' },
+	{ id: 'retro', label: 'Retro', stage: 'pass + DISPLAY', perPart: 'vertex snap, texture filtering, affine warp' },
+	{ id: 'motion', label: 'Motion', stage: 'clock + DISPLAY', perPart: 'stepped animation' },
 	{ id: 'quality', label: 'Quality', stage: 'pass', perPart: 'no' },
 ];
 

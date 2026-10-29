@@ -227,6 +227,8 @@ test( 'coherence: each rule fires on its contradiction, and its fix clears it', 
 		oversaturated: { 'palette.saturation': 1.8 },
 		'fog-seam': { 'atmosphere.fog.type': 'exp2', 'atmosphere.fog.amount': 1, 'atmosphere.fog.skyTint': 0, 'atmosphere.fog.color': '#ff2020', 'atmosphere.sky.horizon': '#20a0ff' },
 		'grain-dither': { 'media.grain.amount': 0.1, 'surface.dither.enabled': true },
+		'double-ink': { 'lines.sobel.enabled': true, 'lines.screen.enabled': true },
+		'bleach-twice': { 'grade.bleach.enabled': true, 'grade.lut.enabled': true, 'grade.lut.preset': 'bleach' },
 	};
 	assert.deepEqual( Object.keys( cases ).sort(), COHERENCE_RULES.map( ( r ) => r.id ).sort(), 'a case per rule' );
 
@@ -292,5 +294,30 @@ test( 'masked post: per-part switches fold into one switch plus a part mask', as
 	// No part with an effect: it is off.
 	const none = withPartMasks( { ...r.global, 'media.watercolor.enabled': true }, r.parts );
 	assert.equal( none[ 'media.watercolor.enabled' ], false, 'parts decide masked switches' );
+
+} );
+
+test( 'randomize within ranges: seeded, inside the ranges, only what the look uses, never structural', async () => {
+
+	const { randomOverrides, rollRange } = await import( '../src/app/state/randomize.js' );
+	const { LOOKS } = await import( '../src/content/looks/index.js' );
+	const look = LOOKS.find( ( l ) => l.id === 'comic-ink' );
+	const values = resolveLook( { look } ).global;
+	const a = randomOverrides( values, LOOKS, 42 ), b = randomOverrides( values, LOOKS, 42 ), c = randomOverrides( values, LOOKS, 43 );
+	assert.deepEqual( a, b, 'the same seed gives the same roll' );
+	assert.notDeepEqual( a, c, 'another seed another roll' );
+	assert.ok( Object.keys( a ).length > 10, 'rolls the look\'s effects' );
+	for ( const [ id, v ] of Object.entries( a ) ) {
+
+		const e = byId.get( id );
+		assert.ok( ! e.structural, `${id} is not structural` );
+		assert.equal( checkValue( e, v ), null, `${id} = ${v} is valid` );
+		if ( e.type !== 'color' ) { const [ lo, hi ] = rollRange( e, LOOKS ); assert.ok( v >= lo - e.step && v <= hi + e.step, `${id} within [${lo}, ${hi}]` ); }
+		if ( e.enabledBy ) assert.ok( values[ e.enabledBy ], `${id}: its effect is on` );
+
+	}
+
+	assert.ok( ! ( 'media.watercolor.edges' in a ), 'effects the look doesn\'t use stay put' );
+	assert.ok( ! Object.keys( a ).some( ( id ) => id.startsWith( 'motion.' ) || id.startsWith( 'quality.' ) || id === 'lens.fovScale' ), 'no clock, quality or lens width' );
 
 } );

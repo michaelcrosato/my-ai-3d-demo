@@ -89,6 +89,8 @@ export function createPlayTab( pane, app, { toast } ) {
 				<div class="triggers"><div>LT <span class="meter"><i data-trigger="6"></i></span></div><div>RT <span class="meter"><i data-trigger="7"></i></span></div></div>
 			</div>
 			<p class="hint">The dashed circle is the deadzone (${Math.round( app.store.get().deadzone * 100 )}%): inside it the stick reads zero, so a worn stick doesn't drift.</p>
+			<label class="field"><input type="checkbox" data-rumble ${app.store.get().rumble !== false ? 'checked' : ''}> Rumble on look change (pads that support it)</label>
+			<p class="hint">With a panel open (the tour, the brief, the audit, the key map), the D-pad moves between its controls, ←/→ change sliders and lists, A presses, B closes.</p>
 		</article>`;
 
 	}
@@ -195,6 +197,7 @@ export function createPlayTab( pane, app, { toast } ) {
 		const row = t.closest( '[data-mode]' );
 		if ( t.dataset.modeName !== undefined ) a.updateMode( Number( row.dataset.mode ), { name: t.value } );
 		if ( t.dataset.modeLook !== undefined ) a.updateMode( Number( row.dataset.mode ), { look: t.value } );
+		if ( t.dataset.rumble !== undefined ) app.store.set( { rumble: t.checked } );
 
 	} );
 

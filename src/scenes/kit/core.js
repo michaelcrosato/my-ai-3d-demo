@@ -136,16 +136,104 @@ const PLACEHOLDER = new THREE.MeshBasicMaterial();
 
 /**
  * A kit mesh: geometry plus the style metadata the runtime reads.
- * @param {object} o - part, color (sRGB hex), roughness, emissive, emissiveIntensity, wave, doubleSided
+ * @param {object} o - part, color (sRGB hex), roughness, emissive, emissiveIntensity, wave, doubleSided,
+ *   map (a kitTexture() name; the geometry needs uvs), interactable (the highlight's target)
  */
-export function mesh( geometry, { part, color = '#cccccc', roughness = 0.8, metalness = 0, emissive = null, emissiveIntensity = 1, wave = null, wind = null, opacity = 1, doubleSided = false, castShadow = true, receiveShadow = true, name = '' } = {} ) {
+export function mesh( geometry, { part, color = '#cccccc', roughness = 0.8, metalness = 0, emissive = null, emissiveIntensity = 1, wave = null, wind = null, opacity = 1, doubleSided = false, castShadow = true, receiveShadow = true, name = '', map = null, interactable = false } = {} ) {
 
 	const m = new THREE.Mesh( geometry, PLACEHOLDER );
 	m.name = name;
 	m.castShadow = castShadow && opacity >= 1;
 	m.receiveShadow = receiveShadow;
 	m.userData.style = { part, color, roughness, metalness, emissive, emissiveIntensity, wave, wind, opacity, doubleSided };
+	if ( map ) m.userData.style.map = kitTexture( map );
+	if ( interactable ) m.userData.style.interactable = true;
 	return m;
+
+}
+
+/** Tags every kit mesh under `object` as interactable (what the highlight outlines); returns it. */
+export function interactable( object ) {
+
+	object.traverse( ( o ) => { if ( o.userData.style ) o.userData.style.interactable = true; } );
+	return object;
+
+}
+
+const textures = new Map();
+
+/**
+ * Small procedural textures (64 × 64, sRGB, repeating), for the surfaces where texturing is
+ * the point: the retro filters (nearest, N64, affine warp) only show on textured surfaces.
+ * Values are near white with dark mortar or seams, so the mesh color tints them.
+ */
+export function kitTexture( kind ) {
+
+	if ( textures.has( kind ) ) return textures.get( kind );
+	const N = 64, data = new Uint8Array( N * N * 4 );
+	const hash = ( x, y ) => { let h = Math.imul( x, 374761393 ) ^ Math.imul( y, 668265263 ) ^ kind.length * 977; h = Math.imul( h ^ h >>> 13, 1274126177 ); return ( ( h ^ h >>> 16 ) >>> 0 ) / 4294967296; };
+	for ( let y = 0; y < N; y ++ ) for ( let x = 0; x < N; x ++ ) {
+
+		let v = 1;
+		if ( kind === 'bricks' ) {
+
+			// 4 courses of 2 bricks, offset every other course, 2-texel mortar.
+			const row = Math.floor( y / 16 ), bx = ( x + ( row % 2 ) * 16 ) % 64;
+			const mortar = y % 16 < 2 || bx % 32 < 2;
+			v = mortar ? 0.42 : 0.78 + 0.2 * hash( Math.floor( bx / 32 ) + row * 7, row ) + 0.06 * ( hash( x, y ) - 0.5 );
+
+		} else if ( kind === 'cobbles' ) {
+
+			// Rounded stones in a jittered 4 × 4 grid: dark gaps between them.
+			let best = 9, second = 9;
+			for ( let j = - 1; j <= 4; j ++ ) for ( let i = - 1; i <= 4; i ++ ) {
+
+				const cx = ( i + 0.25 + 0.5 * hash( ( i + 4 ) % 4, ( j + 4 ) % 4 ) ) * 16, cy = ( j + 0.25 + 0.5 * hash( ( j + 4 ) % 4 + 9, ( i + 4 ) % 4 ) ) * 16;
+				const d = Math.hypot( x - cx, y - cy );
+				if ( d < best ) { second = best; best = d; } else if ( d < second ) second = d;
+
+			}
+
+			v = second - best < 2 ? 0.3 : 0.7 + 0.25 * ( 1 - Math.min( 1, best / 10 ) ) + 0.05 * ( hash( x, y ) - 0.5 );
+
+		} else if ( kind === 'planks' ) {
+
+			const plank = Math.floor( x / 16 );
+			v = x % 16 < 1 ? 0.4 : 0.75 + 0.15 * hash( plank, 3 ) + 0.08 * Math.sin( ( y + hash( plank, 5 ) * 40 ) * 0.6 + x * 0.2 );
+
+		} else {
+
+			// checker: a UV test card.
+			v = ( Math.floor( x / 8 ) + Math.floor( y / 8 ) ) % 2 ? 1 : 0.55;
+
+		}
+
+		const k = ( y * N + x ) * 4, c = Math.round( Math.min( 1, Math.max( 0, v ) ) * 255 );
+		data[ k ] = data[ k + 1 ] = data[ k + 2 ] = c;
+		data[ k + 3 ] = 255;
+
+	}
+
+	const t = new THREE.DataTexture( data, N, N, THREE.RGBAFormat, THREE.UnsignedByteType );
+	t.colorSpace = THREE.SRGBColorSpace;
+	t.wrapS = t.wrapT = THREE.RepeatWrapping;
+	t.magFilter = THREE.LinearFilter;
+	t.minFilter = THREE.LinearMipmapLinearFilter;
+	t.generateMipmaps = true;
+	t.name = `kit:${kind}`;
+	t.needsUpdate = true;
+	textures.set( kind, t );
+	return t;
+
+}
+
+/** Scales a geometry's uvs, so a repeating texture tiles `sx` × `sy` times; returns it. */
+export function tileUv( geometry, sx, sy = sx ) {
+
+	const uv = geometry.getAttribute( 'uv' );
+	for ( let i = 0; i < uv.count; i ++ ) uv.setXY( i, uv.getX( i ) * sx, uv.getY( i ) * sy );
+	uv.needsUpdate = true;
+	return geometry;
 
 }
 
