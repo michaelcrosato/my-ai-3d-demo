@@ -1,4 +1,4 @@
-/* Style Lab runtime v1.1.0 (120ecd7) */
+/* Style Lab runtime v1.1.0 (faaa3b6) */
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
   for (var name in all)
