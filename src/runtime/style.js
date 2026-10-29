@@ -518,6 +518,11 @@ export class StyleRuntime {
 
 	renderNow() {
 
+		// The plain baseline renders only while it shows (hold, split or flicker), plus the
+		// first frame after a build, which compiles it so the first compare doesn't stall.
+		const U = this.U;
+		this.plainPass.idle = ! this.pendingCompile && ! ( U.hold.value || U.split.value || U.flicker.value );
+
 		if ( this.pendingCompile ) {
 
 			// The first frame after a rebuild compiles the new pipelines; show how long it took.

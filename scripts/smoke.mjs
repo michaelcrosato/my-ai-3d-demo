@@ -119,6 +119,15 @@ async function m1Checks( page, fail, run ) {
 		// Strength 0 renders the same as that look's neutral version, applied directly.
 		await s.setScene( 'lookdev', { tier: 1 } );
 		await s.applyLook( 'sea-breeze' );
+		// The plain baseline is a second scene render: it runs only while hold, split or flicker shows it.
+		const frames = ( n = 3 ) => new Promise( ( done ) => { let k = 0; const f = () => ( ++ k >= n ? done() : requestAnimationFrame( f ) ); requestAnimationFrame( f ); } );
+		await frames();
+		const idle = s.app.runtime.plainPass.idle;
+		s.compare( 'hold', { on: true } );
+		await frames();
+		const shown = ! s.app.runtime.plainPass.idle;
+		s.compare( 'hold', { on: false } );
+		check( 'the plain baseline renders only while it shows', idle && shown, [ idle, shown ] );
 		const before = s.info();
 		s.setStrength( 0 );
 		check( 'strength slider never rebuilds', s.info().materialBuilds === before.materialBuilds && s.info().graphBuilds === before.graphBuilds, s.info().lastRebuild );

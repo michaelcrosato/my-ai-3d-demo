@@ -6,7 +6,9 @@ export async function createRenderer( { canvas, backend = 'auto', dprCap = 2 } )
 
 	const renderer = new THREE.WebGPURenderer( {
 		canvas,
-		antialias: true,
+		// The canvas only receives the post-processing quad: the scene passes choose their own
+		// MSAA, so a multisampled canvas would just be resolved for nothing every frame.
+		antialias: false,
 		forceWebGL: backend === 'webgl',
 		trackTimestamp: true,
 	} );

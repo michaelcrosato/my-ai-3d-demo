@@ -25,6 +25,12 @@ Everything the design marked P2 ("stretch") and left unbuilt in v1.0.
 - **.glb import:** **KTX2** textures (KHR_texture_basisu: Basis transcoded, uncompressed KTX2 as is) and **morph targets** (the styled, plain and hull twins share the weights, so morph animation plays on all three).
 - Two coherence rules (two kinds of ink; bleach bypass twice), nine glossary terms, and a Verify milestone (M10) with eleven checks in the tour.
 
+**Faster**
+- **The plain baseline renders only while it shows** (hold, split or flicker). Until now it was a second full scene render every frame, shadows included. Measured on a software GPU, frames take 10–20% less time and the draw calls halve. Compare still swaps at once: the baseline compiles with the scene and draws on the frame that shows it.
+- **The canvas is no longer multisampled.** It only ever receives the post-processing quad, and the scene passes choose their own anti-aliasing, so the 4× canvas buffer was resolved for nothing every frame.
+- **The built pages load three.js's minified builds** (same release): about 260 KB less to download (brotli) and a third of the JavaScript to parse. The dev page keeps the readable files.
+- **The Tune tab builds its ~300 controls when first opened**, not at start-up, and keeps them in sync only while it shows (every change used to refresh all of them, even hidden).
+
 **What to test** (🧪 Verify → Tour, the M10 checks; about 30 minutes):
 1. **M10-01** The new effects contact sheet (cells E63 on).
 2. **M10-02** Tabletop Map and Noir Alley read as their genres.

@@ -605,7 +605,7 @@ The **Tune** tab is generated from the parameter registry, so it always covers e
 
 **Match brightness** (toggle): scales the baseline so its mean luminance equals the styled image's. That way a look isn't preferred just for being brighter. The Learn card calls this "louder isn't better".
 
-Swaps are instant because the baseline is always rendered in the editor ([§7.12](#712-compare-rendering-and-render-sets)).
+Swaps are instant: the baseline compiles with the scene and renders on the frame that shows it ([§7.12](#712-compare-rendering-and-render-sets)).
 
 ### 6.10 Looks in a game: switching, zones and plans
 
@@ -835,7 +835,7 @@ Perf: full look 3.1 ms GPU @1080p (timestamps), plain 0.9 ms
 | Build | esbuild + a Node script | `esbuild@0.28.2` (dev only) | Bundles and inlines into one HTML file |
 | Tests | `node:test`; Playwright with Chromium | Node 22, Playwright 1.63 | Unit tests + smoke tests |
 
-**Import map** (in the dev `index.html` and the built file; every URL was checked to resolve):
+**Import map** (in the dev `index.html`; the built pages use the same pins with minified three, below; every URL was checked to resolve):
 
 ```html
 <script type="importmap">
@@ -854,7 +854,7 @@ Perf: full look 3.1 ms GPU @1080p (timestamps), plain 0.9 ms
 </script>
 ```
 
-Mapping `three` to `three.webgpu.js` follows the official r182 WebGPU examples, so addons that import `three` get the WebGPU build.
+Mapping `three` to `three.webgpu.js` follows the official r182 WebGPU examples, so addons that import `three` get the WebGPU build. The built pages (`dist/style-lab.html`, `starter.html` and the exports) swap three's two build files for their minified versions from the same release (`scripts/importmap.mjs` `distImportMap()`): about a third of the bytes to download and parse. The dev page keeps the readable files for debugging.
 
 ### 7.2 Source layout
 
@@ -1153,7 +1153,7 @@ A **render set** is a layer + a material set + a light rig + a post branch.
 | Set | Layer | Contents | When it renders |
 |---|---|---|---|
 | **A — styled** | 1 | Style materials, hull lines, look light rig | Always |
-| **P — plain** | 2 | Baseline materials, baseline rig, ACES + sRGB only | Always in the editor, for instant compare; excluded from audits; absent in the exported runtime |
+| **P — plain** | 2 | Baseline materials, baseline rig, ACES + sRGB only | While the frame shows it (hold, split, flicker), plus the first frame after a build so its shaders are compiled before the first compare; excluded from audits; absent in the exported runtime |
 | **B — second look** | 3 | Style materials for look B | On demand: A/B compare, crossfade and wipe transitions |
 
 How it works:

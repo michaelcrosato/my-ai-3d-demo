@@ -1,4 +1,4 @@
-/* Style Lab runtime v1.1.0 (ae6fb10) */
+/* Style Lab runtime v1.1.0 (6d8e3cc) */
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -7335,6 +7335,11 @@ var StylePassNode = class extends PassNode {
   constructor(scene, camera, options) {
     super(PassNode.COLOR, scene, camera, options);
     this.pixelRows = null;
+    this.idle = false;
+  }
+  updateBefore(frame) {
+    if (this.idle) return false;
+    return super.updateBefore(frame);
   }
   setSize(width, height) {
     if (this.pixelRows === null) return super.setSize(width, height);
@@ -8057,6 +8062,8 @@ var StyleRuntime = class {
     this.heldPost.render();
   }
   renderNow() {
+    const U = this.U;
+    this.plainPass.idle = !this.pendingCompile && !(U.hold.value || U.split.value || U.flicker.value);
     if (this.pendingCompile) {
       const t0 = performance.now();
       this.post.render();

@@ -28,7 +28,9 @@ export function createInspector( root, app, sceneOptions ) {
 	const openLearn = ( id ) => { app.store.set( { ui: { tab: 'learn', learn: id } } ); render(); };
 
 	nav.append( ...TABS.map( ( [ id, label ] ) => h( 'button', { dataset: { tab: id }, onclick: () => setTab( id ) }, label ) ) );
-	const tune = createTune( panes.tune, app, openLearn );
+	// Tune builds its few hundred controls when first opened, not at start-up, and keeps
+	// them in sync only while it shows.
+	let tune = null;
 	const sceneTab = createSceneTab( panes.scene, app, sceneOptions );
 	const recipeTab = createRecipeTab( panes.look, app, { toast: sceneOptions.toast, share: sceneOptions.share } );
 	const partsTab = createPartsTab( panes.parts, app, { toast: sceneOptions.toast } );
@@ -49,6 +51,7 @@ export function createInspector( root, app, sceneOptions ) {
 		if ( tab === 'analyze' ) { analyzeTab.render(); analyzeTab.start(); } else analyzeTab.stop();
 		if ( tab === 'learn' ) renderLearn();
 		if ( tab === 'scene' ) sceneTab.render();
+		if ( tab === 'tune' ) { if ( tune ) tune.sync(); else tune = createTune( panes.tune, app, openLearn ); }
 
 	}
 
@@ -70,6 +73,6 @@ export function createInspector( root, app, sceneOptions ) {
 	} );
 
 	render();
-	return { render, openLearn, setTab, tune, sceneTab, recipeTab, partsTab, playTab, analyzeTab, learnTab };
+	return { render, openLearn, setTab, get tune() { return tune; }, sceneTab, recipeTab, partsTab, playTab, analyzeTab, learnTab };
 
 }

@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { readImportMap } from '../scripts/importmap.mjs';
+import { readImportMap, distImportMap, localFileFor } from '../scripts/importmap.mjs';
 
 const ROOT = path.resolve( import.meta.dirname, '..' );
 
@@ -26,9 +26,11 @@ test( 'build produces one self-contained HTML file plus the runtime module', () 
 		assert.match( html, /define_STYLELAB_BUILD_default = \{ version: "\d+\.\d+\.\d+", commit: "\w+"/ );
 		assert.equal( ( html.match( /<\/script>/g ) || [] ).length, 2, 'only the import map and the app script' );
 
-		// The import map in the built file is the one tests pin against.
+		// The import map in the built file is the one tests pin against, with three's minified builds.
 		const built = JSON.parse( /<script type="importmap">([\s\S]*?)<\/script>/.exec( html )[ 1 ] );
-		assert.deepEqual( built, readImportMap() );
+		assert.deepEqual( built, distImportMap() );
+		assert.equal( built.imports[ 'three/webgpu' ], readImportMap().imports[ 'three/webgpu' ].replace( /\.js$/, '.min.js' ) );
+		for ( const url of Object.values( built.imports ).filter( ( u ) => ! u.endsWith( '/' ) ) ) assert.ok( localFileFor( url ), `missing local file for ${url}` );
 
 		// Dependencies stay external (loaded via the import map), not bundled.
 		assert.match( html, /from "three\/webgpu"/ );

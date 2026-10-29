@@ -15,7 +15,7 @@ import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ROOT } from './serve.mjs';
-import { readImportMap, localFileFor } from './importmap.mjs';
+import { readImportMap, distImportMap, localFileFor } from './importmap.mjs';
 
 const OFFLINE = process.argv.includes( '--offline' );
 const outIndex = process.argv.indexOf( '--out' );
@@ -82,7 +82,7 @@ const template = await readFile( path.join( ROOT, 'index.html' ), 'utf8' );
 const css = await readFile( path.join( ROOT, 'src/app/styles.css' ), 'utf8' );
 const runtime = `/* Style Lab runtime v${BUILD.version} (${BUILD.commit}) */\n${await bundle( 'src/runtime/index.js' )}`;
 const kit = `/* Style Lab kit v${BUILD.version} (${BUILD.commit}): procedural assets, part-tagged, seeded, tiered */\n${await bundle( 'src/export/kit.js' )}`;
-const starterTemplate = ( await readFile( path.join( ROOT, 'src/export/starter.html' ), 'utf8' ) ).replace( '/*IMPORTMAP*/', () => JSON.stringify( readImportMap(), null, '\t' ) );
+const starterTemplate = ( await readFile( path.join( ROOT, 'src/export/starter.html' ), 'utf8' ) ).replace( '/*IMPORTMAP*/', () => JSON.stringify( distImportMap(), null, '\t' ) );
 const files = { 'stylelab-runtime.js': runtime, 'stylelab-kit.js': kit, 'starter.html': starterTemplate };
 const app = ( await bundle( 'src/app/main.js', { __STYLELAB_FILES__: JSON.stringify( files ) } ) ).replace( /<\/script/gi, '<\\/script' );
 const { M1_LOOKS, lookById } = await import( pathToFileURL( path.join( ROOT, 'src/content/looks/index.js' ) ).href );
@@ -95,6 +95,7 @@ for ( const tag of [ STYLE_TAG, SCRIPT_TAG ] ) if ( ! template.includes( tag ) )
 
 // Function replacements, so "$&"-style sequences in the bundle are not interpreted.
 const html = template
+	.replace( /(<script type="importmap">)[\s\S]*?(<\/script>)/, ( _, open, close ) => `${open}\n${JSON.stringify( distImportMap(), null, '\t' ).replace( /^/gm, '\t' )}\n\t${close}` )
 	.replace( STYLE_TAG, () => `<style>\n${css}</style>` )
 	.replace( SCRIPT_TAG, () => `<script type="module">\n/* Style Lab v${BUILD.version} (${BUILD.commit}) — built from src/, do not edit */\n${app}</script>` );
 

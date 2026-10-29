@@ -113,7 +113,8 @@ export function createTune( root, app, openLearn ) {
 
 	}
 
-	app.on( ( type ) => { if ( type === 'resolved' || type === 'scope' ) sync(); } );
+	// Hidden, the controls wait: the inspector syncs them when the tab opens again.
+	app.on( ( type ) => { if ( ( type === 'resolved' || type === 'scope' ) && ! root.hidden ) sync(); } );
 	sync();
 	return { pane, sync };
 
