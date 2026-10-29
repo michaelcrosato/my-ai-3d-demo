@@ -854,7 +854,7 @@ Perf: full look 3.1 ms GPU @1080p (timestamps), plain 0.9 ms
 </script>
 ```
 
-Mapping `three` to `three.webgpu.js` follows the official r182 WebGPU examples, so addons that import `three` get the WebGPU build. The built pages (`dist/style-lab.html`, `starter.html` and the exports) swap three's two build files for their minified versions from the same release (`scripts/importmap.mjs` `distImportMap()`): about a third of the bytes to download and parse. The dev page keeps the readable files for debugging.
+Mapping `three` to `three.webgpu.js` follows the official r182 WebGPU examples, so addons that import `three` get the WebGPU build. The built pages (`dist/style-lab.html`, `starter.html` and the exports) swap three's two build files for their minified versions from the same release (`scripts/importmap.mjs` `distImportMap()`): about a third of the bytes to download and parse. The dev page keeps the readable files for debugging. The tool page also preloads three's three files (`<link rel="modulepreload">`, after the import map) so they download alongside the page instead of after it.
 
 ### 7.2 Source layout
 

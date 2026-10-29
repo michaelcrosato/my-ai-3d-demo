@@ -31,6 +31,12 @@ test( 'build produces one self-contained HTML file plus the runtime module', () 
 		assert.deepEqual( built, distImportMap() );
 		assert.equal( built.imports[ 'three/webgpu' ], readImportMap().imports[ 'three/webgpu' ].replace( /\.js$/, '.min.js' ) );
 		for ( const url of Object.values( built.imports ).filter( ( u ) => ! u.endsWith( '/' ) ) ) assert.ok( localFileFor( url ), `missing local file for ${url}` );
+		// three's three files preload from the head, after the import map (a module load before it disables the map).
+		const head = html.split( '</head>' )[ 0 ];
+		const preloads = [ ...head.matchAll( /<link rel="modulepreload" href="([^"]+)">/g ) ].map( ( m ) => m[ 1 ] );
+		assert.equal( preloads.length, 3 );
+		assert.ok( head.indexOf( '<link rel="modulepreload"' ) > head.indexOf( '</script>' ), 'preloads follow the import map' );
+		for ( const url of preloads ) assert.ok( localFileFor( url ), `missing local file for ${url}` );
 
 		// Dependencies stay external (loaded via the import map), not bundled.
 		assert.match( html, /from "three\/webgpu"/ );

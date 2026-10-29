@@ -29,6 +29,7 @@ Everything the design marked P2 ("stretch") and left unbuilt in v1.0.
 - **The plain baseline renders only while it shows** (hold, split or flicker). Until now it was a second full scene render every frame, shadows included. Measured on a software GPU, frames take 10–20% less time and the draw calls halve. Compare still swaps at once: the baseline compiles with the scene and draws on the frame that shows it.
 - **The canvas is no longer multisampled.** It only ever receives the post-processing quad, and the scene passes choose their own anti-aliasing, so the 4× canvas buffer was resolved for nothing every frame.
 - **The built pages load three.js's minified builds** (same release): about 260 KB less to download (brotli) and a third of the JavaScript to parse. The dev page keeps the readable files.
+- **three.js starts downloading with the page.** The tool page preloads its three files from the head; before, they waited for the whole page (the app script is inline at its end), and three.core waited for three.webgpu after that.
 - **The Tune tab builds its ~300 controls when first opened**, not at start-up, and keeps them in sync only while it shows (every change used to refresh all of them, even hidden).
 
 **What to test** (🧪 Verify → Tour, the M10 checks; about 30 minutes):

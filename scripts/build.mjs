@@ -93,9 +93,16 @@ const SCRIPT_TAG = '<script type="module" src="./src/app/main.js"></script>';
 
 for ( const tag of [ STYLE_TAG, SCRIPT_TAG ] ) if ( ! template.includes( tag ) ) throw new Error( `index.html is missing: ${tag}` );
 
+// three's files preload from the head: the app script is inline at the end of the page, so
+// they would otherwise wait for the whole page, and three.core for three.webgpu after that.
+// The links go after the import map (a module load before it would disable the map).
+const map = distImportMap();
+const preloads = [ map.imports[ 'three/webgpu' ], new URL( './three.core.min.js', map.imports[ 'three/webgpu' ] ).href, map.imports[ 'three/tsl' ] ]
+	.map( ( href ) => `\n\t<link rel="modulepreload" href="${href}">` ).join( '' );
+
 // Function replacements, so "$&"-style sequences in the bundle are not interpreted.
 const html = template
-	.replace( /(<script type="importmap">)[\s\S]*?(<\/script>)/, ( _, open, close ) => `${open}\n${JSON.stringify( distImportMap(), null, '\t' ).replace( /^/gm, '\t' )}\n\t${close}` )
+	.replace( /(<script type="importmap">)[\s\S]*?(<\/script>)/, ( _, open, close ) => `${open}\n${JSON.stringify( map, null, '\t' ).replace( /^/gm, '\t' )}\n\t${close}${preloads}` )
 	.replace( STYLE_TAG, () => `<style>\n${css}</style>` )
 	.replace( SCRIPT_TAG, () => `<script type="module">\n/* Style Lab v${BUILD.version} (${BUILD.commit}) — built from src/, do not edit */\n${app}</script>` );
 
